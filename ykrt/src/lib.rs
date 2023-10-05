@@ -15,6 +15,7 @@ mod location;
 pub(crate) mod mt;
 pub mod trace;
 mod ykstats;
+pub mod thread_intercept;
 
 pub use self::location::Location;
 pub use self::mt::{HotThreshold, MT};
