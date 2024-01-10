@@ -27,7 +27,7 @@ use crate::print_jit_state;
 use crate::{
     compile::{default_compiler, CompiledTrace, Compiler, GuardId},
     location::{HotLocation, HotLocationKind, Location, TraceFailed},
-    trace::{default_tracer, TraceCollector, TraceIterator, Tracer},
+    trace::{default_tracer, software_tracer, TraceCollector, TraceIterator, Tracer},
     ykstats::{TimingState, YkStats},
 };
 use yktracec::promote;
@@ -53,7 +53,29 @@ const DEFAULT_HOT_THRESHOLD: HotThreshold = 50;
 const DEFAULT_SIDETRACE_THRESHOLD: HotThreshold = 5;
 const DEFAULT_TRACE_FAILURE_THRESHOLD: TraceFailureThreshold = 5;
 
-thread_local! {static THREAD_MTTHREAD: MTThread = MTThread::new();}
+thread_local! {
+    static THREAD_MTTHREAD: MTThread = MTThread::new();
+    // #[cfg(tracer_swt)]
+    static SWT_BLOCKS: RefCell<Vec<BB>> = RefCell::new(vec![]);
+}
+
+pub fn is_tracing() -> bool {
+    return THREAD_MTTHREAD.with(|mtt| mtt.tracing.borrow().is_some());
+}
+
+struct BB {
+    function_index: u32,
+    block_index: u32,
+}
+pub fn trace_block(function_index: u32, block_index: u32) {
+    SWT_BLOCKS.with(|v| {
+        v.borrow_mut().push(BB {
+            function_index,
+            block_index,
+        });
+    })
+    // allocate a buffer (thread local vec) - doesn't matter where really
+}
 
 #[cfg(feature = "yk_testing")]
 static SERIALISE_COMPILATION: LazyLock<bool> = LazyLock::new(|| {
@@ -124,6 +146,10 @@ impl MT {
             #[cfg(yk_llvm_sync_hack)]
             active_worker_jobs: AtomicUsize::new(0),
             tracer: Mutex::new(default_tracer()?),
+
+            // #[cfg(tracer_swt)]
+            // tracer: Mutex::new(software_tracer()?),
+
             compiler: Mutex::new(default_compiler()?),
             stats: YkStats::new(),
         }))
@@ -611,6 +637,10 @@ impl MTThread {
             thread_tracer: RefCell::new(None),
             _dont_send_or_sync_me: PhantomData,
         }
+    }
+    // #[cfg(tracer_swt)]
+    pub(crate) fn is_tracing() -> bool {
+        THREAD_MTTHREAD.with(|mtt| mtt.tracing.borrow().is_some())
     }
 }
 
