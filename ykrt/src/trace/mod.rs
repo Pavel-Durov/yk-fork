@@ -13,6 +13,8 @@ use std::{
 
 #[cfg(tracer_hwt)]
 pub(crate) mod hwt;
+// #[cfg(tracer_swt)]
+pub(crate) mod sw;
 
 pub(crate) use errors::InvalidTraceError;
 
@@ -35,6 +37,14 @@ pub(crate) fn default_tracer() -> Result<Arc<dyn Tracer>, Box<dyn Error>> {
 
     #[allow(unreachable_code)]
     Err("No tracing backend this platform/configuration.".into())
+}
+
+/// Return a [Tracer] instance or `Err` if none can be found. The [Tracer] returned will be
+/// selected on a combination of what the platform can support and other (possibly run-time) user
+/// configuration.
+// #[cfg(tracer_swt)]
+pub(crate) fn software_tracer() -> Result<Arc<dyn Tracer>, Box<dyn Error>> {
+    return Ok(Arc::new(sw::SWTracer::new()?));
 }
 
 /// Represents a thread which is currently tracing.

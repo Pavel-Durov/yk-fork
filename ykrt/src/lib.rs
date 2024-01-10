@@ -33,3 +33,13 @@ pub fn print_jit_state(state: &str) {
         eprintln!("jit-state: {}", state);
     }
 }
+
+// This is a wrapper function - it exposes crate internal function publically.
+pub fn is_tracing() -> bool {
+    return mt::is_tracing();
+}
+
+// This is a wrapper function - it exposes crate internal function publically.
+pub fn trace_block(function_index: u32, block_index: u32) {
+    mt::trace_block(function_index, block_index)
+}
