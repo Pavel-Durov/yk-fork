@@ -33,3 +33,10 @@ pub fn print_jit_state(state: &str) {
         eprintln!("jit-state: {}", state);
     }
 }
+// This is a wrapper function - it exposes crate internal function publically.
+// #[cfg(tracer_swt)]
+pub fn trace_basicblock(function_index: u32, block_index: u32) {
+    if mt::is_tracing() {
+        trace::trace_basicblock(function_index, block_index)
+    }
+}

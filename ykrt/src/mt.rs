@@ -53,7 +53,13 @@ const DEFAULT_HOT_THRESHOLD: HotThreshold = 50;
 const DEFAULT_SIDETRACE_THRESHOLD: HotThreshold = 5;
 const DEFAULT_TRACE_FAILURE_THRESHOLD: TraceFailureThreshold = 5;
 
-thread_local! {static THREAD_MTTHREAD: MTThread = MTThread::new();}
+thread_local! {
+    static THREAD_MTTHREAD: MTThread = MTThread::new();
+}
+
+pub fn is_tracing() -> bool {
+    return THREAD_MTTHREAD.with(|mtt| mtt.tracing.borrow().is_some());
+}
 
 #[cfg(feature = "yk_testing")]
 static SERIALISE_COMPILATION: LazyLock<bool> = LazyLock::new(|| {
