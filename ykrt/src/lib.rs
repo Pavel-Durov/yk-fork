@@ -34,7 +34,7 @@ pub fn print_jit_state(state: &str) {
     }
 }
 
-// #[cfg(tracer_swt)]
+#[cfg(tracer_swt)]
 pub fn trace_basicblock(function_index: u32, block_index: u32) {
     if mt::is_tracing() {
         trace::trace_basicblock(function_index, block_index)
