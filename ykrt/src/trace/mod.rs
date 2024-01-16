@@ -13,6 +13,8 @@ use std::{
 
 #[cfg(tracer_hwt)]
 pub(crate) mod hwt;
+// #[cfg(tracer_swt)]
+pub(crate) mod sw;
 
 pub(crate) use errors::InvalidTraceError;
 
@@ -32,7 +34,10 @@ pub(crate) fn default_tracer() -> Result<Arc<dyn Tracer>, Box<dyn Error>> {
     {
         return Ok(Arc::new(hwt::HWTracer::new()?));
     }
-
+    #[cfg(tracer_swt)]
+    {
+        return Ok(Arc::new(sw::SWTracer::new()?));
+    }
     #[allow(unreachable_code)]
     Err("No tracing backend this platform/configuration.".into())
 }
@@ -98,4 +103,9 @@ impl TracedAOTBlock {
     pub fn is_unmappable(&self) -> bool {
         matches!(self, Self::Unmappable)
     }
+}
+
+// #[cfg(tracer_swt)]
+pub(crate) fn trace_basicblock(function_index: u32, block_index: u32) {
+    sw::trace_basicblock(function_index, block_index)
 }

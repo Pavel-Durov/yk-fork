@@ -15,6 +15,8 @@ use std::{
     sync::Arc,
 };
 use ykrt::{HotThreshold, Location, MT};
+// #[cfg(tracer_swt)]
+use ykrt::trace_basicblock;
 
 #[no_mangle]
 pub unsafe extern "C" fn yk_mt_new(err_msg: *mut *const c_char) -> *const MT {
@@ -94,4 +96,10 @@ pub extern "C" fn yk_location_new() -> Location {
 #[no_mangle]
 pub extern "C" fn yk_location_drop(loc: Location) {
     drop(loc)
+}
+
+// #[no_mangle]
+// #[cfg(tracer_swt)]
+pub extern "C" fn yk_trace_basicblock(function_index: u32, block_index: u32) {
+    trace_basicblock(function_index, block_index)
 }

@@ -1200,7 +1200,8 @@ public:
         // to be prematurely terminated.
         if (isa<DbgInfoIntrinsic>(I))
           continue;
-
+        // leave it here to see what traces we get - should print something
+        I->dump();
         LastInst = &*I;
 
         if (isa<CallInst>(I)) {
@@ -1297,6 +1298,8 @@ public:
               // setjmp/longjmp, so for now simply abort this trace.
               // See: https://github.com/ykjit/yk/issues/610
               return nullptr;
+            } else if (S == "yk_trace_basicblock"){
+              continue;
             }
             handleCallInst(CI, CF, CurBBIdx, CurInstrIdx);
             break;
