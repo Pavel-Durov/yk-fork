@@ -34,6 +34,10 @@ pub fn print_jit_state(state: &str) {
     }
 }
 
+// TODO: When I add #[cfg(tracer_swt)] - Get compilation error for some reason:
+// use ykrt::trace_basicblock;
+// |     ^^^^^^^^^^^^^^^^^^^^^^ no `trace_basicblock` in the root
+// Although its a conditional import
 #[cfg(tracer_swt)]
 pub fn trace_basicblock(function_index: u32, block_index: u32) {
     if mt::is_tracing() {

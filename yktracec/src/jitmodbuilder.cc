@@ -1200,8 +1200,8 @@ public:
         // to be prematurely terminated.
         if (isa<DbgInfoIntrinsic>(I))
           continue;
-        // leave it here to see what traces we get - should print something
-        I->dump();
+        // TODO: leave it here to see what traces we get - should print something
+        // I->dump();
         LastInst = &*I;
 
         if (isa<CallInst>(I)) {
