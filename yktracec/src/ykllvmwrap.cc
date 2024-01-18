@@ -35,6 +35,7 @@
 
 #include "jitmodbuilder.h"
 #include "stackmap_oll_plugin.h"
+#include "ykllvmwrap.h"
 
 // When we create a compilation unit for our JIT debug info, LLVM forces us to
 // choose a language from one of those "recognised" by the DWARF spec (see
@@ -223,6 +224,34 @@ ThreadSafeModule *getThreadAOTMod(struct BitcodeSection *Bitcode) {
   return &GlobalAOTMod;
 }
 
+// Define a function to free the allocated memory for KeyValue array
+extern "C" void free_key_values(IRFunctionNameIndex *result) { delete[] result; }
+
+extern "C" unsigned int get_function_names(struct BitcodeSection *Bitcode,
+                                           const unsigned int *ptr,
+                                           size_t vec_size, IRFunctionNameIndex **result,
+                                           size_t *len) {
+  ThreadSafeModule *ThreadAOTMod = getThreadAOTMod(Bitcode);
+  std::vector<IRFunctionNameIndex> keyValues;
+  ThreadAOTMod->withModuleDo([&](Module &AOTMod) {
+    unsigned int i = 0;
+    for (Function &func : AOTMod) {
+      auto isIndexFound = std::find(ptr, ptr + vec_size, i) != ptr + vec_size;
+      if (isIndexFound) {
+        IRFunctionNameIndex keyValue;
+        keyValue.name = func.getName().data();
+        keyValue.index = i;
+        keyValues.push_back(keyValue);
+      }
+      i++;
+    }
+  });
+
+  *result = new IRFunctionNameIndex[keyValues.size()];
+  *len = keyValues.size();
+  std::copy(keyValues.begin(), keyValues.end(), *result);
+  return 0;
+}
 // Exposes `getThreadAOTMod` so we can get a thread-safe copy of the
 // AOT IR from within Rust.
 extern "C" LLVMOrcThreadSafeModuleRef
