@@ -5,7 +5,11 @@ use crate::frame::BitcodeSection;
 use super::{errors::InvalidTraceError, TraceCollector, TraceIterator, TracedAOTBlock};
 use std::{cell::RefCell, collections::HashMap, error::Error, ffi::CString, sync::Arc};
 
-pub(crate) struct SWTracer {}
+#[derive(Debug, Eq, PartialEq)]
+struct BB {
+    function_index: u32,
+    block_index: u32,
+}
 
 thread_local! {
     static BASIC_BLOCKS: RefCell<Vec<BB>> = RefCell::new(vec![]);
@@ -18,8 +22,8 @@ extern "C" {
         vec_size: usize,
         result: *mut *mut IRFunctionNameIndex,
         len: *mut libc::size_t,
-    ) -> libc::c_uint;
-    fn free_key_values(result: *mut IRFunctionNameIndex);
+    );
+    fn free_function_names(funcNames: *mut IRFunctionNameIndex);
 }
 
 #[repr(C)]
@@ -42,6 +46,8 @@ pub fn trace_basicblock(function_index: u32, block_index: u32) {
     })
 }
 
+pub(crate) struct SWTracer {}
+
 impl super::Tracer for SWTracer {
     fn start_collector(self: Arc<Self>) -> Result<Box<dyn TraceCollector>, Box<dyn Error>> {
         return Ok(Box::new(SWTTraceCollector {}));
@@ -61,31 +67,25 @@ impl TraceCollector for SWTTraceCollector {
         let mut aot_blocks: Vec<TracedAOTBlock> = vec![];
         BASIC_BLOCKS.with(|mtt| {
             let mut func_store: HashMap<u32, CString> = HashMap::new();
+            let func_indices: Vec<u32> = mtt.borrow().iter().map(|x| x.function_index).collect();
+            let mut func_names: *mut IRFunctionNameIndex = std::ptr::null_mut();
+            let mut func_names_len: libc::size_t = 0;
+            let bc_section = crate::compile::jitc_llvm::llvmbc_section();
             unsafe {
-                let func_indices: Vec<u32> = mtt.borrow().iter().map(|x| x.function_index).collect();
-                let mut result: *mut IRFunctionNameIndex = std::ptr::null_mut();
-                let bc = crate::compile::jitc_llvm::llvmbc_section();
-                let mut result_len: libc::size_t = 0;
-                let status = get_function_names(
+                get_function_names(
                     &BitcodeSection {
-                        data: bc.as_ptr(),
-                        len: u64::try_from(bc.len()).unwrap(),
+                        data: bc_section.as_ptr(),
+                        len: u64::try_from(bc_section.len()).unwrap(),
                     },
                     func_indices.as_ptr(),
                     func_indices.len(),
-                    &mut result,
-                    &mut result_len,
+                    &mut func_names,
+                    &mut func_names_len,
                 );
-                if status == 0 {
-                    let func_names = std::slice::from_raw_parts(result, result_len);
-
-                    for entry in func_names {
-                        let st = std::ffi::CStr::from_ptr(entry.name).to_owned();
-                        let index = entry.index;
-                        func_store.insert(index, st);
-                    }
-                    free_key_values(result);
+                for entry in std::slice::from_raw_parts(func_names, func_names_len) {
+                    func_store.insert(entry.index, std::ffi::CStr::from_ptr(entry.name).to_owned());
                 }
+                free_function_names(func_names);
             }
             aot_blocks = mtt
                 .borrow()
@@ -96,9 +96,6 @@ impl TraceCollector for SWTTraceCollector {
                 })
                 .collect();
         });
-        for aot in aot_blocks.iter() {
-            println!("{:?}", aot);
-        }
         if aot_blocks.is_empty() {
             return Err(InvalidTraceError::EmptyTrace);
         } else {
@@ -121,9 +118,3 @@ impl Iterator for SWTraceIterator {
 }
 
 impl TraceIterator for SWTraceIterator {}
-
-#[derive(Debug, Eq, PartialEq)]
-struct BB {
-    function_index: u32,
-    block_index: u32,
-}

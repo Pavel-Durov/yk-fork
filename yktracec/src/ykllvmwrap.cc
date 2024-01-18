@@ -35,7 +35,6 @@
 
 #include "jitmodbuilder.h"
 #include "stackmap_oll_plugin.h"
-#include "ykllvmwrap.h"
 
 // When we create a compilation unit for our JIT debug info, LLVM forces us to
 // choose a language from one of those "recognised" by the DWARF spec (see
@@ -224,34 +223,6 @@ ThreadSafeModule *getThreadAOTMod(struct BitcodeSection *Bitcode) {
   return &GlobalAOTMod;
 }
 
-// Define a function to free the allocated memory for KeyValue array
-extern "C" void free_key_values(IRFunctionNameIndex *result) { delete[] result; }
-
-extern "C" unsigned int get_function_names(struct BitcodeSection *Bitcode,
-                                           const unsigned int *ptr,
-                                           size_t vec_size, IRFunctionNameIndex **result,
-                                           size_t *len) {
-  ThreadSafeModule *ThreadAOTMod = getThreadAOTMod(Bitcode);
-  std::vector<IRFunctionNameIndex> keyValues;
-  ThreadAOTMod->withModuleDo([&](Module &AOTMod) {
-    unsigned int i = 0;
-    for (Function &func : AOTMod) {
-      auto isIndexFound = std::find(ptr, ptr + vec_size, i) != ptr + vec_size;
-      if (isIndexFound) {
-        IRFunctionNameIndex keyValue;
-        keyValue.name = func.getName().data();
-        keyValue.index = i;
-        keyValues.push_back(keyValue);
-      }
-      i++;
-    }
-  });
-
-  *result = new IRFunctionNameIndex[keyValues.size()];
-  *len = keyValues.size();
-  std::copy(keyValues.begin(), keyValues.end(), *result);
-  return 0;
-}
 // Exposes `getThreadAOTMod` so we can get a thread-safe copy of the
 // AOT IR from within Rust.
 extern "C" LLVMOrcThreadSafeModuleRef
@@ -520,3 +491,56 @@ extern "C" void *__yktracec_irtrace_compile_for_tc_tests(
                         DebugInfoPath, nullptr, nullptr, 0);
 }
 #endif
+
+/// Represents an index and name of an LLVM IR function.
+extern "C" struct IRFunctionNameIndex {
+  unsigned int index;
+  const char *name;
+};
+
+/// Deallocates memory allocated for an array of `IRFunctionNameIndex`
+/// structures.
+extern "C" void free_function_names(IRFunctionNameIndex *function_names) {
+  delete[] function_names;
+}
+
+/// Retrieves information about functions from LLVM module stored in binary.
+/// Function name and indices result is stored in `IRFunctionNameIndex **result`
+/// argument.
+///
+/// # Parameters
+/// - `Bitcode`: A pointer to a `BitcodeSection` structure representing the LLVM
+/// module.
+/// - `indices_ptr`: A pointer to an array of unsigned integers representing
+/// function indices to search for.
+/// - `indices_size`: The size of the `ptr` array.
+/// - `result`: A pointer to a pointer where the function will store the array
+/// of `IRFunctionNameIndex` structures.
+/// - `result_len`: A pointer to a size_t variable where the function will store
+/// the length of the result array.
+///
+/// Use `free_function_names` function to free C-allocated memmory.
+extern "C" void get_function_names(struct BitcodeSection *Bitcode,
+                                   const unsigned int *indices_ptr,
+                                   size_t indices_size,
+                                   IRFunctionNameIndex **result,
+                                   size_t *result_len) {
+  ThreadSafeModule *ThreadAOTMod = getThreadAOTMod(Bitcode);
+  std::vector<IRFunctionNameIndex> foundFunctions;
+  ThreadAOTMod->withModuleDo([&](Module &AOTMod) {
+    unsigned int i = 0;
+    for (Function &func : AOTMod) {
+      if (std::find(indices_ptr, indices_ptr + indices_size, i) !=
+          indices_ptr + indices_size) {
+        IRFunctionNameIndex funcName;
+        funcName.name = func.getName().data();
+        funcName.index = i;
+        foundFunctions.push_back(funcName);
+      }
+      i++;
+    }
+  });
+  *result = new IRFunctionNameIndex[foundFunctions.size()];
+  *result_len = foundFunctions.size();
+  std::copy(foundFunctions.begin(), foundFunctions.end(), *result);
+}
