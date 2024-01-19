@@ -23,7 +23,6 @@ extern "C" {
         result: *mut *mut IRFunctionNameIndex,
         len: *mut libc::size_t,
     );
-    fn free_function_names(funcNames: *mut IRFunctionNameIndex);
 }
 
 #[repr(C)]
@@ -85,7 +84,6 @@ impl TraceCollector for SWTTraceCollector {
                 for entry in std::slice::from_raw_parts(func_names, func_names_len) {
                     func_store.insert(entry.index, std::ffi::CStr::from_ptr(entry.name).to_owned());
                 }
-                free_function_names(func_names);
             }
             aot_blocks = mtt
                 .borrow()

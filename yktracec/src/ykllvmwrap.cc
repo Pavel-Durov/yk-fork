@@ -498,10 +498,18 @@ extern "C" struct IRFunctionNameIndex {
   const char *name;
 };
 
-/// Deallocates memory allocated for an array of `IRFunctionNameIndex`
-/// structures.
-extern "C" void free_function_names(IRFunctionNameIndex *function_names) {
-  delete[] function_names;
+static std::once_flag populate_function_map_flag;
+std::unordered_map<unsigned int, const char *> functionMap;
+
+void populate_function_map(struct BitcodeSection *Bitcode) {
+  ThreadSafeModule *ThreadAOTMod = getThreadAOTMod(Bitcode);
+  ThreadAOTMod->withModuleDo([&](Module &AOTMod) {
+    unsigned int i = 0;
+    for (Function &func : AOTMod) {
+      functionMap[i] = func.getName().data();
+      i++;
+    }
+  });
 }
 
 /// Retrieves information about functions from LLVM module stored in binary.
@@ -518,29 +526,26 @@ extern "C" void free_function_names(IRFunctionNameIndex *function_names) {
 /// of `IRFunctionNameIndex` structures.
 /// - `result_len`: A pointer to a size_t variable where the function will store
 /// the length of the result array.
-///
-/// Use `free_function_names` function to free C-allocated memmory.
 extern "C" void get_function_names(struct BitcodeSection *Bitcode,
                                    const unsigned int *indices_ptr,
                                    size_t indices_size,
                                    IRFunctionNameIndex **result,
                                    size_t *result_len) {
-  ThreadSafeModule *ThreadAOTMod = getThreadAOTMod(Bitcode);
-  std::vector<IRFunctionNameIndex> foundFunctions;
-  ThreadAOTMod->withModuleDo([&](Module &AOTMod) {
-    unsigned int i = 0;
-    for (Function &func : AOTMod) {
-      if (std::find(indices_ptr, indices_ptr + indices_size, i) !=
-          indices_ptr + indices_size) {
-        IRFunctionNameIndex funcName;
-        funcName.name = func.getName().data();
-        funcName.index = i;
-        foundFunctions.push_back(funcName);
-      }
-      i++;
+
+  std::call_once(populate_function_map_flag,
+                 [&]() { populate_function_map(Bitcode); });
+
+  std::vector<IRFunctionNameIndex> functionNames;
+  for (size_t i = 0; i < indices_size; ++i) {
+    auto funcName = functionMap[indices_ptr[i]];
+    if (funcName) {
+      IRFunctionNameIndex function;
+      function.name = funcName;
+      function.index = i;
+      functionNames.push_back(function);
     }
-  });
-  *result = new IRFunctionNameIndex[foundFunctions.size()];
-  *result_len = foundFunctions.size();
-  std::copy(foundFunctions.begin(), foundFunctions.end(), *result);
+  }
+  *result = new IRFunctionNameIndex[functionNames.size()];
+  *result_len = functionNames.size();
+  std::copy(functionNames.begin(), functionNames.end(), *result);
 }
