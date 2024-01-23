@@ -541,7 +541,7 @@ extern "C" void get_function_names(struct BitcodeSection *Bitcode,
     if (funcName) {
       IRFunctionNameIndex function;
       function.name = funcName;
-      function.index = i;
+      function.index = indices_ptr[i];
       functionNames.push_back(function);
     }
   }
