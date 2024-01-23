@@ -105,7 +105,7 @@ impl TracedAOTBlock {
     }
 }
 
-// #[cfg(tracer_swt)]
+#[cfg(tracer_swt)]
 pub(crate) fn trace_basicblock(function_index: u32, block_index: u32) {
     sw::trace_basicblock(function_index, block_index)
 }
