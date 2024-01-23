@@ -239,6 +239,8 @@ class JITModBuilder {
 
   // Set to true for a side-trace or false for a normal trace.
   bool IsSideTrace = false;
+  // Set to true if SoftwareTracer is used.
+  bool IsSWTrace;
 
   Value *getMappedValue(Value *V) {
     if (VMap.find(V) != VMap.end()) {
@@ -289,8 +291,12 @@ class JITModBuilder {
       }
       if (!Outlining) {
         copyInstruction(&Builder, (Instruction *)&*CI, CurBBIdx, CurInstrIdx);
-        OutlineBase = CallStack.size();
-        Outlining = true;
+        if (!IsSWTrace) {
+          // Since the software tracer doesn't trace into external functions, we
+          // don't need to outline.
+          OutlineBase = CallStack.size();
+          Outlining = true;
+        }
       }
     } else {
       // Calling to a non-foreign function.
@@ -1098,7 +1104,16 @@ public:
     size_t CurInstrIdx;
     // Iterate over the blocks of the trace. The first block contains the
     // control point so we want to start copying instructions just after that.
-    for (size_t Idx = 1; Idx < InpTrace.Length(); Idx++) {
+    size_t Idx = 1;
+    auto tracer = std::getenv("YKB_TRACER");
+    if (tracer) {
+      IsSWTrace = strcmp(tracer, "sw") == 0;
+    }
+    // Software Tracer doesn't need to skip the first block as HWT
+    if (IsSWTrace) {
+      Idx = 0;
+    }
+    for (; Idx < InpTrace.Length(); Idx++) {
       // Update the previously executed BB in the most-recent frame (if it's
       // mappable).
       TraceLoc Loc = InpTrace[Idx];
@@ -1155,14 +1170,27 @@ public:
           continue;
         } else if (LastInst && isa<ReturnInst>(LastInst)) {
           LastInst = nullptr;
-          assert(CallStack.back()->getParent() == BB);
-          LastBB = BB;
+          if (!IsSWTrace) {
+            assert(CallStack.back()->getParent() == BB);
+          }
+          LastBB = CallStack.back()->getParent();
           CallStack.pop_back();
           if (CallStack.size() == OutlineBase) {
             Outlining = false;
             OutlineBase = 0;
           }
-          continue;
+          if (!IsSWTrace)
+            continue;
+        }
+        if (IsSWTrace) {
+          // In the software tracer external calls are invisible. So when an
+          // external call has started outlining we don't necessarily see a
+          // return, so we need to check for every block if we've reached the
+          // same callstack in order to stop outlining.
+          if (CallStack.size() == OutlineBase) {
+            Outlining = false;
+            OutlineBase = 0;
+          }
         }
       }
 
@@ -1201,8 +1229,6 @@ public:
         // to be prematurely terminated.
         if (isa<DbgInfoIntrinsic>(I))
           continue;
-        // TODO: leave it here to see what traces we get - should print something
-        // I->dump();
         LastInst = &*I;
 
         if (isa<CallInst>(I)) {
@@ -1318,7 +1344,7 @@ public:
               // setjmp/longjmp, so for now simply abort this trace.
               // See: https://github.com/ykjit/yk/issues/610
               return nullptr;
-            } else if (S == "yk_trace_basicblock"){
+            } else if (S == "yk_trace_basicblock") {
               continue;
             }
             handleCallInst(CI, CF, CurBBIdx, CurInstrIdx);
@@ -1347,7 +1373,13 @@ public:
           continue;
         }
 
-        if (Idx > 0 && Idx < InpTrace.Length() - 1) {
+        size_t LastBlockIndex;
+        if (IsSWTrace) {
+          LastBlockIndex = InpTrace.Length();
+        } else {
+          LastBlockIndex = InpTrace.Length() - 1;
+        }
+        if (Idx > 0 && Idx < LastBlockIndex) {
           // Stores into YkCtrlPointVars only need to be copied if they appear
           // at the beginning or end of the trace. Any YkCtrlPointVars stores
           // inbetween come from tracing over the control point and aren't
@@ -1368,7 +1400,7 @@ public:
                 I++;
                 CurInstrIdx++;
               }
-              if (Idx == InpTrace.Length() - 2) {
+              if (Idx == LastBlockIndex - 1) {
                 // Once we reached the YkCtrlPointVars stores at the end of the
                 // trace, we're done. We don't need to copy those instructions
                 // over, since all YkCtrlPointVars are stored on the shadow
