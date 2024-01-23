@@ -1,7 +1,9 @@
 // Run-time:
-//   env-var: YKB_TRACER=sw
+//   env-var: YKD_PRINT_JITSTATE=1
+//   env-var: YKD_SERIALISE_COMPILATION=1
 //   stderr: ...
 
+// Run: YKB_TRACER=sw cargo test ::simple_swt.c -- --nocapture
 // Check that basic trace compilation works for Software Tracer.
 
 #include <assert.h>
@@ -24,17 +26,13 @@ int main(int argc, char **argv) {
   yk_mt_hot_threshold_set(mt, 0);
   YkLocation loc = yk_location_new();
 
-  int res = 9998;
-  int i = 4;
+  int i = 0;
   NOOPT_VAL(loc);
-  NOOPT_VAL(res);
   NOOPT_VAL(i);
-  while (i > 0) {
+  while (i < 10) {
     yk_mt_control_point(mt, &loc);
-    inc(res);
-    i--;
+    i = inc(i);
   }
-  NOOPT_VAL(res);
   yk_location_drop(loc);
   yk_mt_drop(mt);
   return (EXIT_SUCCESS);
