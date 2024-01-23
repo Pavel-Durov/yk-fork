@@ -13,7 +13,7 @@ use std::{
 
 #[cfg(tracer_hwt)]
 pub(crate) mod hwt;
-// #[cfg(tracer_swt)]
+#[cfg(tracer_swt)]
 pub(crate) mod sw;
 
 pub(crate) use errors::InvalidTraceError;
