@@ -28,7 +28,7 @@ extern "C" {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct IRFunctionNameIndex {
-    pub index: u32, //libc::c_int,
+    pub index: u32,
     pub name: *const libc::c_char,
 }
 /// Inserts LLVM IR basicblock metadata into a thread-local BASIC_BLOCKS vector.
