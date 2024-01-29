@@ -14,7 +14,7 @@ use std::{
 #[cfg(tracer_hwt)]
 pub(crate) mod hwt;
 #[cfg(tracer_swt)]
-pub(crate) mod sw;
+pub(crate) mod swt;
 
 pub(crate) use errors::InvalidTraceError;
 
@@ -36,7 +36,7 @@ pub(crate) fn default_tracer() -> Result<Arc<dyn Tracer>, Box<dyn Error>> {
     }
     #[cfg(tracer_swt)]
     {
-        return Ok(Arc::new(sw::SWTracer::new()?));
+        return Ok(Arc::new(swt::SWTracer::new()?));
     }
     #[allow(unreachable_code)]
     Err("No tracing backend this platform/configuration.".into())
@@ -107,5 +107,5 @@ impl TracedAOTBlock {
 
 #[cfg(tracer_swt)]
 pub(crate) fn trace_basicblock(function_index: u32, block_index: u32) {
-    sw::trace_basicblock(function_index, block_index)
+    swt::trace_basicblock(function_index, block_index)
 }

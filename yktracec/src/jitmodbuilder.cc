@@ -240,7 +240,7 @@ class JITModBuilder {
   // Set to true for a side-trace or false for a normal trace.
   bool IsSideTrace = false;
   // Set to true if SoftwareTracer is used.
-  bool IsSWTrace;
+  bool IsSWTrace = false;
 
   Value *getMappedValue(Value *V) {
     if (VMap.find(V) != VMap.end()) {
@@ -1107,7 +1107,7 @@ public:
     size_t Idx = 1;
     auto tracer = std::getenv("YKB_TRACER");
     if (tracer) {
-      IsSWTrace = strcmp(tracer, "sw") == 0;
+      IsSWTrace = strcmp(tracer, "swt") == 0;
     }
     // Software Tracer doesn't need to skip the first block as HWT
     if (IsSWTrace) {

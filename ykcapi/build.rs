@@ -5,7 +5,7 @@ pub fn main() {
     // compilation threads have finished.
     println!("cargo:rustc-cfg=yk_llvm_sync_hack");
     println!("cargo:rerun-if-env-changed=YKB_TRACER");
-    if std::env::var("YKB_TRACER") == Ok("sw".to_owned()) {
+    if std::env::var("YKB_TRACER") == Ok("swt".to_owned()) {
         println!("cargo:rustc-cfg=tracer_swt");
     }
 }

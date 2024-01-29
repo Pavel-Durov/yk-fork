@@ -145,7 +145,7 @@ handle_arg() {
             OUTPUT="${OUTPUT} -Wl,--mllvm=--yk-stackmap-add-locs"
             # Use software-tracer pass
             # Note: We can't run yk-basicblock-tracer pass with HardwareTracer
-            if [ "${YKB_TRACER}" = "sw" ]; then
+            if [ "${YKB_TRACER}" = "swt" ]; then
                 OUTPUT="${OUTPUT} -Wl,--mllvm=--yk-basicblock-tracer"
             fi
             # Add known yk-friendly optimisations.
