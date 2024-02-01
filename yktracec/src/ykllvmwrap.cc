@@ -401,11 +401,10 @@ void rewriteDebugInfo(Module *M, string TraceName, int FD,
 // trace.
 //
 // Returns a pointer to the compiled function.
-template <typename FN>
-void *compileIRTrace(FN Func, char *FuncNames[], size_t BBs[], size_t TraceLen,
-                     void *BitcodeData, size_t BitcodeLen, int DebugInfoFD,
-                     char *DebugInfoPath, void *CallStack, void *AOTValsPtr,
-                     size_t AOTValsLen) {
+extern "C" void *__yktracec_irtrace_compile(
+    char *FuncNames[], size_t BBs[], size_t TraceLen, void *BitcodeData,
+    uint64_t BitcodeLen, int DebugInfoFD, char *DebugInfoPath, void *CallStack,
+    void *AOTValsPtr, size_t AOTValsLen) {
   DebugIRPrinter DIP;
 
   struct BitcodeSection Bitcode = {BitcodeData, BitcodeLen};
@@ -422,7 +421,7 @@ void *compileIRTrace(FN Func, char *FuncNames[], size_t BBs[], size_t TraceLen,
   // it isn't needed for compilation.
   ThreadAOTMod->withModuleDo([&](Module &AOTMod) {
     DIP.print(DebugIR::AOT, &AOTMod);
-    std::tie(JITMod, TraceName, AOTMappingVec, GuardCount) = Func(
+    std::tie(JITMod, TraceName, AOTMappingVec, GuardCount) = createModule(
         &AOTMod, FuncNames, BBs, TraceLen, CallStack, AOTValsPtr, AOTValsLen);
   });
 
@@ -461,36 +460,11 @@ void *compileIRTrace(FN Func, char *FuncNames[], size_t BBs[], size_t TraceLen,
     rewriteDebugInfo(JITMod, TraceName, DebugInfoFD,
                      filesystem::path(DebugInfoPath));
 
-#ifdef YK_TESTING
-  if (Func == createModuleForTraceCompilerTests) {
-    // The "trace_compiler" suite doesn't require any code generation.
-    return nullptr;
-  }
-#endif
-
   // Compile IR trace and return a pointer to its function.
   return compileModule(TraceName, JITMod, AOTMappingVec, GuardCount,
                        ThreadAOTMod);
 }
 
-extern "C" void *__yktracec_irtrace_compile(
-    char *FuncNames[], size_t BBs[], size_t TraceLen, void *BitcodeData,
-    uint64_t BitcodeLen, int DebugInfoFD, char *DebugInfoPath, void *CallStack,
-    void *AOTValsPtr, size_t AOTValsLen) {
-  return compileIRTrace(createModule, FuncNames, BBs, TraceLen, BitcodeData,
-                        BitcodeLen, DebugInfoFD, DebugInfoPath, CallStack,
-                        AOTValsPtr, AOTValsLen);
-}
-
-#ifdef YK_TESTING
-extern "C" void *__yktracec_irtrace_compile_for_tc_tests(
-    char *FuncNames[], size_t BBs[], size_t TraceLen, void *BitcodeData,
-    uint64_t BitcodeLen, int DebugInfoFD, char *DebugInfoPath) {
-  return compileIRTrace(createModuleForTraceCompilerTests, FuncNames, BBs,
-                        TraceLen, BitcodeData, BitcodeLen, DebugInfoFD,
-                        DebugInfoPath, nullptr, nullptr, 0);
-}
-#endif
 
 /// Represents an index and name of an LLVM IR function.
 extern "C" struct IRFunctionNameIndex {

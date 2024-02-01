@@ -660,6 +660,7 @@ class JITModBuilder {
     // so that we can insert an appropriate guard into the trace. A block must
     // exist at `InpTrace[TraceIdx + 1]` because the branch instruction must
     // transfer to a successor block, and branching cannot turn off tracing.
+    assert(TraceIdx + 1 < InpTrace.Length());
     IRBlock *NextIB = InpTrace[TraceIdx + 1].getMappedBlock();
     assert(NextIB);
     BasicBlock *NextBB;
@@ -946,6 +947,7 @@ class JITModBuilder {
 
     // Get the instruction index of CPCI in its parent block.
     size_t CPCIIdx = 0;
+    assert(CPCI->getParent() != NULL);
     for (Instruction &I : *CPCI->getParent()) {
       if (&I == cast<Instruction>(CPCI)) {
         break;
@@ -1020,6 +1022,7 @@ class JITModBuilder {
     // There should never be two unmappable blocks in a row in the trace
     // (because the mapper collapses them to save memory).
     for (size_t I = 0; I < IL - 1; I++) {
+      assert(I + 1 < InpTrace.Length());
       assert(InpTrace[I].getMappedBlock() || InpTrace[I + 1].getMappedBlock());
     }
 #endif
@@ -1049,53 +1052,6 @@ public:
                          make_tuple(CPCIIdx, CPCI), TI, CallStack, AOTValsPtr,
                          AOTValsLen);
   }
-
-#ifdef YK_TESTING
-  static JITModBuilder CreateMocked(Module *AOTMod, char *FuncNames[],
-                                    size_t BBs[], size_t TraceLen) {
-    LLVMContext &Context = AOTMod->getContext();
-
-    // The trace compiler expects to be given a) a call to a control point, and
-    // b) a struct containing live variables.
-    //
-    // For the trace compiler tests, we don't want the user to have to worry
-    // about that stuff, so we fobb off the trace compiler with dummy versions
-    // of those things.
-    //
-    // First, in order for a) and b) to exist, they need a parent function to
-    // live in. We inject a never-called dummy function.
-    llvm::FunctionType *FuncType =
-        llvm::FunctionType::get(Type::getVoidTy(Context), {}, false);
-    llvm::Function *Func = llvm::Function::Create(
-        FuncType, Function::InternalLinkage, "__yk_tc_tests_dummy", AOTMod);
-    BasicBlock *BB = BasicBlock::Create(Context, "", Func);
-    IRBuilder<> Builder(BB);
-
-    // Now we make a struct that we pretend contains the values of the live
-    // variables at the time of the control point. It must have at least one
-    // field, or LLVM chokes because it is unsized.
-    Type *TraceInputsTy =
-        StructType::create(AOTMod->getContext(), Type::getInt8Ty(Context));
-    Value *TraceInputs = Builder.CreateAlloca(TraceInputsTy, 0, "");
-
-    // Now we make a call instruction, which tell the trace compiler is a call
-    // to the control point. It's actually a recursive call to the dummy
-    // function.
-    CallInst *CPCI = Builder.CreateCall(Func, {});
-    Builder.CreateUnreachable();
-
-    // Actually make the trace compiler now.
-    //
-    // Note the use of the empty optional `{}` for the initial value of the
-    // first frame's `BlockResumePoint`. This means that the compiler will
-    // start copying instructions from the beginning of the first block in the
-    // trace, instead of after the return from the control point.
-    JITModBuilder JB(AOTMod, FuncNames, BBs, TraceLen, CPCI, {}, TraceInputs,
-                     nullptr, nullptr, 0);
-
-    return JB;
-  }
-#endif
 
   // Generate the JIT module by "glueing together" blocks that the trace
   // executed in the AOT module.
@@ -1217,12 +1173,6 @@ public:
         auto I = BB->begin();
         std::advance(I, CurInstrIdx);
         assert(I != BB->end());
-#ifdef YK_TESTING
-        // In trace compiler tests, blocks may be terminated with an
-        // `unreachable` terminator.
-        if (isa<UnreachableInst>(I))
-          break;
-#endif
 
         // Skip calls to debug intrinsics (e.g. @llvm.dbg.value). We don't
         // currently handle debug info and these "pseudo-calls" cause our blocks
@@ -1282,7 +1232,7 @@ public:
             // code. As far as I can tell, there's only one intrinsics that
             // allows this: llvm.init.trampoline. Investigate if this is a
             // problem.
-            if (Idx < InpTrace.Length()) {
+            if (Idx + 1 < InpTrace.Length()) {
               if (UnmappableRegion *UR =
                       InpTrace[Idx + 1].getUnmappableRegion()) {
                 // The next block is unmappable, which means this intrinsic
@@ -1304,6 +1254,7 @@ public:
             if (!isa<InlineAsm>(CI->getCalledOperand())) {
               // Look ahead in the trace to find the callee so we can
               // map the arguments if we are inlining the call.
+              assert(Idx + 1 < InpTrace.Length());
               TraceLoc MaybeNextIB = InpTrace[Idx + 1];
               if (const IRBlock *NextIB = MaybeNextIB.getMappedBlock()) {
                 CF = AOTMod->getFunction(NextIB->FuncName);
@@ -1400,6 +1351,7 @@ public:
                 I++;
                 CurInstrIdx++;
               }
+              assert(InpTrace.Length() > 2);
               if (Idx == LastBlockIndex - 1) {
                 // Once we reached the YkCtrlPointVars stores at the end of the
                 // trace, we're done. We don't need to copy those instructions
@@ -1461,11 +1413,6 @@ public:
     // trace is via a guard failure.
     if (LoopEntryBB) {
       Builder.CreateBr(LoopEntryBB);
-    } else if (!IsSideTrace) {
-      // This is here only because some of our `.ll` tests don't contain a
-      // control point, so the loop-entry block is never created.
-      Builder.CreateRet(
-          ConstantPointerNull::get(PointerType::get(JITMod->getContext(), 0)));
     }
     finalise(AOTMod, &Builder);
     return JITMod;
@@ -1525,14 +1472,3 @@ createModule(Module *AOTMod, char *FuncNames[], size_t BBs[], size_t TraceLen,
   return make_tuple(JITMod, std::move(JB.TraceName), JB.LiveAOTArray,
                     JB.GuardCount);
 }
-
-#ifdef YK_TESTING
-tuple<Module *, string, void *, size_t> createModuleForTraceCompilerTests(
-    Module *AOTMod, char *FuncNames[], size_t BBs[], size_t TraceLen,
-    void *CallStack, void *AOTValsPtr, size_t AOTValsLen) {
-  JITModBuilder JB =
-      JITModBuilder::CreateMocked(AOTMod, FuncNames, BBs, TraceLen);
-  auto JITMod = JB.createModule();
-  return make_tuple(JITMod, std::move(JB.TraceName), nullptr, 0);
-}
-#endif
