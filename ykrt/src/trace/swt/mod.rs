@@ -7,8 +7,8 @@ use std::{cell::RefCell, collections::HashMap, error::Error, ffi::CString, sync:
 
 #[derive(Debug, Eq, PartialEq)]
 struct BB {
-    function_index: u32,
-    block_index: u32,
+    function_index: usize,
+    block_index: usize,
 }
 
 thread_local! {
@@ -18,17 +18,17 @@ thread_local! {
 extern "C" {
     fn get_function_names(
         section: *const BitcodeSection,
-        vec: *const libc::c_uint,
+        vec: *const usize,
         vec_size: usize,
         result: *mut *mut IRFunctionNameIndex,
-        len: *mut libc::size_t,
+        len: *mut usize,
     );
 }
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct IRFunctionNameIndex {
-    pub index: u32,
+    pub index: usize,
     pub name: *const libc::c_char,
 }
 /// Inserts LLVM IR basicblock metadata into a thread-local BASIC_BLOCKS vector.
@@ -36,7 +36,7 @@ pub struct IRFunctionNameIndex {
 /// # Arguments
 /// * `function_index` - The index of the function to which the basic block belongs.
 /// * `block_index` - The index of the basic block within the function.
-pub fn trace_basicblock(function_index: u32, block_index: u32) {
+pub fn trace_basicblock(function_index: usize, block_index: usize) {
     BASIC_BLOCKS.with(|v| {
         v.borrow_mut().push(BB {
             function_index,
@@ -65,10 +65,10 @@ impl TraceCollector for SWTTraceCollector {
     fn stop_collector(self: Box<Self>) -> Result<Box<dyn TraceIterator>, InvalidTraceError> {
         let mut aot_blocks: Vec<TracedAOTBlock> = vec![];
         BASIC_BLOCKS.with(|mtt| {
-            let mut func_store: HashMap<u32, CString> = HashMap::new();
-            let func_indices: Vec<u32> = mtt.borrow().iter().map(|x| x.function_index).collect();
+            let mut func_store: HashMap<usize, CString> = HashMap::new();
+            let func_indices: Vec<usize> = mtt.borrow().iter().map(|x| x.function_index).collect();
             let mut func_names: *mut IRFunctionNameIndex = std::ptr::null_mut();
-            let mut func_names_len: libc::size_t = 0;
+            let mut func_names_len: usize = 0;
             let bc_section = crate::compile::jitc_llvm::llvmbc_section();
             unsafe {
                 get_function_names(
@@ -90,7 +90,7 @@ impl TraceCollector for SWTTraceCollector {
                 .iter()
                 .map(|bb| TracedAOTBlock::Mapped {
                     func_name: func_store.get(&bb.function_index).unwrap().to_owned(),
-                    bb: bb.block_index as usize,
+                    bb: bb.block_index,
                 })
                 .collect();
         });

@@ -468,7 +468,7 @@ extern "C" void *__yktracec_irtrace_compile(
 
 /// Represents an index and name of an LLVM IR function.
 extern "C" struct IRFunctionNameIndex {
-  unsigned int index;
+  size_t index;
   const char *name;
 };
 

@@ -100,6 +100,6 @@ pub extern "C" fn yk_location_drop(loc: Location) {
 
 #[cfg(tracer_swt)]
 #[no_mangle]
-pub extern "C" fn yk_trace_basicblock(function_index: u32, block_index: u32) {
+pub extern "C" fn yk_trace_basicblock(function_index: usize, block_index: usize) {
     trace_basicblock(function_index, block_index);
 }
