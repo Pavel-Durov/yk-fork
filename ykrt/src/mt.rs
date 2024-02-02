@@ -57,6 +57,7 @@ thread_local! {
     static THREAD_MTTHREAD: MTThread = MTThread::new();
 }
 
+#[cfg(tracer_swt)]
 pub fn is_tracing() -> bool {
     return THREAD_MTTHREAD.with(|mtt| mtt.tracing.borrow().is_some());
 }
