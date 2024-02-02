@@ -465,61 +465,36 @@ extern "C" void *__yktracec_irtrace_compile(
                        ThreadAOTMod);
 }
 
-
 /// Represents an index and name of an LLVM IR function.
 extern "C" struct IRFunctionNameIndex {
   size_t index;
   const char *name;
 };
 
-static std::once_flag populate_function_map_flag;
-std::unordered_map<unsigned int, const char *> functionMap;
-
-void populate_function_map(struct BitcodeSection *Bitcode) {
-  ThreadSafeModule *ThreadAOTMod = getThreadAOTMod(Bitcode);
-  ThreadAOTMod->withModuleDo([&](Module &AOTMod) {
-    unsigned int i = 0;
-    for (Function &func : AOTMod) {
-      functionMap[i] = func.getName().data();
-      i++;
-    }
-  });
-}
-
 /// Retrieves information about functions from LLVM module stored in binary.
-/// Function name and indices result is stored in `IRFunctionNameIndex **result`
-/// argument.
-///
 /// # Parameters
 /// - `Bitcode`: A pointer to a `BitcodeSection` structure representing the LLVM
 /// module.
-/// - `indices_ptr`: A pointer to an array of unsigned integers representing
-/// function indices to search for.
-/// - `indices_size`: The size of the `ptr` array.
 /// - `result`: A pointer to a pointer where the function will store the array
 /// of `IRFunctionNameIndex` structures.
 /// - `result_len`: A pointer to a size_t variable where the function will store
 /// the length of the result array.
 extern "C" void get_function_names(struct BitcodeSection *Bitcode,
-                                   const unsigned int *indices_ptr,
-                                   size_t indices_size,
                                    IRFunctionNameIndex **result,
                                    size_t *result_len) {
-
-  std::call_once(populate_function_map_flag,
-                 [&]() { populate_function_map(Bitcode); });
-
-  std::vector<IRFunctionNameIndex> functionNames;
-  for (size_t i = 0; i < indices_size; ++i) {
-    auto funcName = functionMap[indices_ptr[i]];
-    if (funcName) {
+  std::vector<IRFunctionNameIndex> functions;
+  ThreadSafeModule *ThreadAOTMod = getThreadAOTMod(Bitcode);
+  ThreadAOTMod->withModuleDo([&](Module &AOTMod) {
+    size_t i = 0;
+    for (Function &func : AOTMod) {
       IRFunctionNameIndex function;
-      function.name = funcName;
-      function.index = indices_ptr[i];
-      functionNames.push_back(function);
+      function.index = i;
+      function.name = func.getName().data();
+      functions.push_back(function);
+      i++;
     }
-  }
-  *result = new IRFunctionNameIndex[functionNames.size()];
-  *result_len = functionNames.size();
-  std::copy(functionNames.begin(), functionNames.end(), *result);
+  });
+  *result = new IRFunctionNameIndex[functions.size()];
+  *result_len = functions.size();
+  std::copy(functions.begin(), functions.end(), *result);
 }
