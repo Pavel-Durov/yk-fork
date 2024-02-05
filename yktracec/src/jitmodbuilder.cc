@@ -291,12 +291,8 @@ class JITModBuilder {
       }
       if (!Outlining) {
         copyInstruction(&Builder, (Instruction *)&*CI, CurBBIdx, CurInstrIdx);
-        if (!IsSWTrace) {
-          // Since the software tracer doesn't trace into external functions, we
-          // don't need to outline.
-          OutlineBase = CallStack.size();
-          Outlining = true;
-        }
+        OutlineBase = CallStack.size();
+        Outlining = true;
       }
     } else {
       // Calling to a non-foreign function.
@@ -1257,7 +1253,16 @@ public:
               assert(Idx + 1 < InpTrace.Length());
               TraceLoc MaybeNextIB = InpTrace[Idx + 1];
               if (const IRBlock *NextIB = MaybeNextIB.getMappedBlock()) {
-                CF = AOTMod->getFunction(NextIB->FuncName);
+                auto isNextBlockNotEntry = NextIB->BBIdx > 0;
+                if (IsSWTrace && CI->isIndirectCall() && isNextBlockNotEntry) {
+                  // With software tracing we don't get unmappable blocks when
+                  // an indirect call target is unmappable. But we can check
+                  // instead if the next block is an entry block. If it's not,
+                  // the call target is unmappable and can't be inlined.
+                  CF = nullptr;
+                } else {
+                  CF = AOTMod->getFunction(NextIB->FuncName);
+                }
               } else {
                 CF = nullptr;
               }
