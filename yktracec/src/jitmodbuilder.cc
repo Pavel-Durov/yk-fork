@@ -1054,18 +1054,11 @@ public:
   Module *createModule() {
     size_t CurBBIdx;
     size_t CurInstrIdx;
-    // Iterate over the blocks of the trace. The first block contains the
-    // control point so we want to start copying instructions just after that.
-    size_t Idx = 1;
     auto tracer = std::getenv("YKB_TRACER");
     if (tracer) {
       IsSWTrace = strcmp(tracer, "swt") == 0;
     }
-    // Software Tracer doesn't need to skip the first block as HWT
-    if (IsSWTrace) {
-      Idx = 0;
-    }
-    for (; Idx < InpTrace.Length(); Idx++) {
+    for (size_t Idx = 0; Idx < InpTrace.Length(); Idx++) {
       // Update the previously executed BB in the most-recent frame (if it's
       // mappable).
       TraceLoc Loc = InpTrace[Idx];
