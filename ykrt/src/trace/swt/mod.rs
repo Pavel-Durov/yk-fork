@@ -2,7 +2,7 @@
 
 use crate::frame::BitcodeSection;
 
-use super::{errors::InvalidTraceError, TraceCollector, TraceIterator, TracedAOTBlock};
+use super::{errors::InvalidTraceError, TraceCollector, AOTTraceIterator, TracedAOTBlock};
 use std::sync::Once;
 use std::{cell::RefCell, collections::HashMap, error::Error, ffi::CString, sync::Arc};
 
@@ -64,7 +64,7 @@ impl SWTracer {
 struct SWTTraceCollector {}
 
 impl TraceCollector for SWTTraceCollector {
-    fn stop_collector(self: Box<Self>) -> Result<Box<dyn TraceIterator>, InvalidTraceError> {
+    fn stop_collector(self: Box<Self>) -> Result<Box<dyn AOTTraceIterator>, InvalidTraceError> {
         let mut aot_blocks: Vec<TracedAOTBlock> = vec![];
         BASIC_BLOCKS.with(|tb| {
             FUNC_NAMES.with(|fnames| {
@@ -124,4 +124,4 @@ impl Iterator for SWTraceIterator {
     }
 }
 
-impl TraceIterator for SWTraceIterator {}
+impl AOTTraceIterator for SWTraceIterator {}
