@@ -1246,12 +1246,10 @@ public:
               assert(Idx + 1 < InpTrace.Length());
               TraceLoc MaybeNextIB = InpTrace[Idx + 1];
               if (const IRBlock *NextIB = MaybeNextIB.getMappedBlock()) {
-                auto isNextBlockNotEntry = NextIB->BBIdx > 0;
-                if (IsSWTrace && CI->isIndirectCall() && isNextBlockNotEntry) {
-                  // With software tracing we don't get unmappable blocks when
-                  // an indirect call target is unmappable. But we can check
-                  // instead if the next block is an entry block. If it's not,
-                  // the call target is unmappable and can't be inlined.
+                if (IsSWTrace) {
+                  // YKFIXME: outline indirect calls in swt.
+                  // Peeking ahead in swt might give us a mappable entry block, 
+                  // however we don't know if there was an umappable call in between. 
                   CF = nullptr;
                 } else {
                   CF = AOTMod->getFunction(NextIB->FuncName);
