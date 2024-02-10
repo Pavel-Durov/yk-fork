@@ -1149,22 +1149,26 @@ public:
 #ifndef NDEBUG
       // `BB` should be a successor of the last block executed in this frame.
       if (LastBB) {
-        errs() << "[1152] LastBB \n";
-        // LastBB -> dump();
+        errs() << "@@@@@@@@@@@@@@@@@@@@ [1152] LastBB \n";
+        LastBB -> dump();
 
         bool PredFound = false;
+        int counter = 0;
+
+
         errs() << "[1156] predecessors(BB) " << sizeof(predecessors(BB)) <<  "\n";
         for (BasicBlock *PBB : predecessors(BB)) {
-          errs() << "[1158] PBB - ";
+          errs() << "[1158] PBB - " << counter;
           PBB ->dump();
-          errs() << "[1158] LastBB - ";
-          LastBB ->dump();
-
           if (PBB == LastBB) {
+            errs() << "@@@@@@@@@@@@@@@@@@@@ [1165] FoundIT! PBB == LastBB \n";
             PredFound = true;
-            break;
+            // break;
           }
+          counter++;
         }
+        errs() << "[1171] Exit loop, count: " << counter << "\n";
+        
         assert(PredFound);
       }
 #endif
