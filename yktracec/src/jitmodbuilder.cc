@@ -1077,8 +1077,8 @@ public:
       }
 
       IRBlock *IB = Loc.getMappedBlock();
-      errs () << "[jitmodbuilder:1080] IRBlock *IB = Loc.getMappedBlock()";
-      IB ->dump();
+      errs () << "[jitmodbuilder:1080] IRBlock *IB = Loc.getMappedBlock(); IB->FuncName" << IB->FuncName << ", " << IB->BBIdx << "\n";
+      
       assert(IB);
       CurBBIdx = IB->BBIdx;
 
