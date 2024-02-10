@@ -1053,7 +1053,7 @@ public:
   // Generate the JIT module by "glueing together" blocks that the trace
   // executed in the AOT module. It builds the jit-pre-opt trace.
   Module *createModule() {
-    errs() << "[jitmodbuilder] createModule\n";
+    errs() << "[jitmodbuilder:1056] createModule\n";
 
     size_t CurBBIdx;
     size_t CurInstrIdx;
@@ -1065,23 +1065,25 @@ public:
       // Update the previously executed BB in the most-recent frame (if it's
       // mappable).
       TraceLoc Loc = InpTrace[Idx];
-      errs() << "[1068] Loc ";
+      errs() << "[jitmodbuilder:1068] Loc ";
       Loc.dump();
 
       if (UnmappableRegion *UR = Loc.getUnmappableRegion()) {
         LastBlockMappable = false;
         LastInst = nullptr;
         LastBB = nullptr;
-        errs () << "[1072] LastBB = nullptr;" <<  "\n";
+        errs () << "[jitmodbuilder:1075] LastBB = nullptr;" <<  "\n";
         continue;
       }
 
       IRBlock *IB = Loc.getMappedBlock();
+      errs () << "[jitmodbuilder:1080] IRBlock *IB = Loc.getMappedBlock()";
+      IB ->dump();
       assert(IB);
       CurBBIdx = IB->BBIdx;
 
       auto [F, BB] = getLLVMAOTFuncAndBlock(IB);
-      errs () << "[1082] BB = getLLVMAOTFuncAndBlock(IB);";
+      errs () << "[jitmodbuilder:1086] BB = getLLVMAOTFuncAndBlock(IB);";
       BB->dump();
 
       // For outlining to function, we need to reliably detect recursive calls
@@ -1098,7 +1100,7 @@ public:
       // depths.
       if (BB->isEntryBlock()) {
         LastBB = nullptr;
-        errs () << "[1096] LastBB = nullptr;" <<  "\n";
+        errs () << "[jitmodbuilder:1103] LastBB = nullptr;" <<  "\n";
         if (!LastBlockMappable) {
           // Unmappable code called back into mappable code.
           LastBlockMappable = true;
@@ -1117,7 +1119,7 @@ public:
         if (!LastBlockMappable) {
           LastBlockMappable = true;
           LastBB = BB;
-          errs () << "[1115] LastBB = BB;" <<  "\n";
+          errs () << "[jitmodbuilder:1122] LastBB = BB;" <<  "\n";
           if (CallStack.size() == OutlineBase) {
             Outlining = false;
             OutlineBase = 0;
@@ -1129,7 +1131,7 @@ public:
             assert(CallStack.back()->getParent() == BB);
           }
           LastBB = CallStack.back()->getParent();
-          errs () << "[1127] LastBB = CallStack.back()->getParent();" <<  "\n";
+          errs () << "[jitmodbuilder:1134] LastBB = CallStack.back()->getParent();" <<  "\n";
           CallStack.pop_back();
           if (CallStack.size() == OutlineBase) {
             Outlining = false;
@@ -1153,17 +1155,17 @@ public:
 #ifndef NDEBUG
       // `BB` should be a successor of the last block executed in this frame.
       if (LastBB) {
-        errs() << "@@@@@@@@@@@@@@@@@@@@ [1152] LastBB \n";
+        errs() << "[jitmodbuilder:1158] LastBB \n";
         LastBB -> dump();
 
         bool PredFound = false;
 
-        errs() << "[1156] num of predecessors(BB) " << std::distance(predecessors(BB).begin(), predecessors(BB).end()) <<  "\n";
+        errs() << "[jitmodbuilder:1163] num of predecessors(BB) " << std::distance(predecessors(BB).begin(), predecessors(BB).end()) <<  "\n";
         for (BasicBlock *PBB : predecessors(BB)) {
           errs() << "[1158] PBB:";
           PBB ->dump();
           if (PBB == LastBB) {
-            errs() << "@@@@@@@@@@@@@@@@@@@@ [1165] FoundIT! PBB == LastBB \n";
+            errs() << "[jitmodbuilder:1168] FoundIT! PBB == LastBB \n";
             PredFound = true;
             break;
           }
