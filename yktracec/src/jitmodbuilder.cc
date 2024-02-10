@@ -1299,6 +1299,9 @@ public:
           }
         }
 
+        errs() << "@@@ instruction";
+        I->dump(); 
+        
         if (isa<ReturnInst>(I)) {
           handleReturnInst(&*I, CurBBIdx, CurInstrIdx);
           break;
