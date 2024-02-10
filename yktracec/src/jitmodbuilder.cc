@@ -1079,6 +1079,8 @@ public:
       CurBBIdx = IB->BBIdx;
 
       auto [F, BB] = getLLVMAOTFuncAndBlock(IB);
+      errs () << "[1082] BB = getLLVMAOTFuncAndBlock(IB);";
+      BB->dump();
 
       // For outlining to function, we need to reliably detect recursive calls
       // and callbacks from unmappable blocks (i.e. external functions). Thanks
