@@ -1153,6 +1153,7 @@ public:
         LastBB -> dump();
 
         bool PredFound = false;
+        errs() << "[1156] predecessors(BB) " << predecessors(BB);
         for (BasicBlock *PBB : predecessors(BB)) {
           if (PBB == LastBB) {
             PredFound = true;
