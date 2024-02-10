@@ -1065,7 +1065,9 @@ public:
       // Update the previously executed BB in the most-recent frame (if it's
       // mappable).
       TraceLoc Loc = InpTrace[Idx];
-
+      errs() << "[1068] Loc ";
+      Loc ->dump();
+      
       if (UnmappableRegion *UR = Loc.getUnmappableRegion()) {
         LastBlockMappable = false;
         LastInst = nullptr;
