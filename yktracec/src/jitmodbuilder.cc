@@ -1149,8 +1149,8 @@ public:
 #ifndef NDEBUG
       // `BB` should be a successor of the last block executed in this frame.
       if (LastBB) {
-        errs() << "[1152] LastBB ";
-        LastBB -> dump();
+        errs() << "[1152] LastBB \n";
+        // LastBB -> dump();
 
         bool PredFound = false;
         errs() << "[1156] predecessors(BB) " << sizeof(predecessors(BB)) <<  "\n";
