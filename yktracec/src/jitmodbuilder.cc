@@ -1153,22 +1153,17 @@ public:
         LastBB -> dump();
 
         bool PredFound = false;
-        int counter = 0;
 
-
-        errs() << "[1156] predecessors(BB) " << sizeof(predecessors(BB)) <<  "\n";
+        errs() << "[1156] num of predecessors(BB) " << std::distance(predecessors(BB).begin(), predecessors(BB).end()) <<  "\n";
         for (BasicBlock *PBB : predecessors(BB)) {
-          errs() << "[1158] PBB - " << counter;
+          errs() << "[1158] PBB:";
           PBB ->dump();
           if (PBB == LastBB) {
             errs() << "@@@@@@@@@@@@@@@@@@@@ [1165] FoundIT! PBB == LastBB \n";
             PredFound = true;
-            // break;
+            break;
           }
-          counter++;
         }
-        errs() << "[1171] Exit loop, count: " << counter << "\n";
-        
         assert(PredFound);
       }
 #endif
