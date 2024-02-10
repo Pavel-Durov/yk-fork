@@ -994,6 +994,7 @@ class JITModBuilder {
       // collection in, and is thus not needed on the stack, and can be
       // removed.
       LastBB = CallStack.back()->getParent();
+      errs () << "[996] CallStack.back()->getParent();" <<  "\n";
       CallStack.pop_back();
     }
 
@@ -1050,8 +1051,10 @@ public:
   }
 
   // Generate the JIT module by "glueing together" blocks that the trace
-  // executed in the AOT module.
+  // executed in the AOT module. It builds the jit-pre-opt trace.
   Module *createModule() {
+    errs() << "[jitmodbuilder] createModule\n";
+
     size_t CurBBIdx;
     size_t CurInstrIdx;
     auto tracer = std::getenv("YKB_TRACER");
@@ -1067,6 +1070,7 @@ public:
         LastBlockMappable = false;
         LastInst = nullptr;
         LastBB = nullptr;
+        errs () << "[1072] LastBB = nullptr;" <<  "\n";
         continue;
       }
 
@@ -1090,6 +1094,7 @@ public:
       // depths.
       if (BB->isEntryBlock()) {
         LastBB = nullptr;
+        errs () << "[1096] LastBB = nullptr;" <<  "\n";
         if (!LastBlockMappable) {
           // Unmappable code called back into mappable code.
           LastBlockMappable = true;
@@ -1108,6 +1113,7 @@ public:
         if (!LastBlockMappable) {
           LastBlockMappable = true;
           LastBB = BB;
+          errs () << "[1115] LastBB = BB;" <<  "\n";
           if (CallStack.size() == OutlineBase) {
             Outlining = false;
             OutlineBase = 0;
@@ -1119,6 +1125,7 @@ public:
             assert(CallStack.back()->getParent() == BB);
           }
           LastBB = CallStack.back()->getParent();
+          errs () << "[1127] LastBB = CallStack.back()->getParent();" <<  "\n";
           CallStack.pop_back();
           if (CallStack.size() == OutlineBase) {
             Outlining = false;
@@ -1142,6 +1149,9 @@ public:
 #ifndef NDEBUG
       // `BB` should be a successor of the last block executed in this frame.
       if (LastBB) {
+        errs() << "[1152] LastBB ";
+        LastBB -> dump();
+
         bool PredFound = false;
         for (BasicBlock *PBB : predecessors(BB)) {
           if (PBB == LastBB) {
@@ -1298,7 +1308,7 @@ public:
             break;
           }
         }
-
+        // I->dump();
         if (isa<ReturnInst>(I)) {
           handleReturnInst(&*I, CurBBIdx, CurInstrIdx);
           break;
@@ -1395,6 +1405,7 @@ public:
         // into JITMod.
         copyInstruction(&Builder, (Instruction *)&*I, CurBBIdx, CurInstrIdx);
       }
+      errs () << "[1404]  LastBB = BB;" <<  "\n";
       LastBB = BB;
     }
 
