@@ -1066,8 +1066,8 @@ public:
       // mappable).
       TraceLoc Loc = InpTrace[Idx];
       errs() << "[1068] Loc ";
-      Loc ->dump();
-      
+      Loc.dump();
+
       if (UnmappableRegion *UR = Loc.getUnmappableRegion()) {
         LastBlockMappable = false;
         LastInst = nullptr;
