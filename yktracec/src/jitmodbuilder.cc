@@ -1130,12 +1130,13 @@ public:
           }
           continue;
         } else if (LastInst && isa<ReturnInst>(LastInst)) {
+          errs () << "[jitmodbuilder:1133] LastInst && isa<ReturnInst>(LastInst));" <<  "\n";
           LastInst = nullptr;
           if (!IsSWTrace) {
             assert(CallStack.back()->getParent() == BB);
           }
           LastBB = CallStack.back()->getParent();
-          errs () << "[jitmodbuilder:1134] LastBB = CallStack.back()->getParent();" <<  "\n";
+          errs () << "[jitmodbuilder:1139] LastBB = CallStack.back()->getParent();" <<  "\n";
           CallStack.pop_back();
           if (CallStack.size() == OutlineBase) {
             Outlining = false;
