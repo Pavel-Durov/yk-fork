@@ -520,8 +520,12 @@ class JITModBuilder {
 
     // Skip to the correct block.
     auto It = F->begin();
+    errs() << "[jitmodbuilder:523] Skip to the correct block - It:";
+    It -> dump();
     std::advance(It, IB->BBIdx);
     BasicBlock *BB = &*It;
+    errs() << "[jitmodbuilder:527] Advanced BB:";
+    BB -> dump();
 
     return {F, BB};
   }
