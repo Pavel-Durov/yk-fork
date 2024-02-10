@@ -1155,6 +1155,11 @@ public:
         bool PredFound = false;
         errs() << "[1156] predecessors(BB) " << sizeof(predecessors(BB)) <<  "\n";
         for (BasicBlock *PBB : predecessors(BB)) {
+          errs() << "[1158] PBB - ";
+          PBB ->dump();
+          errs() << "[1158] LastBB - ";
+          LastBB ->dump();
+
           if (PBB == LastBB) {
             PredFound = true;
             break;
