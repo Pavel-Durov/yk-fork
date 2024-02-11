@@ -994,9 +994,9 @@ class JITModBuilder {
       // collection in, and is thus not needed on the stack, and can be
       // removed.
       LastBB = CallStack.back()->getParent();
-      #if DEBUG_LOG
-      errs () << "[jitmodbuilder] LastBB = CallStack.back()->getParent(); \n";
-      #endif
+#if DEBUG_LOG
+      errs() << "[jitmodbuilder] LastBB = CallStack.back()->getParent(); \n";
+#endif
       CallStack.pop_back();
     }
 
@@ -1055,9 +1055,9 @@ public:
   // Generate the JIT module by "glueing together" blocks that the trace
   // executed in the AOT module. It builds the jit-pre-opt trace.
   Module *createModule() {
-    #if DEBUG_LOG
+#if DEBUG_LOG
     errs() << "[jitmodbuilder] createModule\n";
-    #endif
+#endif
 
     size_t CurBBIdx;
     size_t CurInstrIdx;
@@ -1069,19 +1069,21 @@ public:
       // Update the previously executed BB in the most-recent frame (if it's
       // mappable).
       TraceLoc Loc = InpTrace[Idx];
-      #if DEBUG_LOG
+#if DEBUG_LOG
       errs() << "[jitmodbuilder] Loc ";
       Loc.dump();
-      #endif
+#endif
 
       if (UnmappableRegion *UR = Loc.getUnmappableRegion()) {
         LastBlockMappable = false;
         LastInst = nullptr;
         LastBB = nullptr;
-        #if DEBUG_LOG
-        errs () << "[jitmodbuilder] UnmappableRegion - LastInst = nullptr;" <<  "\n";
-        errs () << "[jitmodbuilder] UnmappableRegion - LastBB = nullptr;" <<  "\n";
-        #endif
+#if DEBUG_LOG
+        errs() << "[jitmodbuilder] UnmappableRegion - LastInst = nullptr;"
+               << "\n";
+        errs() << "[jitmodbuilder] UnmappableRegion - LastBB = nullptr;"
+               << "\n";
+#endif
         continue;
       }
 
@@ -1091,30 +1093,32 @@ public:
       CurBBIdx = IB->BBIdx;
 
       auto [F, BB] = getLLVMAOTFuncAndBlock(IB);
-      #if DEBUG_LOG
-      errs () << "[jitmodbuilder] getLLVMAOTFuncAndBlock(IB)";
+#if DEBUG_LOG
+      errs() << "[jitmodbuilder] getLLVMAOTFuncAndBlock(IB)";
       BB->dump();
-      #endif
-      // For outlining to function, we need to reliably detect recursive calls
-      // and callbacks from unmappable blocks (i.e. external functions). Thanks
-      // to two extra LLVM passes (one ensuring no calls can appear in entry
-      // blocks, and another splitting blocks after calls) we can infer the
-      // control flow from the type of block we see and the last instruction
-      // that was processed. For example, if the last block was unmappable and
-      // the current block is mappable and an entry block, we know that this
-      // must be a callback from an external function. While the CallStack
-      // isn't strictly needed to implement this, it is required for
-      // deoptimisation as it collects the stackmap calls of inlined functions.
-      // We thus use it here as a simple counter to keep track of the call
-      // depths.
-      #if DEBUG_LOG
-      errs () << "[jitmodbuilder] BB->isEntryBlock() " << BB->isEntryBlock() << "\n";
-      #endif
+#endif
+// For outlining to function, we need to reliably detect recursive calls
+// and callbacks from unmappable blocks (i.e. external functions). Thanks
+// to two extra LLVM passes (one ensuring no calls can appear in entry
+// blocks, and another splitting blocks after calls) we can infer the
+// control flow from the type of block we see and the last instruction
+// that was processed. For example, if the last block was unmappable and
+// the current block is mappable and an entry block, we know that this
+// must be a callback from an external function. While the CallStack
+// isn't strictly needed to implement this, it is required for
+// deoptimisation as it collects the stackmap calls of inlined functions.
+// We thus use it here as a simple counter to keep track of the call
+// depths.
+#if DEBUG_LOG
+      errs() << "[jitmodbuilder] BB->isEntryBlock() " << BB->isEntryBlock()
+             << "\n";
+#endif
       if (BB->isEntryBlock()) {
         LastBB = nullptr;
-        #if DEBUG_LOG
-        errs () << "[jitmodbuilder] BB is entry block. LastBB = nullptr;" <<  "\n";
-        #endif
+#if DEBUG_LOG
+        errs() << "[jitmodbuilder] BB is entry block. LastBB = nullptr;"
+               << "\n";
+#endif
         if (!LastBlockMappable) {
           // Unmappable code called back into mappable code.
           LastBlockMappable = true;
@@ -1130,40 +1134,46 @@ public:
         // If the last block was unmappable or the last instruction was a
         // return, then we are returning from a call. Since we've already
         // processed all instructions in this block, we can just skip it.
-         #if DEBUG_LOG
-        
-        if (LastInst){
-          errs () << "[jitmodbuilder] @@@ BB is NOT entry block. LastInst is";
-          LastInst -> dump();
-        }else{
-          errs () << "[jitmodbuilder] @@@ BB is NOT entry block. LastInst is NULL\n";
+#if DEBUG_LOG
+
+        if (LastInst) {
+          errs() << "[jitmodbuilder] @@@ BB is NOT entry block. LastInst is";
+          LastInst->dump();
+        } else {
+          errs() << "[jitmodbuilder] @@@ BB is NOT entry block. LastInst is "
+                    "NULL\n";
         }
-        #endif
+#endif
 
         if (!LastBlockMappable) {
           LastBlockMappable = true;
           LastBB = BB;
-          #if DEBUG_LOG
-          errs () << "[jitmodbuilder] Last block is not mappable; LastBB = BB" <<  "\n";
-          #endif
+#if DEBUG_LOG
+          errs() << "[jitmodbuilder] Last block is not mappable; LastBB = BB"
+                 << "\n";
+#endif
           if (CallStack.size() == OutlineBase) {
             Outlining = false;
             OutlineBase = 0;
           }
           continue;
         } else if (LastInst && isa<ReturnInst>(LastInst)) {
-          LastInst = nullptr; // TODO: When the last block is mappable and last instruction is RETURN
-          #if DEBUG_LOG
-          errs () << "[jitmodbuilder] Last Instruction is Return, LastInst = nullptr; \n" <<  "\n";
-          #endif
+          LastInst = nullptr; // TODO: When the last block is mappable and last
+                              // instruction is RETURN
+#if DEBUG_LOG
+          errs() << "[jitmodbuilder] Last Instruction is Return, LastInst = "
+                    "nullptr; \n"
+                 << "\n";
+#endif
           if (!IsSWTrace) {
             assert(CallStack.back()->getParent() == BB);
           }
           LastBB = CallStack.back()->getParent();
-          
-          #if DEBUG_LOG
-          errs () << "[jitmodbuilder] Last Instruction is Return. LastBB = CallStack.back()->getParent(); \n";
-          #endif
+
+#if DEBUG_LOG
+          errs() << "[jitmodbuilder] Last Instruction is Return. LastBB = "
+                    "CallStack.back()->getParent(); \n";
+#endif
           CallStack.pop_back();
           if (CallStack.size() == OutlineBase) {
             Outlining = false;
@@ -1213,21 +1223,23 @@ public:
         // to be prematurely terminated.
         if (isa<DbgInfoIntrinsic>(I))
           continue;
-        
+
         // if (isa<CallInst>(I)){
         //   CallInst *CI = cast<CallInst>(I);
-        //   if (CI->getCalledFunction() && CI->getCalledFunction()->getName() == "yk_trace_basicblock"){
-            
+        //   if (CI->getCalledFunction() && CI->getCalledFunction()->getName()
+        //   == "yk_trace_basicblock"){
+
         //     CI ->dump();
         //     // continue;
         //   }
         // }
-        
+
         LastInst = &*I;
-        #if DEBUG_LOG
-        errs() << "[jitmodbuilder] Copy instructions over. LastInst = &*I, LastInst:";
+#if DEBUG_LOG
+        errs() << "[jitmodbuilder] Copy instructions over. LastInst = &*I, "
+                  "LastInst:";
         LastInst->dump();
-        #endif
+#endif
 
         if (isa<CallInst>(I)) {
           if (isa<IntrinsicInst>(I)) {
@@ -1307,8 +1319,9 @@ public:
               if (const IRBlock *NextIB = MaybeNextIB.getMappedBlock()) {
                 if (IsSWTrace) {
                   // YKFIXME: outline indirect calls in swt.
-                  // Peeking ahead in swt might give us a mappable entry block, 
-                  // however we don't know if there was an umappable call in between. 
+                  // Peeking ahead in swt might give us a mappable entry block,
+                  // however we don't know if there was an umappable call in
+                  // between.
                   CF = nullptr;
                 } else {
                   CF = AOTMod->getFunction(NextIB->FuncName);
@@ -1436,10 +1449,10 @@ public:
               CurInstrIdx++;
               assert(isa<CallInst>(I)); // stackmap call
               LastInst = &*I;
-              #if DEBUG_LOG
+#if DEBUG_LOG
               errs() << "[jitmodbuilder] LastInst = &*I, LastInst:";
               LastInst->dump();
-              #endif
+#endif
 
               I++;
               CurInstrIdx++;
@@ -1459,18 +1472,25 @@ public:
         // into JITMod.
         copyInstruction(&Builder, (Instruction *)&*I, CurBBIdx, CurInstrIdx);
       }
-      
-       #if DEBUG_LOG
-      errs() << "[jitmodbuilder] @@@@ LastInst is:";
-      LastInst ->dump();
 
-      errs() << "[jitmodbuilder] @@@@ LastBB is:";
-      LastBB -> dump();
-      #endif
-      
+#if DEBUG_LOG
+      if (LastInst) {
+        errs() << "[jitmodbuilder] @@@@ LastInst is:";
+        LastInst->dump();
+      } else {
+        errs() << "[jitmodbuilder] @@@@ LastInst is NULL";
+      }
+
+      if (LastBB) {
+        errs() << "[jitmodbuilder] @@@@ LastBB is:";
+        LastBB->dump();
+      } else {
+        errs() << "[jitmodbuilder] @@@@ LastBB is NULL";
+      }
+#endif
+
       LastBB = BB;
     }
-   
 
     // If the trace succeeded, loop back to the top. The only way to leave the
     // trace is via a guard failure.
