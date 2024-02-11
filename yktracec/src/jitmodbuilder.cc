@@ -1138,7 +1138,7 @@ public:
           LastBlockMappable = true;
           LastBB = BB;
           #if DEBUG_LOG
-          errs () << "[jitmodbuilder] Last block is not mappable;" <<  "\n";
+          errs () << "[jitmodbuilder] Last block is not mappable; LastBB = BB" <<  "\n";
           #endif
           if (CallStack.size() == OutlineBase) {
             Outlining = false;
@@ -1454,7 +1454,7 @@ public:
         copyInstruction(&Builder, (Instruction *)&*I, CurBBIdx, CurInstrIdx);
       }
       #if DEBUG_LOG
-      errs () << "[jitmodbuilder]  LastBB = BB;" <<  "\n";  
+      errs () << "[jitmodbuilder] End of iteration.LastBB = BB;" <<  "\n";  
       #endif
       LastBB = BB;
     }
