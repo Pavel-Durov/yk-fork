@@ -1079,7 +1079,8 @@ public:
         LastInst = nullptr;
         LastBB = nullptr;
         #if DEBUG_LOG
-        errs () << "[jitmodbuilder] LastBB = nullptr;" <<  "\n";
+        errs () << "[jitmodbuilder] UnmappableRegion - LastInst = nullptr;" <<  "\n";
+        errs () << "[jitmodbuilder] UnmappableRegion - LastBB = nullptr;" <<  "\n";
         #endif
         continue;
       }
@@ -1151,10 +1152,10 @@ public:
           }
           continue;
         } else if (LastInst && isa<ReturnInst>(LastInst)) {
+          LastInst = nullptr; // TODO: When the last block is mappable and last instruction is RETURN
           #if DEBUG_LOG
-          errs () << "[jitmodbuilder] Last Instruction is Return" <<  "\n";
+          errs () << "[jitmodbuilder] Last Instruction is Return, LastInst = nullptr;" <<  "\n";
           #endif
-          LastInst = nullptr;
           if (!IsSWTrace) {
             assert(CallStack.back()->getParent() == BB);
           }
