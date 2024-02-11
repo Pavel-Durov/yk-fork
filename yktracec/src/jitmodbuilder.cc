@@ -22,7 +22,7 @@ using namespace std;
 
 extern "C" size_t __yk_lookup_promote_usize();
 
-#define DEBUG_LOG 0
+#define DEBUG_LOG 1
 // An atomic counter used to issue compiled traces with unique names.
 atomic<uint64_t> NextTraceIdx(0);
 uint64_t getNewTraceIdx() {
