@@ -1090,11 +1090,6 @@ public:
       CurBBIdx = IB->BBIdx;
 
       auto [F, BB] = getLLVMAOTFuncAndBlock(IB);
-      
-      #if DEBUG_LOG
-      errs () << "[jitmodbuilder] BB = getLLVMAOTFuncAndBlock(IB);";
-      BB->dump();
-      #endif
 
       // For outlining to function, we need to reliably detect recursive calls
       // and callbacks from unmappable blocks (i.e. external functions). Thanks
@@ -1213,14 +1208,14 @@ public:
         if (isa<DbgInfoIntrinsic>(I))
           continue;
         
-        if (isa<CallInst>(I)){
-          CallInst *CI = cast<CallInst>(I);
-          if (CI->getCalledFunction() && CI->getCalledFunction()->getName() == "yk_trace_basicblock"){
-            errs() << "LastInst is yk_trace_basicblock";
-            CI ->dump();
-            // continue;
-          }
-        }
+        // if (isa<CallInst>(I)){
+        //   CallInst *CI = cast<CallInst>(I);
+        //   if (CI->getCalledFunction() && CI->getCalledFunction()->getName() == "yk_trace_basicblock"){
+            
+        //     CI ->dump();
+        //     // continue;
+        //   }
+        // }
         
         LastInst = &*I;
         #if DEBUG_LOG
@@ -1463,6 +1458,13 @@ public:
       #endif
       LastBB = BB;
     }
+    #if DEBUG_LOG
+    errs() << "[jitmodbuilder] LastInst is:";
+    LastInst ->dump();
+
+    errs() << "[jitmodbuilder] LastBB is:";
+    LastBB -> dump();
+    #endif
 
     // If the trace succeeded, loop back to the top. The only way to leave the
     // trace is via a guard failure.
