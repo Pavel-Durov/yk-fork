@@ -22,6 +22,7 @@ using namespace std;
 
 extern "C" size_t __yk_lookup_promote_usize();
 
+#define DEBUG_LOG 0
 // An atomic counter used to issue compiled traces with unique names.
 atomic<uint64_t> NextTraceIdx(0);
 uint64_t getNewTraceIdx() {
@@ -520,13 +521,8 @@ class JITModBuilder {
 
     // Skip to the correct block.
     auto It = F->begin();
-    errs() << "[jitmodbuilder:523] Skip to the correct block - It:";
-    It -> dump();
     std::advance(It, IB->BBIdx);
     BasicBlock *BB = &*It;
-    errs() << "[jitmodbuilder:527] Advanced BB:";
-    BB -> dump();
-
     return {F, BB};
   }
 
@@ -998,7 +994,9 @@ class JITModBuilder {
       // collection in, and is thus not needed on the stack, and can be
       // removed.
       LastBB = CallStack.back()->getParent();
-      errs () << "[996] CallStack.back()->getParent();" <<  "\n";
+      #if DEBUG_LOG
+      errs () << "[jitmodbuilder] CallStack.back()->getParent();" <<  "\n";
+      #endif
       CallStack.pop_back();
     }
 
@@ -1057,7 +1055,9 @@ public:
   // Generate the JIT module by "glueing together" blocks that the trace
   // executed in the AOT module. It builds the jit-pre-opt trace.
   Module *createModule() {
-    errs() << "[jitmodbuilder:1056] createModule\n";
+    #if DEBUG_LOG
+    errs() << "[jitmodbuilder] createModule\n";
+    #endif // DEBUG_LOG
 
     size_t CurBBIdx;
     size_t CurInstrIdx;
@@ -1069,28 +1069,35 @@ public:
       // Update the previously executed BB in the most-recent frame (if it's
       // mappable).
       TraceLoc Loc = InpTrace[Idx];
-      errs() << "[jitmodbuilder:1068] Loc ";
+      #if DEBUG_LOG
+      errs() << "[jitmodbuilder] Loc ";
       Loc.dump();
+      #endif
 
       if (UnmappableRegion *UR = Loc.getUnmappableRegion()) {
         LastBlockMappable = false;
         LastInst = nullptr;
         LastBB = nullptr;
-        errs () << "[jitmodbuilder:1075] LastBB = nullptr;" <<  "\n";
+        #if DEBUG_LOG
+        errs () << "[jitmodbuilder] LastBB = nullptr;" <<  "\n";
+        #endif
         continue;
       }
 
       IRBlock *IB = Loc.getMappedBlock();
-      // DEBUG log
-      // errs () << "[jitmodbuilder:1080] IRBlock *IB = Loc.getMappedBlock(); FuncName: " << IB->FuncName << ", BBIdx: " << IB->BBIdx << "\n";
+      #if DEBUG_LOG
+      errs () << "[jitmodbuilder] IRBlock *IB = Loc.getMappedBlock(); FuncName: " << IB->FuncName << ", BBIdx: " << IB->BBIdx << "\n";
+      #endif
       
       assert(IB);
       CurBBIdx = IB->BBIdx;
 
       auto [F, BB] = getLLVMAOTFuncAndBlock(IB);
-      // DEBUG log
-      // errs () << "[jitmodbuilder:1086] BB = getLLVMAOTFuncAndBlock(IB);";
-      // BB->dump();
+      
+      #if DEBUG_LOG
+      errs () << "[jitmodbuilder] BB = getLLVMAOTFuncAndBlock(IB);";
+      BB->dump();
+      #endif
 
       // For outlining to function, we need to reliably detect recursive calls
       // and callbacks from unmappable blocks (i.e. external functions). Thanks
@@ -1104,11 +1111,14 @@ public:
       // deoptimisation as it collects the stackmap calls of inlined functions.
       // We thus use it here as a simple counter to keep track of the call
       // depths.
-
-      errs () << "[jitmodbuilder:1103] BB->isEntryBlock() " << BB->isEntryBlock() << "\n";
+      #if DEBUG_LOG
+      errs () << "[jitmodbuilder] BB->isEntryBlock() " << BB->isEntryBlock() << "\n";
+      #endif
       if (BB->isEntryBlock()) {
         LastBB = nullptr;
-        errs () << "[jitmodbuilder:1103] LastBB = nullptr;" <<  "\n";
+        #if DEBUG_LOG
+        errs () << "[jitmodbuilder] LastBB = nullptr;" <<  "\n";
+        #endif
         if (!LastBlockMappable) {
           // Unmappable code called back into mappable code.
           LastBlockMappable = true;
@@ -1124,31 +1134,38 @@ public:
         // If the last block was unmappable or the last instruction was a
         // return, then we are returning from a call. Since we've already
         // processed all instructions in this block, we can just skip it.
-        errs () << "[jitmodbuilder:1122] LastBlockMappable = " << LastBlockMappable <<  "\n";
-        
+         #if DEBUG_LOG
+        errs () << "[jitmodbuilder] LastBlockMappable = " << LastBlockMappable <<  "\n";
         if (LastInst){
-          errs () << "[jitmodbuilder:1122] LastInst = ";
+          errs () << "[jitmodbuilder] LastInst = ";
           LastInst -> dump();
         }
+        #endif
 
         if (!LastBlockMappable) {
           LastBlockMappable = true;
           LastBB = BB;
-          errs () << "[jitmodbuilder:1122] LastBB = BB;" <<  "\n";
+          #if DEBUG_LOG
+          errs () << "[jitmodbuilder] LastBB = BB;" <<  "\n";
+          #endif
           if (CallStack.size() == OutlineBase) {
             Outlining = false;
             OutlineBase = 0;
           }
           continue;
         } else if (LastInst && isa<ReturnInst>(LastInst)) {
-          errs () << "[jitmodbuilder:1133] LastInst && isa<ReturnInst>(LastInst));" <<  "\n";
+          #if DEBUG_LOG
+          errs () << "[jitmodbuilder] LastInst && isa<ReturnInst>(LastInst));" <<  "\n";
+          #endif
           LastInst = nullptr;
           if (!IsSWTrace) {
             assert(CallStack.back()->getParent() == BB);
           }
           LastBB = CallStack.back()->getParent();
-          // TODO: this is the diffrance in execution between SWT and HWT......
-          errs () << "[jitmodbuilder:1139] LastBB = CallStack.back()->getParent();" <<  "\n";
+          
+          #if DEBUG_LOG
+          errs () << "[jitmodbuilder] LastBB = CallStack.back()->getParent();" <<  "\n";
+          #endif
           CallStack.pop_back();
           if (CallStack.size() == OutlineBase) {
             Outlining = false;
@@ -1172,17 +1189,9 @@ public:
 #ifndef NDEBUG
       // `BB` should be a successor of the last block executed in this frame.
       if (LastBB) {
-        errs() << "[jitmodbuilder:1158] Should be a successor of the last block executed in this frame. LastBB \n";
-        LastBB -> dump();
-
         bool PredFound = false;
-
-        errs() << "[jitmodbuilder:1163] num of predecessors(BB) " << std::distance(predecessors(BB).begin(), predecessors(BB).end()) <<  "\n";
         for (BasicBlock *PBB : predecessors(BB)) {
-          errs() << "[1158] PBB:";
-          PBB ->dump();
           if (PBB == LastBB) {
-            errs() << "[jitmodbuilder:1168] FoundIT! PBB == LastBB \n";
             PredFound = true;
             break;
           }
@@ -1215,8 +1224,10 @@ public:
         }
         
         LastInst = &*I;
+        #if DEBUG_LOG
         errs() << "[jitmodbuilder:1211] LastInst = &*I, LastInst:";
         LastInst->dump();
+        #endif
 
         if (isa<CallInst>(I)) {
           if (isa<IntrinsicInst>(I)) {
@@ -1425,8 +1436,10 @@ public:
               CurInstrIdx++;
               assert(isa<CallInst>(I)); // stackmap call
               LastInst = &*I;
-              errs() << "[jitmodbuilder:1420] LastInst = &*I, LastInst:";
+              #if DEBUG_LOG
+              errs() << "[jitmodbuilder] LastInst = &*I, LastInst:";
               LastInst->dump();
+              #endif
 
               I++;
               CurInstrIdx++;
@@ -1446,7 +1459,9 @@ public:
         // into JITMod.
         copyInstruction(&Builder, (Instruction *)&*I, CurBBIdx, CurInstrIdx);
       }
-      errs () << "[1404]  LastBB = BB;" <<  "\n";
+      #if DEBUG_LOG
+      errs () << "[jitmodbuilder]  LastBB = BB;" <<  "\n";  
+      #endif
       LastBB = BB;
     }
 
