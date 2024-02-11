@@ -1459,18 +1459,18 @@ public:
         // into JITMod.
         copyInstruction(&Builder, (Instruction *)&*I, CurBBIdx, CurInstrIdx);
       }
-      #if DEBUG_LOG
-      errs () << "[jitmodbuilder] End of iteration.LastBB = BB;" <<  "\n";  
+      
+       #if DEBUG_LOG
+      errs() << "[jitmodbuilder] @@@@ LastInst is:";
+      LastInst ->dump();
+
+      errs() << "[jitmodbuilder] @@@@ LastBB is:";
+      LastBB -> dump();
       #endif
+      
       LastBB = BB;
     }
-    #if DEBUG_LOG
-    errs() << "[jitmodbuilder] @@@@ LastInst is:";
-    LastInst ->dump();
-
-    errs() << "[jitmodbuilder] @@@@ LastBB is:";
-    LastBB -> dump();
-    #endif
+   
 
     // If the trace succeeded, loop back to the top. The only way to leave the
     // trace is via a guard failure.
