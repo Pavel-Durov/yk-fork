@@ -1149,8 +1149,7 @@ public:
           LastBlockMappable = true;
           LastBB = BB;
 #if DEBUG_LOG
-          errs() << "[jitmodbuilder] Last block is not mappable; LastBB = BB"
-                 << "\n";
+          errs() << "[jitmodbuilder] !LastBlockMappable; LastBB = BB\n";
 #endif
           if (CallStack.size() == OutlineBase) {
             Outlining = false;
@@ -1161,17 +1160,15 @@ public:
           LastInst = nullptr; // TODO: When the last block is mappable and last
                               // instruction is RETURN
 #if DEBUG_LOG
-          errs() << "[jitmodbuilder] Last Instruction is Return, LastInst = "
-                    "nullptr; \n"
-                 << "\n";
+          errs() << "[jitmodbuilder] LastInst is Return, LastInst = nullptr\n"
 #endif
-          if (!IsSWTrace) {
+              if (!IsSWTrace) {
             assert(CallStack.back()->getParent() == BB);
           }
           LastBB = CallStack.back()->getParent();
 
 #if DEBUG_LOG
-          errs() << "[jitmodbuilder] Last Instruction is Return. LastBB = "
+          errs() << "[jitmodbuilder] LastInst is Return. LastBB = "
                     "CallStack.back()->getParent(); \n";
 #endif
           CallStack.pop_back();
