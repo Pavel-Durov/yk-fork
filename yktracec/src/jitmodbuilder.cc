@@ -1206,9 +1206,10 @@ public:
         // to be prematurely terminated.
         if (isa<DbgInfoIntrinsic>(I))
           continue;
-        errs() << "[jitmodbuilder:1209] LastInst = &*I, LastInst:";
-        LastInst->dump();
+        
         LastInst = &*I;
+        errs() << "[jitmodbuilder:1211] LastInst = &*I, LastInst:";
+        LastInst->dump();
 
         if (isa<CallInst>(I)) {
           if (isa<IntrinsicInst>(I)) {
