@@ -1057,7 +1057,7 @@ public:
   Module *createModule() {
     #if DEBUG_LOG
     errs() << "[jitmodbuilder] createModule\n";
-    #endif // DEBUG_LOG
+    #endif
 
     size_t CurBBIdx;
     size_t CurInstrIdx;
@@ -1085,10 +1085,7 @@ public:
       }
 
       IRBlock *IB = Loc.getMappedBlock();
-      #if DEBUG_LOG
-      errs () << "[jitmodbuilder] IRBlock *IB = Loc.getMappedBlock(); FuncName: " << IB->FuncName << ", BBIdx: " << IB->BBIdx << "\n";
-      #endif
-      
+
       assert(IB);
       CurBBIdx = IB->BBIdx;
 
@@ -1146,7 +1143,7 @@ public:
           LastBlockMappable = true;
           LastBB = BB;
           #if DEBUG_LOG
-          errs () << "[jitmodbuilder] LastBB = BB;" <<  "\n";
+          errs () << "[jitmodbuilder] Last block is not mappable;" <<  "\n";
           #endif
           if (CallStack.size() == OutlineBase) {
             Outlining = false;
@@ -1155,7 +1152,7 @@ public:
           continue;
         } else if (LastInst && isa<ReturnInst>(LastInst)) {
           #if DEBUG_LOG
-          errs () << "[jitmodbuilder] LastInst && isa<ReturnInst>(LastInst));" <<  "\n";
+          errs () << "[jitmodbuilder] Last Instruction is Return" <<  "\n";
           #endif
           LastInst = nullptr;
           if (!IsSWTrace) {
@@ -1164,7 +1161,7 @@ public:
           LastBB = CallStack.back()->getParent();
           
           #if DEBUG_LOG
-          errs () << "[jitmodbuilder] LastBB = CallStack.back()->getParent();" <<  "\n";
+          errs () << "[jitmodbuilder] Last Instruction is Return. LastBB = CallStack.back()->getParent();" <<  "\n";
           #endif
           CallStack.pop_back();
           if (CallStack.size() == OutlineBase) {
@@ -1219,13 +1216,15 @@ public:
         if (isa<CallInst>(I)){
           CallInst *CI = cast<CallInst>(I);
           if (CI->getCalledFunction() && CI->getCalledFunction()->getName() == "yk_trace_basicblock"){
-            continue;
+            errs() << "LastInst is yk_trace_basicblock";
+            CI ->dump();
+            // continue;
           }
         }
         
         LastInst = &*I;
         #if DEBUG_LOG
-        errs() << "[jitmodbuilder:1211] LastInst = &*I, LastInst:";
+        errs() << "[jitmodbuilder] Copy instructions over. LastInst = &*I, LastInst:";
         LastInst->dump();
         #endif
 
