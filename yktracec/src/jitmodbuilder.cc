@@ -1112,7 +1112,7 @@ public:
       if (BB->isEntryBlock()) {
         LastBB = nullptr;
         #if DEBUG_LOG
-        errs () << "[jitmodbuilder] LastBB = nullptr;" <<  "\n";
+        errs () << "[jitmodbuilder] BB is entry block. LastBB = nullptr;" <<  "\n";
         #endif
         if (!LastBlockMappable) {
           // Unmappable code called back into mappable code.
@@ -1130,10 +1130,12 @@ public:
         // return, then we are returning from a call. Since we've already
         // processed all instructions in this block, we can just skip it.
          #if DEBUG_LOG
-        errs () << "[jitmodbuilder] LastBlockMappable = " << LastBlockMappable <<  "\n";
+        
         if (LastInst){
-          errs () << "[jitmodbuilder] LastInst = ";
+          errs () << "[jitmodbuilder]  BB is NOT entry block. LastInst is";
           LastInst -> dump();
+        }else{
+          errs () << "[jitmodbuilder] BB is NOT entry block. LastInst is NULL\n";
         }
         #endif
 
