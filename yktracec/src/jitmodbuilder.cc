@@ -1090,7 +1090,10 @@ public:
       CurBBIdx = IB->BBIdx;
 
       auto [F, BB] = getLLVMAOTFuncAndBlock(IB);
-
+      #if DEBUG_LOG
+      errs () << "[jitmodbuilder] getLLVMAOTFuncAndBlock(IB)";
+      BB->dump();
+      #endif
       // For outlining to function, we need to reliably detect recursive calls
       // and callbacks from unmappable blocks (i.e. external functions). Thanks
       // to two extra LLVM passes (one ensuring no calls can appear in entry
