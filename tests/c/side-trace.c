@@ -1,4 +1,5 @@
 // Run-time:
+//   env-var: YKD_PRINT_IR=jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
 
 
@@ -35,7 +36,7 @@ int main(int argc, char **argv) {
   YkLocation loc = yk_location_new();
 
   int res = 0;
-  int i = 11;
+  int i = 20;
   NOOPT_VAL(loc);
   NOOPT_VAL(res);
   NOOPT_VAL(i);
