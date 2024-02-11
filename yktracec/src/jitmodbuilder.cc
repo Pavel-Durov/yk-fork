@@ -1081,14 +1081,16 @@ public:
       }
 
       IRBlock *IB = Loc.getMappedBlock();
-      errs () << "[jitmodbuilder:1080] IRBlock *IB = Loc.getMappedBlock(); FuncName: " << IB->FuncName << ", BBIdx: " << IB->BBIdx << "\n";
+      // DEBUG log
+      // errs () << "[jitmodbuilder:1080] IRBlock *IB = Loc.getMappedBlock(); FuncName: " << IB->FuncName << ", BBIdx: " << IB->BBIdx << "\n";
       
       assert(IB);
       CurBBIdx = IB->BBIdx;
 
       auto [F, BB] = getLLVMAOTFuncAndBlock(IB);
-      errs () << "[jitmodbuilder:1086] BB = getLLVMAOTFuncAndBlock(IB);";
-      BB->dump();
+      // DEBUG log
+      // errs () << "[jitmodbuilder:1086] BB = getLLVMAOTFuncAndBlock(IB);";
+      // BB->dump();
 
       // For outlining to function, we need to reliably detect recursive calls
       // and callbacks from unmappable blocks (i.e. external functions). Thanks
@@ -1102,6 +1104,8 @@ public:
       // deoptimisation as it collects the stackmap calls of inlined functions.
       // We thus use it here as a simple counter to keep track of the call
       // depths.
+
+      errs () << "[jitmodbuilder:1103] BB->isEntryBlock() " << BB->isEntryBlock() << "\n";
       if (BB->isEntryBlock()) {
         LastBB = nullptr;
         errs () << "[jitmodbuilder:1103] LastBB = nullptr;" <<  "\n";
@@ -1120,6 +1124,10 @@ public:
         // If the last block was unmappable or the last instruction was a
         // return, then we are returning from a call. Since we've already
         // processed all instructions in this block, we can just skip it.
+        errs () << "[jitmodbuilder:1122] LastBlockMappable = " << LastBlockMappable <<  "\n";
+        errs () << "[jitmodbuilder:1122] LastInst = ";
+        LastInst -> dump();
+        
         if (!LastBlockMappable) {
           LastBlockMappable = true;
           LastBB = BB;
@@ -1136,6 +1144,7 @@ public:
             assert(CallStack.back()->getParent() == BB);
           }
           LastBB = CallStack.back()->getParent();
+          // TODO: this is the diffrance in execution between SWT and HWT......
           errs () << "[jitmodbuilder:1139] LastBB = CallStack.back()->getParent();" <<  "\n";
           CallStack.pop_back();
           if (CallStack.size() == OutlineBase) {
@@ -1160,7 +1169,7 @@ public:
 #ifndef NDEBUG
       // `BB` should be a successor of the last block executed in this frame.
       if (LastBB) {
-        errs() << "[jitmodbuilder:1158] LastBB \n";
+        errs() << "[jitmodbuilder:1158] Should be a successor of the last block executed in this frame. LastBB \n";
         LastBB -> dump();
 
         bool PredFound = false;
