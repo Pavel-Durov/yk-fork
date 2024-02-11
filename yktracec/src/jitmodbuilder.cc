@@ -1160,7 +1160,7 @@ public:
           LastInst = nullptr; // TODO: When the last block is mappable and last
                               // instruction is RETURN
 #if DEBUG_LOG
-          errs() << "[jitmodbuilder] LastInst is Return, LastInst = nullptr\n"
+          errs() << "[jitmodbuilder] LastInst is Return, LastInst = nullptr\n";
 #endif
               if (!IsSWTrace) {
             assert(CallStack.back()->getParent() == BB);
