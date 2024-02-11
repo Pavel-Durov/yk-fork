@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
   YkLocation loc = yk_location_new();
 
   int res = 0;
-  int i = 20;
+  int i = 11;
   NOOPT_VAL(loc);
   NOOPT_VAL(res);
   NOOPT_VAL(i);

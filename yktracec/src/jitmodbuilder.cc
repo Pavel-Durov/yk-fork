@@ -1206,6 +1206,8 @@ public:
         // to be prematurely terminated.
         if (isa<DbgInfoIntrinsic>(I))
           continue;
+        errs() << "[jitmodbuilder:1209] LastInst = &*I, LastInst:";
+        LastInst->dump();
         LastInst = &*I;
 
         if (isa<CallInst>(I)) {
@@ -1415,6 +1417,9 @@ public:
               CurInstrIdx++;
               assert(isa<CallInst>(I)); // stackmap call
               LastInst = &*I;
+              errs() << "[jitmodbuilder:1420] LastInst = &*I, LastInst:";
+              LastInst->dump();
+
               I++;
               CurInstrIdx++;
 
