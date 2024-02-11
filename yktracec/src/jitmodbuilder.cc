@@ -1132,10 +1132,10 @@ public:
          #if DEBUG_LOG
         
         if (LastInst){
-          errs () << "[jitmodbuilder]  BB is NOT entry block. LastInst is";
+          errs () << "[jitmodbuilder] @@@ BB is NOT entry block. LastInst is";
           LastInst -> dump();
         }else{
-          errs () << "[jitmodbuilder] BB is NOT entry block. LastInst is NULL\n";
+          errs () << "[jitmodbuilder] @@@ BB is NOT entry block. LastInst is NULL\n";
         }
         #endif
 
@@ -1464,10 +1464,10 @@ public:
       LastBB = BB;
     }
     #if DEBUG_LOG
-    errs() << "[jitmodbuilder] LastInst is:";
+    errs() << "[jitmodbuilder] @@@@ LastInst is:";
     LastInst ->dump();
 
-    errs() << "[jitmodbuilder] LastBB is:";
+    errs() << "[jitmodbuilder] @@@@ LastBB is:";
     LastBB -> dump();
     #endif
 
