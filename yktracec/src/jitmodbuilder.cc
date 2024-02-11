@@ -1207,6 +1207,13 @@ public:
         if (isa<DbgInfoIntrinsic>(I))
           continue;
         
+        if (isa<CallInst>(I)){
+          CallInst *CI = cast<CallInst>(I);
+          if (CI->getCalledFunction() && CI->getCalledFunction()->getName() == "yk_trace_basicblock"){
+            continue;
+          }
+        }
+        
         LastInst = &*I;
         errs() << "[jitmodbuilder:1211] LastInst = &*I, LastInst:";
         LastInst->dump();
