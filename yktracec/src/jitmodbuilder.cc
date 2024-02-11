@@ -995,7 +995,7 @@ class JITModBuilder {
       // removed.
       LastBB = CallStack.back()->getParent();
       #if DEBUG_LOG
-      errs () << "[jitmodbuilder] CallStack.back()->getParent();" <<  "\n";
+      errs () << "[jitmodbuilder] LastBB = CallStack.back()->getParent(); \n";
       #endif
       CallStack.pop_back();
     }
@@ -1154,7 +1154,7 @@ public:
         } else if (LastInst && isa<ReturnInst>(LastInst)) {
           LastInst = nullptr; // TODO: When the last block is mappable and last instruction is RETURN
           #if DEBUG_LOG
-          errs () << "[jitmodbuilder] Last Instruction is Return, LastInst = nullptr;" <<  "\n";
+          errs () << "[jitmodbuilder] Last Instruction is Return, LastInst = nullptr; \n" <<  "\n";
           #endif
           if (!IsSWTrace) {
             assert(CallStack.back()->getParent() == BB);
@@ -1162,7 +1162,7 @@ public:
           LastBB = CallStack.back()->getParent();
           
           #if DEBUG_LOG
-          errs () << "[jitmodbuilder] Last Instruction is Return. LastBB = CallStack.back()->getParent();" <<  "\n";
+          errs () << "[jitmodbuilder] Last Instruction is Return. LastBB = CallStack.back()->getParent(); \n";
           #endif
           CallStack.pop_back();
           if (CallStack.size() == OutlineBase) {
