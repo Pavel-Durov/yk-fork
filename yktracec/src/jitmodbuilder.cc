@@ -1125,9 +1125,12 @@ public:
         // return, then we are returning from a call. Since we've already
         // processed all instructions in this block, we can just skip it.
         errs () << "[jitmodbuilder:1122] LastBlockMappable = " << LastBlockMappable <<  "\n";
-        errs () << "[jitmodbuilder:1122] LastInst = ";
-        LastInst -> dump();
         
+        if (LastInst){
+          errs () << "[jitmodbuilder:1122] LastInst = ";
+          LastInst -> dump();
+        }
+
         if (!LastBlockMappable) {
           LastBlockMappable = true;
           LastBB = BB;
