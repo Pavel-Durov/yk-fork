@@ -51,6 +51,9 @@ pub(crate) struct SWTracer {}
 
 impl super::Tracer for SWTracer {
     fn start_collector(self: Arc<Self>) -> Result<Box<dyn TraceCollector>, Box<dyn Error>> {
+        BASIC_BLOCKS.with(|bbs| {
+            bbs.borrow_mut().clear();
+        });
         return Ok(Box::new(SWTTraceCollector {}));
     }
 }
