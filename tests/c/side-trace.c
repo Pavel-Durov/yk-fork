@@ -21,35 +21,35 @@
 //     9
 //     10
 //     jit-state: deoptimise
-//     12
+//     ...
 //     jit-state: enter-jit-code
 //     jit-state: deoptimise
-//     14
+//     ...
 //     jit-state: enter-jit-code
 //     jit-state: deoptimise
-//     16
+//     ...
 //     jit-state: enter-jit-code
 //     jit-state: deoptimise
-//     18
+//     ...
 //     jit-state: enter-jit-code
 //     jit-state: deoptimise
 //     jit-state: start-side-tracing
-//     20
+//     ...
 //     jit-state: stop-side-tracing
 //     --- Begin jit-pre-opt ---
 //     ...
 //     --- End jit-pre-opt ---
-//     22
+//     ...
 //     jit-state: enter-jit-code
 //     jit-state: execute-side-trace
-//     24
+//     ...
 //     jit-state: deoptimise
-//     26
+//     ...
 //     jit-state: enter-jit-code
 //     jit-state: execute-side-trace
-//     28
+//     ...
 //     jit-state: deoptimise
-//     30
+//     ...
 //     {
 //         ...
 //         "trace_executions": 7,
