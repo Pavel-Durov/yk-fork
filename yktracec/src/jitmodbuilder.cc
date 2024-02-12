@@ -995,7 +995,8 @@ class JITModBuilder {
       // removed.
       LastBB = CallStack.back()->getParent();
 #if DEBUG_LOG
-      errs() << "[jitmodbuilder] LastBB = CallStack.back()->getParent(); \n";
+      errs() << "[jitmodbuilder] SIDE TRACE LastBB = CallStack.back()->getParent(); \n";
+      LastBB->dump();
 #endif
       CallStack.pop_back();
     }
@@ -1079,10 +1080,8 @@ public:
         LastInst = nullptr;
         LastBB = nullptr;
 #if DEBUG_LOG
-        errs() << "[jitmodbuilder] UnmappableRegion - LastInst = nullptr;"
-               << "\n";
-        errs() << "[jitmodbuilder] UnmappableRegion - LastBB = nullptr;"
-               << "\n";
+        errs() << "[jitmodbuilder] UnmappableRegion - LastInst = nullptr\n";
+        errs() << "[jitmodbuilder] UnmappableRegion - LastBB = nullptr\n";
 #endif
         continue;
       }
@@ -1094,8 +1093,8 @@ public:
 
       auto [F, BB] = getLLVMAOTFuncAndBlock(IB);
 #if DEBUG_LOG
-      errs() << "[jitmodbuilder] getLLVMAOTFuncAndBlock(IB)";
-      BB->dump();
+      errs() << "[jitmodbuilder] getLLVMAOTFuncAndBlock(IB)\n";
+      // BB->dump();
 #endif
 // For outlining to function, we need to reliably detect recursive calls
 // and callbacks from unmappable blocks (i.e. external functions). Thanks
@@ -1116,8 +1115,7 @@ public:
       if (BB->isEntryBlock()) {
         LastBB = nullptr;
 #if DEBUG_LOG
-        errs() << "[jitmodbuilder] BB is entry block. LastBB = nullptr;"
-               << "\n";
+        errs() << "[jitmodbuilder] BB->isEntryBlock(). LastBB = nullptr;\n";
 #endif
         if (!LastBlockMappable) {
           // Unmappable code called back into mappable code.
@@ -1162,14 +1160,14 @@ public:
 #if DEBUG_LOG
           errs() << "[jitmodbuilder] LastInst is Return, LastInst = nullptr\n";
 #endif
-              if (!IsSWTrace) {
+          if (!IsSWTrace) {
             assert(CallStack.back()->getParent() == BB);
           }
           LastBB = CallStack.back()->getParent();
 
 #if DEBUG_LOG
-          errs() << "[jitmodbuilder] LastInst is Return. LastBB = "
-                    "CallStack.back()->getParent(); \n";
+          errs() << "[jitmodbuilder] LastInst is Return. LastBB = CallStack.back()->getParent();";
+          LastBB -> dump();
 #endif
           CallStack.pop_back();
           if (CallStack.size() == OutlineBase) {
