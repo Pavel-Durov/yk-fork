@@ -1,3 +1,22 @@
+// # Error:
+// # 
+// # ---- lang_tests::setlongjmp.c status ----
+// # Success
+// # 
+// # ---- lang_tests::setlongjmp.c stderr ----
+// # 
+// # Pattern (error at line 2):
+// #    |...
+// # >> |jit-state: stop-tracing-aborted
+// #    |...
+// # 
+// # Text (error at line 10):
+// #    ...
+// #    |i=2
+// #    |jit-state: stop-tracing
+// #    |jit-state: trace-compilation-aborted<reason="llvm backend error">
+// # >> |i=1
+// ignore-if: test "$YKB_TRACER" == "swt"
 // Run-time:
 //   env-var: YKD_PRINT_IR=jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1

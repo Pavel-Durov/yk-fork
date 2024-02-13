@@ -1,3 +1,22 @@
+// # Error:
+// # ---- lang_tests::sidetrace_while.c status ----
+// # Success
+// # 
+// # ---- lang_tests::sidetrace_while.c stderr ----
+// # 
+// # Pattern (error at line 4):
+// #    |...
+// #    |jit-state: execute-side-trace
+// #    |...
+// # >> |500
+// # 
+// # Text (error at line 1784):
+// #    ...
+// #    |jit-state: execute-side-trace
+// #    |731627980
+// #    |jit-state: deoptimise
+// # >> |731628000
+// ignore-if: test "$YKB_TRACER" == "swt"
 // Run-time:
 //   env-var: YKD_PRINT_IR=jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1

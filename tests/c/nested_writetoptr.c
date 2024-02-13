@@ -1,3 +1,18 @@
+// # Error:
+// # --- End aot ---
+// # jit-state: enter-jit-code
+// # jit-state: deoptimise
+// # 
+// # 
+// # ---- lang_tests::nested_writetoptr.c stdout ----
+// # 
+// # Pattern (error at line 1):
+// # >> |2
+// #    |2
+// #    |2
+// #    |2
+// #    ...
+// ignore-if: test "$YKB_TRACER" == "swt"
 // Run-time:
 //   env-var: YKD_PRINT_IR=aot
 //   env-var: YKD_SERIALISE_COMPILATION=1

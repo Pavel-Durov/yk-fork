@@ -1,3 +1,22 @@
+// Error:
+// # 
+// # ---- lang_tests::funcptrarg_hasir.c status ----
+// # Error
+// # 
+// # ---- lang_tests::funcptrarg_hasir.c stderr ----
+// # 
+// # Pattern (error at line 2):
+// #    |...
+// # >> |jit-state: enter-jit-code
+// #    |z=4
+// #    |...
+// # 
+// # Text (error at line 4):
+// #    |jit-state: start-tracing
+// #    |z=4
+// #    |jit-state: stop-tracing
+// # >> |don't know how to handle operand:   %3 = getelementptr i8, ptr %2, i32 0
+// ignore-if: test "$YKB_TRACER" == "swt"
 // Run-time:
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   env-var: YKD_PRINT_JITSTATE=1

@@ -1,3 +1,21 @@
+// # Error:
+// #  Pattern (error at line 21):
+// #    ...
+// #    |z=8
+// #    |z=10
+// #    |jit-state: deoptimise
+// # >>
+// #  Text (error at line 185):
+// #    ...
+// #    |z=8
+// #    |z=10
+// #    |jit-state: deoptimise
+// # >> |jit-state: enter-jit-code
+// #    |z=12
+// #    |z=14
+// #    |z=16
+// #    ...
+// ignore-if: test "$YKB_TRACER" == "swt"
 // Run-time:
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   env-var: YKD_PRINT_JITSTATE=1

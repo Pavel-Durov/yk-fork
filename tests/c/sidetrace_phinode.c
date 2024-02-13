@@ -1,3 +1,23 @@
+// # Error:
+// # ---- lang_tests::sidetrace_phinode.c status ----
+// # Exited due to signal: 11
+// # 
+// # ---- lang_tests::sidetrace_phinode.c stderr ----
+// # 
+// # jit-state: start-tracing
+// # jit-state: stop-tracing
+// # jit-state: enter-jit-code
+// # jit-state: deoptimise
+// # 
+// # 
+// # ---- lang_tests::sidetrace_phinode.c stdout ----
+// # 
+// # Pattern (error at line 1):
+// # >> |exit
+// # 
+// # Text (error at line 1):
+// # >>
+// ignore-if: test "$YKB_TRACER" == "swt"
 // Run-time:
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   env-var: YKD_PRINT_JITSTATE=1

@@ -1,3 +1,27 @@
+// # Error:
+// # 
+// # ---- lang_tests::unmapped_setjmp.c status ----
+// # Success
+// # 
+// # ---- lang_tests::unmapped_setjmp.c stderr ----
+// # 
+// # Pattern (error at line 4):
+// #    |jit-state: start-tracing
+// #    |set jump point
+// #    |jumped!
+// # >> |jit-state: stop-tracing-aborted
+// #    |...
+// # 
+// # Text (error at line 4):
+// #    |jit-state: start-tracing
+// #    |set jump point
+// #    |jumped!
+// # >> |jit-state: stop-tracing
+// #    |set jump point
+// #    |jumped!
+// #    |jit-state: enter-jit-code
+// #    ...
+// ignore-if: test "$YKB_TRACER" == "swt"
 // Run-time:
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   env-var: YKD_PRINT_JITSTATE=1

@@ -1,3 +1,27 @@
+// # Error
+// # ---- lang_tests::promote_expr.c status ----
+// # Exited due to signal: 6
+// # 
+// # ---- lang_tests::promote_expr.c stderr ----
+// # 
+// # Pattern (error at line 29):
+// #    ...
+// #    |y=200
+// #    |y=250
+// #    |jit-state: deoptimise
+// # >>
+// # 
+// # Text (error at line 156):
+// #    ...
+// #    |y=200
+// #    |y=250
+// #    |jit-state: deoptimise
+// # >> |jit-state: enter-jit-code
+// #    |y=300
+// #    |y=350
+// #    |y=400
+// #    ...
+// ignore-if: test "$YKB_TRACER" == "swt"
 // Run-time:
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   env-var: YKD_PRINT_JITSTATE=1

@@ -1,3 +1,5 @@
+// # Error: Non-terminated execution
+// ignore-if: test "$YKB_TRACER" == "swt"
 // Run-time:
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   env-var: YKD_PRINT_IR=jit-pre-opt

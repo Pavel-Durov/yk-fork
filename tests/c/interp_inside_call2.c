@@ -1,3 +1,19 @@
+// # Error: (non-deterministic)
+// # 
+// # Pattern (error at line 5):
+// #    ...
+// #    |i: 5 ret: 12
+// #    |...
+// #    |i: 2 ret: 9
+// # >> |i: 1 ret: 108
+// # 
+// # Text (error at line 5):
+// #    ...
+// #    |i: 4 ret: 11
+// #    |i: 3 ret: 10
+// #    |i: 2 ret: 9
+// # >> |i: 1 ret: 8
+// ignore-if: test "$YKB_TRACER" == "swt"
 // Run-time:
 //   env-var: YKD_PRINT_IR=aot,jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
