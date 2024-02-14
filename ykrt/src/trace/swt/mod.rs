@@ -2,7 +2,7 @@
 
 use crate::frame::BitcodeSection;
 
-use super::{errors::InvalidTraceError, TraceCollector, AOTTraceIterator, TracedAOTBlock};
+use super::{errors::InvalidTraceError, TraceRecorder, AOTTraceIterator, TracedAOTBlock};
 use std::sync::Once;
 use std::{cell::RefCell, collections::HashMap, error::Error, ffi::CString, sync::Arc};
 
@@ -50,11 +50,13 @@ pub fn trace_basicblock(function_index: usize, block_index: usize) {
 pub(crate) struct SWTracer {}
 
 impl super::Tracer for SWTracer {
-    fn start_collector(self: Arc<Self>) -> Result<Box<dyn TraceCollector>, Box<dyn Error>> {
+    fn start_recorder(self: Arc<Self>) -> Result<Box<dyn TraceRecorder>, Box<dyn Error>> {
         BASIC_BLOCKS.with(|bbs| {
             bbs.borrow_mut().clear();
         });
-        return Ok(Box::new(SWTTraceCollector {}));
+        return Ok(Box::new(SWTTraceRecorder {
+            promotions: RefCell::new(Vec::new()),
+        }));
     }
 }
 
@@ -64,10 +66,12 @@ impl SWTracer {
     }
 }
 
-struct SWTTraceCollector {}
+struct SWTTraceRecorder {
+    promotions: RefCell<Vec<usize>>,
+}
 
-impl TraceCollector for SWTTraceCollector {
-    fn stop_collector(self: Box<Self>) -> Result<Box<dyn AOTTraceIterator>, InvalidTraceError> {
+impl TraceRecorder for SWTTraceRecorder {
+    fn stop(self: Box<Self>) -> Result<(Box<dyn AOTTraceIterator>, Box<[usize]>), InvalidTraceError> {
         let mut aot_blocks: Vec<TracedAOTBlock> = vec![];
         BASIC_BLOCKS.with(|tb| {
             FUNC_NAMES.with(|fnames| {
@@ -109,10 +113,17 @@ impl TraceCollector for SWTTraceCollector {
         if aot_blocks.is_empty() {
             return Err(InvalidTraceError::EmptyTrace);
         } else {
-            return Ok(Box::new(SWTraceIterator {
-                trace: aot_blocks.into_iter(),
-            }));
+            return Ok((
+                Box::new(SWTraceIterator {
+                    trace: aot_blocks.into_iter(),
+                }),
+                self.promotions.into_inner().into_boxed_slice(),
+            ))
         }
+    }
+    fn promote_usize(&self, val: usize) -> bool{
+        // Return false by default until implemented.
+        return false;
     }
 }
 
