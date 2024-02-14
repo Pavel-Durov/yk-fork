@@ -1,26 +1,4 @@
-// # Error: 
-// # ---- lang_tests::promote.c status ----
-// # Exited due to signal: 6
-// # 
-// # ---- lang_tests::promote.c stderr ----
-// # 
-// # Pattern (error at line 31):
-// #    ...
-// #    |y=400
-// #    |y=500
-// #    |jit-state: deoptimise
-// # >>
-// # 
-// # Text (error at line 160):
-// #    ...
-// #    |y=400
-// #    |y=500
-// #    |jit-state: deoptimise
-// # >> |jit-state: enter-jit-code
-// #    |y=600
-// #    |y=700
-// #    |y=800
-// #    ...
+// # Promotion is not implemented in swt
 // ignore-if: test "$YKB_TRACER" == "swt"
 // Run-time:
 //   env-var: YKD_SERIALISE_COMPILATION=1
