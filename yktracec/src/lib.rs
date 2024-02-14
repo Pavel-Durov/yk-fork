@@ -9,8 +9,6 @@
 use libc::{c_void, size_t};
 use std::ffi::{c_char, c_int};
 
-pub mod promote;
-
 extern "C" {
     pub fn __yktracec_irtrace_compile(
         func_names: *const *const c_char,
@@ -23,5 +21,7 @@ extern "C" {
         jitcallstack: *const c_void,
         aotvalsptr: *const c_void,
         aotvalslen: usize,
+        promotions: *const usize,
+        promotionslen: usize,
     ) -> *const c_void;
 }
