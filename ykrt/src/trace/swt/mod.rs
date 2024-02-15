@@ -2,7 +2,7 @@
 
 use crate::frame::BitcodeSection;
 
-use super::{errors::InvalidTraceError, TraceRecorder, AOTTraceIterator, TracedAOTBlock};
+use super::{errors::InvalidTraceError, AOTTraceIterator, TraceRecorder, TracedAOTBlock};
 use std::sync::Once;
 use std::{cell::RefCell, collections::HashMap, error::Error, ffi::CString, sync::Arc};
 
@@ -71,7 +71,9 @@ struct SWTTraceRecorder {
 }
 
 impl TraceRecorder for SWTTraceRecorder {
-    fn stop(self: Box<Self>) -> Result<(Box<dyn AOTTraceIterator>, Box<[usize]>), InvalidTraceError> {
+    fn stop(
+        self: Box<Self>,
+    ) -> Result<(Box<dyn AOTTraceIterator>, Box<[usize]>), InvalidTraceError> {
         let mut aot_blocks: Vec<TracedAOTBlock> = vec![];
         BASIC_BLOCKS.with(|tb| {
             FUNC_NAMES.with(|fnames| {
@@ -105,7 +107,10 @@ impl TraceRecorder for SWTTraceRecorder {
                             func_name: name.to_owned(),
                             bb: tb.block_index,
                         },
-                        _ => panic!("Failed to get function name by index {:?}", tb.function_index),
+                        _ => panic!(
+                            "Failed to get function name by index {:?}",
+                            tb.function_index
+                        ),
                     })
                     .collect();
             })
@@ -118,10 +123,10 @@ impl TraceRecorder for SWTTraceRecorder {
                     trace: aot_blocks.into_iter(),
                 }),
                 self.promotions.into_inner().into_boxed_slice(),
-            ))
+            ));
         }
     }
-    fn promote_usize(&self, val: usize) -> bool{
+    fn promote_usize(&self, val: usize) -> bool {
         // Return false by default until implemented.
         return false;
     }
