@@ -1255,8 +1255,9 @@ public:
               if (const IRBlock *NextIB = MaybeNextIB.getMappedBlock()) {
                 if (IsSWTrace) {
                   // YKFIXME: outline indirect calls in swt.
-                  // Peeking ahead in swt might give us a mappable entry block, 
-                  // however we don't know if there was an umappable call in between. 
+                  // Peeking ahead in swt might give us a mappable entry block,
+                  // however we don't know if there was an umappable call in
+                  // between.
                   CF = nullptr;
                 } else {
                   CF = AOTMod->getFunction(NextIB->FuncName);
@@ -1298,7 +1299,11 @@ public:
               // setjmp/longjmp, so for now simply abort this trace.
               // See: https://github.com/ykjit/yk/issues/610
               return nullptr;
-            } else if (S == "yk_trace_basicblock") {
+            } else if (IsSWTrace && S == "yk_trace_basicblock") {
+              // YKFIXME: We don't want jitmodbuilder to be aware of any
+              // tracer-specifc logic (swt in this case). We are leaving this
+              // condition here for now, with intention to remove it in the
+              // future.
               continue;
             }
             handleCallInst(CI, CF, CurBBIdx, CurInstrIdx);
