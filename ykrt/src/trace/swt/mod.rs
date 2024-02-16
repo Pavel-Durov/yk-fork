@@ -54,9 +54,7 @@ impl super::Tracer for SWTracer {
         BASIC_BLOCKS.with(|bbs| {
             bbs.borrow_mut().clear();
         });
-        return Ok(Box::new(SWTTraceRecorder {
-            promotions: RefCell::new(Vec::new()),
-        }));
+        Ok(Box::new(SWTTraceRecorder {}))
     }
 }
 
@@ -66,14 +64,10 @@ impl SWTracer {
     }
 }
 
-struct SWTTraceRecorder {
-    promotions: RefCell<Vec<usize>>,
-}
+struct SWTTraceRecorder {}
 
 impl TraceRecorder for SWTTraceRecorder {
-    fn stop(
-        self: Box<Self>,
-    ) -> Result<(Box<dyn AOTTraceIterator>, Box<[usize]>), InvalidTraceError> {
+    fn stop(self: Box<Self>) -> Result<Box<dyn AOTTraceIterator>, InvalidTraceError> {
         let mut aot_blocks: Vec<TracedAOTBlock> = vec![];
         BASIC_BLOCKS.with(|tb| {
             FUNC_NAMES.with(|fnames| {
@@ -116,19 +110,12 @@ impl TraceRecorder for SWTTraceRecorder {
             })
         });
         if aot_blocks.is_empty() {
-            return Err(InvalidTraceError::EmptyTrace);
+            Err(InvalidTraceError::EmptyTrace)
         } else {
-            return Ok((
-                Box::new(SWTraceIterator {
-                    trace: aot_blocks.into_iter(),
-                }),
-                self.promotions.into_inner().into_boxed_slice(),
-            ));
+            Ok(Box::new(SWTraceIterator {
+                trace: aot_blocks.into_iter(),
+            }))
         }
-    }
-    fn promote_usize(&self, val: usize) -> bool {
-        // Return false by default until implemented.
-        return false;
     }
 }
 
