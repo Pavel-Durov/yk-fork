@@ -16,7 +16,7 @@
 // #    |731627980
 // #    |jit-state: deoptimise
 // # >> |731628000
-// ignore-if: test "$YKB_TRACER" == "swt"
+// # ignore-if: test "$YKB_TRACER" == "swt"
 // Run-time:
 //   env-var: YKD_PRINT_IR=jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1

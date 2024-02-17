@@ -318,6 +318,7 @@ unsafe extern "C" fn __ykrt_deopt(
                 match l {
                     SMLocation::Register(reg, _size, _off, _extra) => {
                         let _val = unsafe { registers.get(*reg) };
+                        println!("[deopt] SMLocation::Register: {:?}", _val);
                         todo!();
                     }
                     SMLocation::Direct(reg, off, _size) => {
@@ -327,10 +328,12 @@ unsafe extern "C" fn __ykrt_deopt(
                         let addr = unsafe { registers.get(*reg) as *mut u8 };
                         let addr = unsafe { addr.offset(isize::try_from(*off).unwrap()) };
                         ykctrlpvars[i] = addr as u64;
+                        println!("[deopt] SMLocation::Direct: {:?}", addr);
                     }
                     SMLocation::Indirect(reg, off, size) => {
                         let addr = unsafe { registers.get(*reg) as *mut u8 };
                         let addr = unsafe { addr.offset(isize::try_from(*off).unwrap()) };
+                        println!("[deopt] SMLocation::Indirect: size {:?}", *size);
                         let v = match *size {
                             1 => unsafe { ptr::read::<u8>(addr) as u64 },
                             2 => unsafe { ptr::read::<u16>(addr as *mut u16) as u64 },
@@ -338,10 +341,12 @@ unsafe extern "C" fn __ykrt_deopt(
                             8 => unsafe { ptr::read::<u64>(addr as *mut u64) },
                             _ => unreachable!(),
                         };
+                        println!("[deopt] SMLocation::Indirect: {:?}", v);
                         ykctrlpvars[i] = v;
                     }
                     SMLocation::Constant(v) => {
                         ykctrlpvars[i] = *v as u64;
+                        println!("[deopt] SMLocation::Indirect: {:?}", v);
                     }
                     SMLocation::LargeConstant(_v) => {
                         todo!();
@@ -384,7 +389,7 @@ unsafe extern "C" fn __ykrt_deopt(
         rsp,
         nfi: None,
     };
-
+    
     let infoptr = Box::into_raw(Box::new(&mut info));
 
     let bc = crate::compile::jitc_llvm::llvmbc_section();
