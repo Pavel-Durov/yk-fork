@@ -1,5 +1,46 @@
-// # Promotion is not implemented in swt
-// ignore-if: test "$YKB_TRACER" == "swt"
+// Run-time:
+//   env-var: YKD_SERIALISE_COMPILATION=1
+//   env-var: YKD_PRINT_JITSTATE=1
+//   env-var: YKD_PRINT_IR=jit-post-opt
+//   stderr:
+//     jit-state: start-tracing
+//     y=100
+//     jit-state: stop-tracing
+//     --- Begin jit-post-opt ---
+//     ...
+//     define ptr @__yk_compiled_trace_0(...
+//       ...
+//       %{{cond}} = icmp eq i64 {{x}}, 100
+//       br i1 %{{cond}}, label %{{succbb}}, label %{{failbb}}
+//
+//     {{failbb}}:...
+//       ...
+//       %{{deopt}} = call ptr (...) @llvm.experimental.deoptimize...
+//       ...
+//       ret ...
+//
+//     {{succbb}}:...
+//       ...
+//       %{{res}} = add {{size_t}} %{{arg1}}, 100...
+//       ...
+//       %{{cond2}} = icmp eq i64 %{{x2}}, 100
+//       br i1 %{{cond2}}, label %{{succbb}}, label %{{failbb}}
+//     }
+//     ...
+//     --- End jit-post-opt ---
+//     y=200
+//     jit-state: enter-jit-code
+//     y=300
+//     y=400
+//     y=500
+//     jit-state: deoptimise
+//     y=700
+//     jit-state: enter-jit-code
+//     y=800
+//     y=900
+//     y=1000
+//     jit-state: deoptimise
+//     y=1999
 
 // Check that promotions are guarded correctly.
 
