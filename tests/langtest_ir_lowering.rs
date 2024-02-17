@@ -13,6 +13,7 @@ fn main() {
 
     let tempdir = TempDir::new().unwrap();
     LangTester::new()
+        .comment_prefix("#")
         .test_dir("ir_lowering")
         .test_path_filter(|p| p.extension().and_then(|p| p.to_str()) == Some("ll"))
         .test_extract(move |p| {

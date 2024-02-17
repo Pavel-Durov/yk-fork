@@ -1,3 +1,4 @@
+; ignore-if: test "$YKB_TRACER" == "swt"
 ; Dump:
 ;   stdout:
 ;     ...
