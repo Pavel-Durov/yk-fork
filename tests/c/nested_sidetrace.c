@@ -1,31 +1,3 @@
-// # Error:
-// # ---- lang_tests::nested_sidetrace.c status ----
-// # Success
-// # 
-// # ---- lang_tests::nested_sidetrace.c stderr ----
-// # 
-// # Pattern (error at line 18):
-// #    ...
-// #    |9
-// #    |10
-// #    |jit-state: deoptimise
-// # >> |12
-// #    |jit-state: enter-jit-code
-// #    |jit-state: deoptimise
-// #    |14
-// #    ...
-// # 
-// # Text (error at line 177):
-// #    ...
-// #    |9
-// #    |10
-// #    |jit-state: deoptimise
-// # >> |11
-// #    |jit-state: enter-jit-code
-// #    |jit-state: deoptimise
-// #    |12
-// #    ...
-// ignore-if: test "$YKB_TRACER" == "swt"
 // Run-time:
 //   env-var: YKD_PRINT_IR=jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1

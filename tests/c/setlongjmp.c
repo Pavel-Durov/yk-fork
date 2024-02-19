@@ -16,7 +16,8 @@
 // #    |jit-state: stop-tracing
 // #    |jit-state: trace-compilation-aborted<reason="llvm backend error">
 // # >> |i=1
-// ignore-if: test "$YKB_TRACER" == "swt"
+// # debug somewhere in yktracec/src/.ykllvmwrap.cc[433-450]
+// ignore-if: test "$YKB_TRACER" == "swt" 
 // Run-time:
 //   env-var: YKD_PRINT_IR=jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1

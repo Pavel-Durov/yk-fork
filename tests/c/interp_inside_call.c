@@ -1,24 +1,3 @@
-// # Error:
-// # jit-state: enter-jit-code
-// # jit-state: deoptimise
-// # 
-// # 
-// # ---- lang_tests::interp_inside_call.c stdout ----
-// # 
-// # Pattern (error at line 5):
-// #    ...
-// #    |i: 5 ret: 9
-// #    |...
-// #    |i: 2 ret: 6
-// # >> |i: 1 ret: 105
-// # 
-// # Text (error at line 5):
-// #    ...
-// #    |i: 4 ret: 8
-// #    |i: 3 ret: 7
-// #    |i: 2 ret: 6
-// # >> |i: 1 ret: -114868108
-// ignore-if: test "$YKB_TRACER" == "swt"
 // Run-time:
 //   env-var: YKD_PRINT_IR=aot,jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
