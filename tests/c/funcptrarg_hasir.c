@@ -1,4 +1,4 @@
-// Error:
+// # Error:
 // # 
 // # ---- lang_tests::funcptrarg_hasir.c status ----
 // # Error
