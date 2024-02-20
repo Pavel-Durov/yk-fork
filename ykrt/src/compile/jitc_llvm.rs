@@ -64,6 +64,7 @@ impl Compiler for JITCLLVM {
             )
         };
         if ret.is_null() {
+            println!("[jitc_llvm] trace compile result is null");
             // The LLVM backend is now legacy code and is pending deletion, so it's not worth us
             // spending time auditing all of the failure modes and categorising them into
             // recoverable/temporary. So for now we say any error is temporary.

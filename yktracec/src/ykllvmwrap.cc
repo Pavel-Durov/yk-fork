@@ -430,6 +430,7 @@ __yktracec_irtrace_compile(char *FuncNames[], size_t BBs[], size_t TraceLen,
 
   // If we failed to build the trace, return null.
   if (JITMod == nullptr) {
+    errs() << "[ykllvmwrap] JITMod == nullptr" << "\n";
     return nullptr;
   }
 
