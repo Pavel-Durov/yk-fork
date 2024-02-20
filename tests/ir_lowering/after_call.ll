@@ -1,5 +1,3 @@
-; # Error: Unrecoverable error: Parse error: cannot parse bool value: 3
-; ignore-if: test "$YKB_TRACER" == "swt"
 ; Dump:
 ;   stdout:
 ;     ...
