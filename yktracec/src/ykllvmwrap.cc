@@ -422,15 +422,17 @@ __yktracec_irtrace_compile(char *FuncNames[], size_t BBs[], size_t TraceLen,
   // we have assembled the trace we no longer need hold on to the AOT module as
   // it isn't needed for compilation.
   ThreadAOTMod->withModuleDo([&](Module &AOTMod) {
+    errs() << "[ykllvmwrap] AOTMod";
     DIP.print(DebugIR::AOT, &AOTMod);
     std::tie(JITMod, TraceName, AOTMappingVec, GuardCount) =
         createModule(&AOTMod, FuncNames, BBs, TraceLen, CallStack, AOTValsPtr,
                      AOTValsLen, (uintptr_t *)Promotions, PromotionsLen);
+    errs() << "[ykllvmwrap] createModule\n";
   });
 
   // If we failed to build the trace, return null.
   if (JITMod == nullptr) {
-    errs() << "[ykllvmwrap] JITMod == nullptr" << "\n";
+    errs() << "[ykllvmwrap] JITMod == nullptr \n";
     return nullptr;
   }
 

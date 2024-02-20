@@ -1061,6 +1061,7 @@ public:
   Module *createModule() {
     size_t CurBBIdx;
     size_t CurInstrIdx;
+    errs() << "[jitmodbuilder] createmodule\n";
     auto tracer = std::getenv("YKB_TRACER");
     if (tracer) {
       IsSWTrace = strcmp(tracer, "swt") == 0;
@@ -1298,6 +1299,7 @@ public:
               // FIXME: We currently can't deal with traces containing
               // setjmp/longjmp, so for now simply abort this trace.
               // See: https://github.com/ykjit/yk/issues/610
+              errs() << "[jitmodbuilder] early return: " << S <<  "\n";
               return nullptr;
             } else if (IsSWTrace && S == "yk_trace_basicblock") {
               // YKFIXME: We don't want jitmodbuilder to be aware of any
@@ -1416,6 +1418,7 @@ public:
       Builder.CreateBr(LoopEntryBB);
     }
     finalise(AOTMod, &Builder);
+    errs() << "[jitmodbuilder] result JITMod is null: " << JITMod <<  "\n";
     return JITMod;
   }
 
