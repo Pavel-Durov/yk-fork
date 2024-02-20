@@ -1146,6 +1146,8 @@ public:
         }
       }
 
+      errs() << "OutlineBase: " << OutlineBase << ", Outlining: " << Outlining << "\n";
+
 #ifndef NDEBUG
       // `BB` should be a successor of the last block executed in this frame.
       if (LastBB) {
@@ -1176,7 +1178,7 @@ public:
         if (isa<DbgInfoIntrinsic>(I))
           continue;
         LastInst = &*I;
-
+        I->dump();
         if (isa<CallInst>(I)) {
           if (isa<IntrinsicInst>(I)) {
             Intrinsic::ID IID = cast<CallBase>(I)->getIntrinsicID();
@@ -1284,8 +1286,11 @@ public:
                 errs() << "InlineAsm is currently not supported.";
                 exit(EXIT_FAILURE);
               }
-              copyInstruction(&Builder, (Instruction *)&*CI, CurBBIdx,
-                              CurInstrIdx);
+              errs() << "[jitmodbuilder] inlineasm. Outlining: " << Outlining << "\n";
+              if (!Outlining) {
+                copyInstruction(&Builder, (Instruction *)&*CI, CurBBIdx,
+                                CurInstrIdx);
+              }
               break;
             }
           } else if (CF->getName().starts_with(PromoteRecFnPrefix)) {
