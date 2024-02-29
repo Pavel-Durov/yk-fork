@@ -90,9 +90,14 @@ cargo -Z unstable-options build --build-plan -p ykcapi | \
 cargo -Z unstable-options build --build-plan -p ykrt | \
     awk '/yk_testing/ { ec=1 } /yk_jitstate_debug/ { ec=1 } END {exit ec}'
 
-for i in $(seq 10); do
-    RUST_TEST_SHUFFLE=1 cargo test
-    YKD_NEW_CODEGEN=1 RUST_TEST_SHUFFLE=1 cargo test
+TRACERS="hwt swt"
+
+for tracer in $TRACERS; do 
+    echo "Running ${tracer} tests"
+    for i in $(seq 10); do
+        YKB_TRACER="${tracer}" RUST_TEST_SHUFFLE=1 cargo test
+        YKB_TRACER="${tracer}" YKD_NEW_CODEGEN=1 RUST_TEST_SHUFFLE=1 cargo test
+    done
 done
 
 # Test with LLVM sanitisers
@@ -131,11 +136,13 @@ export YKB_YKLLVM_BUILD_ARGS="define:CMAKE_C_COMPILER=/usr/bin/clang,define:CMAK
 cargo -Z unstable-options build --release --build-plan -p ykcapi | \
     awk '/yk_testing/ { ec=1 } /yk_jitstate_debug/ { ec=1 } END {exit ec}'
 
-cargo build --release -p ykcapi
-
-for i in $(seq 10); do
-    RUST_TEST_SHUFFLE=1 cargo test --release
-    YKD_NEW_CODEGEN=1 RUST_TEST_SHUFFLE=1 cargo test --release
+for tracer in $TRACERS; do 
+    YKB_TRACER="${tracer}" cargo build --release -p ykcapi
+    echo "Running ${tracer} tests"
+    for i in $(seq 10); do
+        YKB_TRACER="${tracer}" RUST_TEST_SHUFFLE=1 cargo test --release
+        YKB_TRACER="${tracer}" YKD_NEW_CODEGEN=1 RUST_TEST_SHUFFLE=1 cargo test --release
+    done
 done
 
 # We want to check that the benchmarks build and run correctly, but want to

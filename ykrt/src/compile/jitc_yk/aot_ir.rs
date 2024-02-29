@@ -204,7 +204,7 @@ impl InstructionID {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub(crate) struct BlockID {
     func_idx: FuncIdx,
     block_idx: BlockIdx,
@@ -229,7 +229,7 @@ impl BlockID {
 
 #[deku_derive(DekuRead)]
 #[derive(Debug, Hash, Eq, PartialEq)]
-pub(crate) struct LocalVariableOperand(pub(crate) InstructionID);
+pub(crate) struct LocalVariableOperand(InstructionID);
 
 impl LocalVariableOperand {
     pub(crate) fn instr_id(&self) -> &InstructionID {
@@ -260,7 +260,7 @@ pub(crate) struct TypeOperand {
 #[deku_derive(DekuRead)]
 #[derive(Debug)]
 pub(crate) struct BlockOperand {
-    pub(crate) bb_idx: BlockIdx,
+    bb_idx: BlockIdx,
 }
 
 impl IRDisplay for BlockOperand {
@@ -398,6 +398,11 @@ pub(crate) struct Instruction {
 }
 
 impl Instruction {
+    /// Return the number of operands in this instruction.
+    pub(crate) fn operands_len(&self) -> usize {
+        self.operands.len()
+    }
+
     /// Returns the operand at the specified index. Panics if the index is out of bounds.
     pub(crate) fn operand(&self, idx: usize) -> &Operand {
         &self.operands[idx]
