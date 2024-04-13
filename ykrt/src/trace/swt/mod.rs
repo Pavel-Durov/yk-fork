@@ -63,7 +63,7 @@ pub extern "C" fn yk_trace_basicblock(
     trace_type: TraceType,
 ) {
     MTThread::with(|mtt| {
-        if mtt.is_tracing() && trace_type == TraceType::BasicBlock {
+        if mtt.is_tracing() {
             BASIC_BLOCKS.with(|v| {
                 v.borrow_mut().push(TracingBBlock {
                     function_index,
