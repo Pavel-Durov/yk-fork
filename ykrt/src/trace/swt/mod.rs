@@ -18,6 +18,14 @@ use std::{
 #[cfg(target_arch = "x86_64")]
 pub(crate) mod patch;
 
+#[repr(C)]
+#[derive(Debug, Eq, Copy, PartialEq, Clone)]
+enum TraceType {
+    BasicBlock = 0,
+    ExternalCall = 1,
+    IndirectCall = 2,
+}
+
 #[derive(Debug, Eq, PartialEq, Clone)]
 struct TracingBBlock {
     function_index: usize,
@@ -73,14 +81,6 @@ pub extern "C" fn yk_trace_basicblock(
             })
         }
     });
-}
-
-#[repr(C)]
-#[derive(Debug, Eq, Copy, PartialEq, Clone)]
-enum TraceType {
-    BasicBlock = 0,
-    ExternalCall = 1,
-    IndirectCall = 2,
 }
 
 extern "C" {
