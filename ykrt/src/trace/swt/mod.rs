@@ -11,7 +11,7 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     error::Error,
-    ffi::CString,
+    ffi::{CString, c_void},
     sync::{Arc, LazyLock},
 };
 
@@ -81,6 +81,13 @@ pub extern "C" fn yk_trace_basicblock(
             })
         }
     });
+}
+
+#[cfg(tracer_swt)]
+#[no_mangle]
+pub extern "C" fn yk_trace_indirect_call(function_ptr: *const std::ffi::c_void) {
+    println!("@@ yk_trace_indirect_call function_ptr: {:p}", function_ptr);
+    // TODO: lookup function in LLVM IR
 }
 
 extern "C" {
