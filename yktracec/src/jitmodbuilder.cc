@@ -1296,7 +1296,7 @@ public:
               // setjmp/longjmp, so for now simply abort this trace.
               // See: https://github.com/ykjit/yk/issues/610
               return nullptr;
-            } else if (IsSWTrace && S == "yk_trace_basicblock") {
+            } else if (IsSWTrace && (S == "yk_trace_basicblock" || S == "yk_trace_indirect_call")) {
               // YKFIXME: Skip tracing calls handling. This logic should move to
               // SWT tracer.
               continue;
