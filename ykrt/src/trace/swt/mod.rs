@@ -11,14 +11,13 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     error::Error,
-    ffi::{CString, c_void},
+    ffi::{c_void, CString},
     sync::{Arc, LazyLock},
 };
 
 #[cfg(target_arch = "x86_64")]
 pub(crate) mod patch;
 
-#[repr(C)]
 #[derive(Debug, Eq, Copy, PartialEq, Clone)]
 enum TraceType {
     BasicBlock = 0,
@@ -65,18 +64,31 @@ thread_local! {
 /// * `block_index` - The index of the basic block within the function.
 #[cfg(tracer_swt)]
 #[no_mangle]
-pub extern "C" fn yk_trace_basicblock(
-    function_index: usize,
-    block_index: usize,
-    trace_type: TraceType,
-) {
+pub extern "C" fn yk_trace_basicblock(function_index: usize, block_index: usize) {
     MTThread::with(|mtt| {
         if mtt.is_tracing() {
             BASIC_BLOCKS.with(|v| {
                 v.borrow_mut().push(TracingBBlock {
                     function_index,
                     block_index,
-                    trace_type,
+                    trace_type: TraceType::BasicBlock,
+                });
+            })
+        }
+    });
+}
+
+#[cfg(tracer_swt)]
+#[no_mangle]
+pub extern "C" fn yk_trace_unmappable_call(function_index: usize, block_index: usize) {
+    // TODO: lookup function in LLVM IR
+    MTThread::with(|mtt| {
+        if mtt.is_tracing() {
+            BASIC_BLOCKS.with(|v| {
+                v.borrow_mut().push(TracingBBlock {
+                    function_index,
+                    block_index,
+                    trace_type: TraceType::ExternalCall,
                 });
             })
         }
@@ -156,13 +168,17 @@ impl Iterator for SWTraceIterator {
             .next()
             .map(|tb| match FUNC_NAMES.get(&tb.function_index) {
                 Some(name) => {
-                    if tb.trace_type == TraceType::BasicBlock {
-                        Ok(TraceAction::new_mapped_aot_block(
-                            name.to_owned(),
-                            tb.block_index,
-                        ))
-                    } else {
-                        Ok(TraceAction::new_unmappable_block())
+                    match tb.trace_type {
+                        TraceType::BasicBlock => {
+                            Ok(TraceAction::new_mapped_aot_block(
+                                name.to_owned(),
+                                tb.block_index,
+                            ))
+                        }
+                        TraceType::ExternalCall => {
+                            Ok(TraceAction::new_unmappable_block())
+                        }
+                        _ => panic!("Unknown trace type {:?}", tb.trace_type),
                     }
                 }
                 _ => panic!(
