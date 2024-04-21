@@ -80,14 +80,14 @@ pub extern "C" fn yk_trace_basicblock(function_index: usize, block_index: usize)
 
 #[cfg(tracer_swt)]
 #[no_mangle]
-pub extern "C" fn yk_trace_unmappable_call(function_index: usize, block_index: usize) {
+pub extern "C" fn yk_trace_unmappable_call() {
     // TODO: lookup function in LLVM IR
     MTThread::with(|mtt| {
         if mtt.is_tracing() {
             BASIC_BLOCKS.with(|v| {
                 v.borrow_mut().push(TracingBBlock {
-                    function_index,
-                    block_index,
+                    function_index:0,
+                    block_index:0,
                     trace_type: TraceType::ExternalCall,
                 });
             })
