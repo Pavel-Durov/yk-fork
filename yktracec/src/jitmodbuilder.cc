@@ -197,10 +197,10 @@ class JITModBuilder {
   bool Outlining = false;
   // The call depth at which we started outlining. Once we reached the same
   // depth after returning from a call, we can stop outlining.
-  size_t OutlineBase = 0;
+  // size_t OutlineBase = 0;
   // Determines whether the last block in the trace was mappable or not.
   // Required to make assumptions about the control flow of the trace.
-  bool LastBlockMappable = true;
+  // bool LastBlockMappable = true;
   // The last basic block that was processed. Required to handle PHI nodes, and
   // for sanity checking control flow.
   BasicBlock *LastBB = nullptr;
@@ -245,6 +245,10 @@ class JITModBuilder {
   // Set to true if SoftwareTracer is used.
   bool IsSWTrace = false;
 
+  IRBlock *outlineTargetBlk = nullptr;
+
+  int RecursionCount = 0;
+
   Value *getMappedValue(Value *V) {
     if (VMap.find(V) != VMap.end()) {
       return VMap[V];
@@ -284,7 +288,7 @@ class JITModBuilder {
   }
 
   void handleCallInst(CallInst *CI, Function *CF, size_t &CurBBIdx,
-                      size_t &CurInstrIdx) {
+                      size_t &CurInstrIdx, Instruction *nextInst) {
     if (CF == nullptr || CF->isDeclaration()) {
       // The definition of the callee is external to AOTMod. It will be
       // outlined, but we still need to declare it locally if we have not
@@ -294,7 +298,7 @@ class JITModBuilder {
       }
       if (!Outlining) {
         copyInstruction(&Builder, (Instruction *)&*CI, CurBBIdx, CurInstrIdx);
-        OutlineBase = CallStack.size();
+        // OutlineBase = CallStack.sizee();
         Outlining = true;
       }
     } else {
@@ -315,6 +319,15 @@ class JITModBuilder {
           OutlineBase = CallStack.size();
           Outlining = true;
         } else {
+
+          if (isa<BranchInst>(nextInst)) {
+            auto successorBlockId =
+                nullptr; // TODO: get successor somehow ->
+                         // BBlockId::new(bid.func_idx(), *succ);
+            outlineTargetBlk = successorBlockId;
+            RecursionCount = 0;
+          }
+
           // Otherwise keep the call inlined.
           // Remap function arguments to the variables passed in by the caller.
           for (unsigned int i = 0; i < CI->arg_size(); i++) {
@@ -1066,7 +1079,7 @@ public:
       TraceLoc Loc = InpTrace[Idx];
 
       if (UnmappableRegion *UR = Loc.getUnmappableRegion()) {
-        LastBlockMappable = false;
+        // LastBlockMappable = false;
         LastInst = nullptr;
         LastBB = nullptr;
         continue;
@@ -1090,54 +1103,81 @@ public:
       // deoptimisation as it collects the stackmap calls of inlined functions.
       // We thus use it here as a simple counter to keep track of the call
       // depths.
-      if (BB->isEntryBlock()) {
-        LastBB = nullptr;
-        if (!LastBlockMappable) {
-          // Unmappable code called back into mappable code.
-          LastBlockMappable = true;
-        } else {
-          // A normal call from a mappable block into another mappable block.
-          // Find the stackmap of the previous frame and add it to the
-          // callstack.
-          assert(LastInst && isa<CallInst>(LastInst));
-          CallInst *SMC = cast<CallInst>(LastInst->getNextNode());
-          CallStack.push_back(SMC);
-        }
-      } else {
-        // If the last block was unmappable or the last instruction was a
-        // return, then we are returning from a call. Since we've already
-        // processed all instructions in this block, we can just skip it.
-        if (!LastBlockMappable) {
-          LastBlockMappable = true;
-          LastBB = BB;
-          if (CallStack.size() == OutlineBase) {
-            Outlining = false;
-            OutlineBase = 0;
+      // if (BB->isEntryBlock()) {
+      //   LastBB = nullptr;
+      //   if (!LastBlockMappable) {
+      //     // Unmappable code called back into mappable code.
+      //     LastBlockMappable = true;
+      //   } else {
+      //     // A normal call from a mappable block into another mappable block.
+      //     // Find the stackmap of the previous frame and add it to the
+      //     // callstack.
+      //     assert(LastInst && isa<CallInst>(LastInst));
+      //     CallInst *SMC = cast<CallInst>(LastInst->getNextNode());
+      //     CallStack.push_back(SMC);
+      //   }
+      // } else {
+      //   // If the last block was unmappable or the last instruction was a
+      //   // return, then we are returning from a call. Since we've already
+      //   // processed all instructions in this block, we can just skip it.
+      //   if (!LastBlockMappable) {
+      //     LastBlockMappable = true;
+      //     LastBB = BB;
+      //     if (CallStack.size() == OutlineBase) {
+      //       Outlining = false;
+      //       OutlineBase = 0;
+      //     }
+      //     continue;
+      //   } else if (LastInst && isa<ReturnInst>(LastInst)) {
+      //     LastInst = nullptr;
+      //     if (!IsSWTrace) {
+      //       assert(CallStack.back()->getParent() == BB);
+      //     }
+      //     LastBB = CallStack.back()->getParent();
+      //     CallStack.pop_back();
+      //     if (CallStack.size() == OutlineBase) {
+      //       Outlining = false;
+      //       OutlineBase = 0;
+      //     }
+      //     if (!IsSWTrace)
+      //       continue;
+      //   }
+      IRBlock *nextBB = nullptr;
+
+      // Handle outlining.
+      if (BB && outlineTargetBlk) {
+        auto [outlineF, outlineBB] = getLLVMAOTFuncAndBlock(outlineTargetBlk);
+        // We are currently outlining.
+        if (F == outlineF) {
+          // We are inside the same function that started outlining.
+          if (BB->isEntryBlock()) {
+            // We are recursing into the function that started outlining.
+            RecursionCount += 1;
           }
-          continue;
-        } else if (LastInst && isa<ReturnInst>(LastInst)) {
-          LastInst = nullptr;
-          if (!IsSWTrace) {
-            assert(CallStack.back()->getParent() == BB);
+          if (isa<ReturnInst>(BB->getTerminator())) {
+            // We are returning from the function that started outlining. This
+            // may be oneLastInst of multiple inlined calls, so we may not be
+            // done outlining just yet.
+            RecursionCount -= 1;
           }
-          LastBB = CallStack.back()->getParent();
-          CallStack.pop_back();
-          if (CallStack.size() == OutlineBase) {
-            Outlining = false;
-            OutlineBase = 0;
+          if (RecursionCount == 0 && BB == outlineBB) {
+            // We've reached the successor block of the function/block that
+            // started outlining. We are done and can continue processing
+            // blocks normally.
+            outlineTargetBlk = nullptr;
+          } else {
+            // We are outlining so just skip this block.
           }
-          if (!IsSWTrace)
-            continue;
-        }
-        if (IsSWTrace) {
-          // In the software tracer external calls are invisible. So when an
-          // external call has started outlining we don't necessarily see a
-          // return, so we need to check for every block if we've reached the
-          // same callstack in order to stop outlining.
-          if (CallStack.size() == OutlineBase) {
-            Outlining = false;
-            OutlineBase = 0;
-          }
+          // if (IsSWTrace) {
+          //   // In the software tracer external calls are invisible. So when an
+          //   // external call has started outlining we don't necessarily see a
+          //   // return, so we need to check for every block if we've reached the
+          //   // same callstack in order to stop outlining.
+          //   if (CallStack.size() == OutlineBase) {
+          //     Outlining = false;
+          //     OutlineBase = 0;
+          //   }
+          // }
         }
       }
 
@@ -1261,7 +1301,8 @@ public:
                 CF = nullptr;
               }
               // FIXME Don't inline indirect calls unless promoted.
-              handleCallInst(CI, CF, CurBBIdx, CurInstrIdx);
+              handleCallInst(CI, CF, CurBBIdx, CurInstrIdx,
+                             BB->getTerminator());
               break;
             } else {
               // This is an inlineasm instruction so just copy it. We don't
@@ -1301,7 +1342,7 @@ public:
               // SWT tracer.
               continue;
             }
-            handleCallInst(CI, CF, CurBBIdx, CurInstrIdx);
+            handleCallInst(CI, CF, CurBBIdx, CurInstrIdx, BB->getTerminator());
             break;
           }
         }
@@ -1389,10 +1430,10 @@ public:
 
               // We've seen the control point so the next block will be
               // unmappable.
-              if (!Outlining) {
-                assert(OutlineBase == 0);
-                Outlining = true;
-              }
+              // if (!Outlining) {
+              //   assert(OutlineBase == 0);
+              //   Outlining = true;
+              // }
               break;
             }
           }
@@ -1456,7 +1497,7 @@ public:
     // the trace so a) we don't copy the call, and b) we enter
     // outlining mode.
     Outlining = true;
-    OutlineBase = CallStack.size();
+    // OutlineBase = CallStack.size();
   }
 };
 
