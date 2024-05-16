@@ -11,14 +11,25 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     error::Error,
-    ffi::CString,
+    ffi::{c_void, CString},
     sync::{Arc, LazyLock},
 };
+
+#[cfg(target_arch = "x86_64")]
+pub(crate) mod patch;
+
+#[derive(Debug, Eq, Copy, PartialEq, Clone)]
+enum TraceType {
+    BasicBlock = 0,
+    ExternalCall = 1,
+    IndirectCall = 2,
+}
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 struct TracingBBlock {
     function_index: usize,
     block_index: usize,
+    trace_type: TraceType,
 }
 
 // Mapping of function indexes to function names.
@@ -60,10 +71,35 @@ pub extern "C" fn yk_trace_basicblock(function_index: usize, block_index: usize)
                 v.borrow_mut().push(TracingBBlock {
                     function_index,
                     block_index,
+                    trace_type: TraceType::BasicBlock,
                 });
             })
         }
     });
+}
+
+#[cfg(tracer_swt)]
+#[no_mangle]
+pub extern "C" fn yk_trace_unmappable_call() {
+    // TODO: lookup function in LLVM IR
+    MTThread::with(|mtt| {
+        if mtt.is_tracing() {
+            BASIC_BLOCKS.with(|v| {
+                v.borrow_mut().push(TracingBBlock {
+                    function_index:0,
+                    block_index:0,
+                    trace_type: TraceType::ExternalCall,
+                });
+            })
+        }
+    });
+}
+
+#[cfg(tracer_swt)]
+#[no_mangle]
+pub extern "C" fn yk_trace_indirect_call(function_ptr: *const std::ffi::c_void) {
+    println!("@@ yk_trace_indirect_call function_ptr: {:p}", function_ptr);
+    // TODO: lookup function in LLVM IR
 }
 
 extern "C" {
@@ -105,7 +141,7 @@ impl TraceRecorder for SWTTraceRecorder {
             Err(TraceRecorderError::TraceTooLong)
         } else if bbs.is_empty() {
             // FIXME: who should handle an empty trace?
-            panic!();
+            panic!("swt encountered an empty trace!");
         } else {
             Ok(Box::new(SWTraceIterator::new(bbs)))
         }
@@ -131,10 +167,20 @@ impl Iterator for SWTraceIterator {
         self.bbs
             .next()
             .map(|tb| match FUNC_NAMES.get(&tb.function_index) {
-                Some(name) => Ok(TraceAction::MappedAOTBBlock {
-                    func_name: name.to_owned(),
-                    bb: tb.block_index,
-                }),
+                Some(name) => {
+                    match tb.trace_type {
+                        TraceType::BasicBlock => {
+                            Ok(TraceAction::new_mapped_aot_block(
+                                name.to_owned(),
+                                tb.block_index,
+                            ))
+                        }
+                        TraceType::ExternalCall => {
+                            Ok(TraceAction::new_unmappable_block())
+                        }
+                        _ => panic!("Unknown trace type {:?}", tb.trace_type),
+                    }
+                }
                 _ => panic!(
                     "Failed to get function name by index {:?}",
                     tb.function_index
