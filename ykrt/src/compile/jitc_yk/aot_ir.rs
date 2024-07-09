@@ -168,7 +168,7 @@ impl Module {
         eprintln!("{}", self);
     }
     pub(crate) fn get_funcs(&self) -> &TiVec<FuncIdx, Func> {
-        return &self.funcs
+        return &self.funcs;
     }
 }
 

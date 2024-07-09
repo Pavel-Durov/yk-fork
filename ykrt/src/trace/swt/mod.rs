@@ -3,10 +3,7 @@
 use super::{
     AOTTraceIterator, AOTTraceIteratorError, TraceAction, TraceRecorder, TraceRecorderError, Tracer,
 };
-use crate::{
-    compile::jitc_llvm::frame::BitcodeSection,
-    mt::{MTThread, DEFAULT_TRACE_TOO_LONG},
-};
+use crate::mt::{MTThread, DEFAULT_TRACE_TOO_LONG};
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -20,23 +17,15 @@ struct TracingBBlock {
     function_index: usize,
     block_index: usize,
 }
+use ykrt::jitc_yk::AOT_MOD;
 
 // Mapping of function indexes to function names.
 static FUNC_NAMES: LazyLock<HashMap<usize, CString>> = LazyLock::new(|| {
     let mut fnames = HashMap::new();
-    let mut functions: *mut IRFunctionNameIndex = std::ptr::null_mut();
-    let bc_section = crate::compile::jitc_llvm::llvmbc_section();
-    let mut functions_len: usize = 0;
-    let bs = &BitcodeSection {
-        data: bc_section.as_ptr(),
-        len: u64::try_from(bc_section.len()).unwrap(),
-    };
-    unsafe { get_function_names(bs, &mut functions, &mut functions_len) };
-    for entry in unsafe { std::slice::from_raw_parts(functions, functions_len) } {
-        fnames.insert(
-            entry.index,
-            unsafe { std::ffi::CStr::from_ptr(entry.name) }.to_owned(),
-        );
+    let funcs = AOT_MOD.get_funcs();
+    for (index, function) in funcs {
+        // println!("Index: {:?}, Value: {}", index, value);
+        fnames.insert(index, function.name);
     }
     fnames
 });
