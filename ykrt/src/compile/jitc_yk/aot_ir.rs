@@ -167,6 +167,9 @@ impl Module {
     pub(crate) fn dump(&self) {
         eprintln!("{}", self);
     }
+    pub(crate) fn get_funcs(&self) -> &TiVec<FuncIdx, Func> {
+        return &self.funcs
+    }
 }
 
 impl std::fmt::Display for Module {
