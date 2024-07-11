@@ -17,15 +17,15 @@ struct TracingBBlock {
     function_index: usize,
     block_index: usize,
 }
-use ykrt::jitc_yk::AOT_MOD;
+use crate::compile::jitc_yk::AOT_MOD;
 
 // Mapping of function indexes to function names.
-static FUNC_NAMES: LazyLock<HashMap<usize, CString>> = LazyLock::new(|| {
+static FUNC_NAMES: LazyLock<HashMap<usize, String>> = LazyLock::new(|| {
     let mut fnames = HashMap::new();
     let funcs = AOT_MOD.get_funcs();
-    for (index, function) in funcs {
+    for (index, function) in funcs.iter().enumerate() {
         // println!("Index: {:?}, Value: {}", index, value);
-        fnames.insert(index, function.name);
+        fnames.insert(index, function.name().to_string());
     }
     fnames
 });
@@ -55,13 +55,13 @@ pub extern "C" fn yk_trace_basicblock(function_index: usize, block_index: usize)
     });
 }
 
-extern "C" {
-    fn get_function_names(
-        section: *const BitcodeSection,
-        result: *mut *mut IRFunctionNameIndex,
-        len: *mut usize,
-    );
-}
+// extern "C" {
+//     fn get_function_names(
+//         section: *const BitcodeSection,
+//         result: *mut *mut IRFunctionNameIndex,
+//         len: *mut usize,
+//     );
+// }
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
