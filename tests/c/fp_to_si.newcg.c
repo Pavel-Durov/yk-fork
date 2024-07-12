@@ -5,28 +5,42 @@
 //   env-var: YKD_LOG_JITSTATE=-
 //   stderr:
 //     jitstate: start-tracing
-//     i=3
+//     i=4
+//     f32->int: 5, 4, -1
+//     f64->int: 2, 3, -1
 //     jitstate: stop-tracing
 //     --- Begin aot ---
 //     ...
-//     switch %{{10_1}}, bb{{bb14}}, [300 -> bb{{bb11}}, 299 -> bb{{bb12}}] [safepoint: {{safepoint_id}}, (%{{0_0}}, %{{0_1}}, %{{0_4}}, %{{0_5}}, %{{0_6}}, %{{10_1}})]
+//     func main(%arg0: i32, %arg1: ptr) -> i32 {
+//     ...
+//     %{{_}}: i32 = fp_to_si %{{_}}, i32
+//     ...
+//     %{{_}}: i32 = fp_to_si %{{_}}, i32
 //     ...
 //     --- End aot ---
 //     --- Begin jit-pre-opt ---
 //     ...
-//     %{{cond}}: i1 = eq %{{20}}, 300i32
-//     guard true, %{{cond}}, ...
+//     %{{_}}: i32 = fp_to_si %{{_}}
+//     ...
+//     %{{_}}: i32 = fp_to_si %{{_}}
 //     ...
 //     --- End jit-pre-opt ---
-//     i=2
+//     i=3
+//     f32->int: 5, 4, -1
+//     f64->int: 2, 3, -1
 //     jitstate: enter-jit-code
+//     i=2
+//     f32->int: 5, 4, -1
+//     f64->int: 2, 3, -1
 //     i=1
+//     f32->int: 5, 4, -1
+//     f64->int: 2, 3, -1
 //     jitstate: deoptimise
-//     ...
 
-// Check that tracing a non-default switch arm works correctly.
+// Check float to signed integer conversions.
 
 #include <assert.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,25 +51,26 @@ int main(int argc, char **argv) {
   YkMT *mt = yk_mt_new(NULL);
   yk_mt_hot_threshold_set(mt, 0);
   YkLocation loc = yk_location_new();
-  int i = 3;
-  int j = 300;
+
+  int i = 4;
+  float f1 = 5.78, f2 = 4.55, f3 = -1.01;
+  double d1 = 2.1, d2 = 3.3, d3 = -1.99;
+  NOOPT_VAL(loc);
   NOOPT_VAL(i);
-  NOOPT_VAL(j);
+  NOOPT_VAL(f1);
+  NOOPT_VAL(f2);
+  NOOPT_VAL(f3);
+  NOOPT_VAL(d1);
+  NOOPT_VAL(d2);
+  NOOPT_VAL(d3);
   while (i > 0) {
     yk_mt_control_point(mt, &loc);
     fprintf(stderr, "i=%d\n", i);
-    switch (j) {
-    case 300: // This case is traced.
-      i--;
-      break;
-    case 299:
-      exit(1);
-    default:
-      exit(1);
-    }
+    fprintf(stderr, "f32->int: %d, %d, %d\n", (int)f1, (int)f2, (int)f3);
+    fprintf(stderr, "f64->int: %d, %d, %d\n", (int)d1, (int)d2, (int)d3);
+    i--;
   }
   yk_location_drop(loc);
   yk_mt_drop(mt);
-
   return (EXIT_SUCCESS);
 }

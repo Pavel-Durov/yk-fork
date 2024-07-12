@@ -5,26 +5,37 @@
 //   env-var: YKD_LOG_JITSTATE=-
 //   stderr:
 //     jitstate: start-tracing
-//     i=3
+//     4 -> 1.333200 3.360000
 //     jitstate: stop-tracing
 //     --- Begin aot ---
 //     ...
-//     switch %{{10_1}}, bb{{bb14}}, [300 -> bb{{bb11}}, 299 -> bb{{bb12}}] [safepoint: {{safepoint_id}}, (%{{0_0}}, %{{0_1}}, %{{0_4}}, %{{0_5}}, %{{0_6}}, %{{10_1}})]
+//     func main(%arg0: i32, %arg1: ptr) -> i32 {
+//     ...
+//     %{{10_5}}: float = fmul %{{_}}, %{{_}}
+//     %{{10_6}}: double = fp_ext %{{10_5}}, double
+//     ...
+//     %{{10_9}}: double = fmul %{{_}}, %{{_}}
+//     ...
+//     %{{_}}: i32 = call fprintf(%{{_}}, @{{_}}, %{{_}}, %{{10_6}}, %{{10_9}})
 //     ...
 //     --- End aot ---
 //     --- Begin jit-pre-opt ---
 //     ...
-//     %{{cond}}: i1 = eq %{{20}}, 300i32
-//     guard true, %{{cond}}, ...
+//     %{{16}}: float = fmul %{{_}}, %{{_}}
+//     %{{17}}: double = fp_ext %{{16}}
+//     ...
+//     %{{20}}: double = fmul %{{_}}, %{{_}}
+//     ...
+//     %{{_}}: i32 = call @fprintf(%{{_}}, %{{_}}, %{{_}}, %{{17}}, %{{20}})
 //     ...
 //     --- End jit-pre-opt ---
-//     i=2
+//     3 -> 0.999900 2.520000
 //     jitstate: enter-jit-code
-//     i=1
+//     2 -> 0.666600 1.680000
+//     1 -> 0.333300 0.840000
 //     jitstate: deoptimise
-//     ...
 
-// Check that tracing a non-default switch arm works correctly.
+// Check floating point multiplication works.
 
 #include <assert.h>
 #include <stdio.h>
@@ -37,25 +48,19 @@ int main(int argc, char **argv) {
   YkMT *mt = yk_mt_new(NULL);
   yk_mt_hot_threshold_set(mt, 0);
   YkLocation loc = yk_location_new();
-  int i = 3;
-  int j = 300;
+
+  int i = 4;
+  float f = 0.3333;
+  double d = 0.84;
+  NOOPT_VAL(loc);
   NOOPT_VAL(i);
-  NOOPT_VAL(j);
+  NOOPT_VAL(f);
   while (i > 0) {
     yk_mt_control_point(mt, &loc);
-    fprintf(stderr, "i=%d\n", i);
-    switch (j) {
-    case 300: // This case is traced.
-      i--;
-      break;
-    case 299:
-      exit(1);
-    default:
-      exit(1);
-    }
+    fprintf(stderr, "%d -> %f %f\n", i, (float)i * f, (double)i * d);
+    i--;
   }
   yk_location_drop(loc);
   yk_mt_drop(mt);
-
   return (EXIT_SUCCESS);
 }
