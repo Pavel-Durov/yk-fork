@@ -9,8 +9,8 @@ use std::{
 };
 
 use crate::{
-    compile::CompiledTrace,
-    mt::{HotThreshold, TraceFailureThreshold, MT},
+    compile::{CompiledTrace, GuardIdx},
+    mt::{HotThreshold, TraceCompilationErrorThreshold, MT},
 };
 use parking_lot::Mutex;
 
@@ -214,15 +214,17 @@ impl Drop for Location {
 #[derive(Debug)]
 pub(crate) struct HotLocation {
     pub(crate) kind: HotLocationKind,
-    pub(crate) trace_failure: TraceFailureThreshold,
+    /// How often has tracing or compilation starting directly from this hot location led to an
+    /// error?
+    pub(crate) tracecompilation_errors: TraceCompilationErrorThreshold,
 }
 
 impl HotLocation {
-    /// Mark a trace starting at this `HotLocation` as having failed. The return value indicates
-    /// whether further traces for this location should be generated or not.
-    pub(crate) fn trace_failed(&mut self, mt: &Arc<MT>) -> TraceFailed {
-        if self.trace_failure < mt.trace_failure_threshold() {
-            self.trace_failure += 1;
+    /// A trace, or the compilation of a trace, starting at this [HotLocation] led to an error. The
+    /// return value indicates whether further traces for this location should be generated or not.
+    pub(crate) fn tracecompilation_error(&mut self, mt: &Arc<MT>) -> TraceFailed {
+        if self.tracecompilation_errors < mt.trace_failure_threshold() {
+            self.tracecompilation_errors += 1;
             self.kind = HotLocationKind::Tracing;
             TraceFailed::KeepTrying
         } else {
@@ -248,7 +250,17 @@ pub(crate) enum HotLocationKind {
     Tracing,
     /// While executing JIT compiled code, a guard failed often enough for us to want to generate a
     /// side trace for this HotLocation.
-    SideTracing(Arc<dyn CompiledTrace>, usize, Arc<dyn CompiledTrace>),
+    SideTracing {
+        /// The root [CompiledTrace]: while one thread is side tracing a (possibly many levels
+        /// deep) side trace that ultimately relates to this [CompiledTrace], other threads can
+        /// execute this compiled trace.
+        root_ctr: Arc<dyn CompiledTrace>,
+        /// The ID of the guard that failed (inside `parent`).
+        gidx: GuardIdx,
+        /// The [CompiledTrace] that the guard failed in. This will either be `root_ctr` or a
+        /// descendent of `root_ctr`.
+        parent_ctr: Arc<dyn CompiledTrace>,
+    },
 }
 
 /// When a [HotLocation] has failed to compile a valid trace, should the [HotLocation] be tried

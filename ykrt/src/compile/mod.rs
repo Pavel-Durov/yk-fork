@@ -93,19 +93,19 @@ pub(crate) struct Guard {
 }
 
 impl Guard {
-    /// Increments the guard failure counter. Returns `true` if the guard has failed often enough
-    /// to be worth side-tracing.
+    /// This guard has failed (i.e. evaluated to true/false when false/true was expected). Returns
+    /// `true` if this guard has failed often enough to be worth side-tracing.
     pub fn inc_failed(&self, mt: &Arc<MT>) -> bool {
         self.failed.fetch_add(1, Ordering::Relaxed) + 1 >= mt.sidetrace_threshold()
     }
 
     /// Stores a compiled side-trace inside this guard.
-    pub fn setct(&self, ct: Arc<dyn CompiledTrace>) {
+    pub fn set_ctr(&self, ct: Arc<dyn CompiledTrace>) {
         let _ = self.ct.lock().insert(ct);
     }
 
-    /// Retrieves the stored side-trace or None, if no side-trace has been compiled yet.
-    pub fn getct(&self) -> Option<Arc<dyn CompiledTrace>> {
+    /// Return the compiled side-trace or None if no side-trace has been compiled.
+    pub fn ctr(&self) -> Option<Arc<dyn CompiledTrace>> {
         self.ct.lock().as_ref().map(Arc::clone)
     }
 }
@@ -115,10 +115,10 @@ pub(crate) trait CompiledTrace: fmt::Debug + Send + Sync {
     /// upcasting in Rust is incomplete.
     fn as_any(self: Arc<Self>) -> Arc<dyn std::any::Any + Send + Sync + 'static>;
 
-    fn sidetraceinfo(&self, guardid: usize) -> Arc<dyn SideTraceInfo>;
+    fn sidetraceinfo(&self, gidx: GuardIdx) -> Arc<dyn SideTraceInfo>;
 
     /// Return a reference to the guard `id`.
-    fn guard(&self, id: GuardId) -> &Guard;
+    fn guard(&self, gidx: GuardIdx) -> &Guard;
 
     fn entry(&self) -> *const c_void;
 
@@ -132,9 +132,23 @@ pub(crate) trait CompiledTrace: fmt::Debug + Send + Sync {
     fn disassemble(&self) -> Result<String, Box<dyn Error>>;
 }
 
+/// Identify a [Guard] within a trace.
+///
+/// This is guaranteed to be an index into an array that is freely convertible to/from [usize].
 #[derive(Clone, Copy, Debug)]
-#[allow(dead_code)]
-pub(crate) struct GuardId(pub(crate) usize);
+pub(crate) struct GuardIdx(usize);
+
+impl From<usize> for GuardIdx {
+    fn from(v: usize) -> Self {
+        Self(v)
+    }
+}
+
+impl From<GuardIdx> for usize {
+    fn from(v: GuardIdx) -> Self {
+        v.0
+    }
+}
 
 #[cfg(test)]
 mod compiled_trace_testing {
@@ -156,11 +170,11 @@ mod compiled_trace_testing {
             panic!();
         }
 
-        fn sidetraceinfo(&self, _guardid: usize) -> Arc<dyn SideTraceInfo> {
+        fn sidetraceinfo(&self, _gidx: GuardIdx) -> Arc<dyn SideTraceInfo> {
             panic!();
         }
 
-        fn guard(&self, _id: GuardId) -> &Guard {
+        fn guard(&self, _gidx: GuardIdx) -> &Guard {
             panic!();
         }
 
@@ -193,11 +207,11 @@ mod compiled_trace_testing {
             panic!();
         }
 
-        fn sidetraceinfo(&self, _guardid: usize) -> Arc<dyn SideTraceInfo> {
+        fn sidetraceinfo(&self, _gidx: GuardIdx) -> Arc<dyn SideTraceInfo> {
             panic!();
         }
 
-        fn guard(&self, _id: GuardId) -> &Guard {
+        fn guard(&self, _gidx: GuardIdx) -> &Guard {
             panic!();
         }
 

@@ -1,6 +1,7 @@
 //! The main end-user interface to the meta-tracing system.
 
 use std::{
+    assert_matches::debug_assert_matches,
     cell::RefCell,
     cmp,
     collections::VecDeque,
@@ -21,7 +22,7 @@ use parking_lot_core::SpinWait;
 
 use crate::{
     aotsmp::{load_aot_stackmaps, AOT_STACKMAPS},
-    compile::{default_compiler, CompilationError, CompiledTrace, Compiler, GuardId},
+    compile::{default_compiler, CompilationError, CompiledTrace, Compiler, GuardIdx},
     location::{HotLocation, HotLocationKind, Location, TraceFailed},
     log::{
         log_jit_state,
@@ -39,8 +40,10 @@ pub type HotThreshold = u32;
 #[cfg(target_pointer_width = "64")]
 type AtomicHotThreshold = AtomicU32;
 
-pub type TraceFailureThreshold = u16;
-pub type AtomicTraceFailureThreshold = AtomicU16;
+/// How often can a [HotLocation] or [Guard] lead to an error in tracing or compilation before we
+/// give up trying to trace (or compile...) it?
+pub type TraceCompilationErrorThreshold = u16;
+pub type AtomicTraceCompilationErrorThreshold = AtomicU16;
 
 /// How many basic blocks long can a trace be before we give up trying to compile it? Note that the
 /// slower our compiler, the lower this will have to be in order to give the perception of
@@ -49,7 +52,9 @@ pub type AtomicTraceFailureThreshold = AtomicU16;
 pub(crate) const DEFAULT_TRACE_TOO_LONG: usize = 5000;
 const DEFAULT_HOT_THRESHOLD: HotThreshold = 50;
 const DEFAULT_SIDETRACE_THRESHOLD: HotThreshold = 5;
-const DEFAULT_TRACE_FAILURE_THRESHOLD: TraceFailureThreshold = 5;
+/// How often can a [HotLocation] or [Guard] lead to an error in tracing or compilation before we
+/// give up trying to trace (or compile...) it?
+const DEFAULT_TRACECOMPILATION_ERROR_THRESHOLD: TraceCompilationErrorThreshold = 5;
 static REG64_SIZE: usize = 8;
 
 thread_local! {
@@ -89,7 +94,7 @@ unsafe extern "C" fn __yk_exec_trace(
 pub struct MT {
     hot_threshold: AtomicHotThreshold,
     sidetrace_threshold: AtomicHotThreshold,
-    trace_failure_threshold: AtomicTraceFailureThreshold,
+    trace_failure_threshold: AtomicTraceCompilationErrorThreshold,
     /// The ordered queue of compilation worker functions.
     job_queue: Arc<(Condvar, Mutex<VecDeque<Box<dyn FnOnce() + Send>>>)>,
     /// The hard cap on the number of worker threads.
@@ -130,8 +135,8 @@ impl MT {
         Ok(Arc::new(Self {
             hot_threshold: AtomicHotThreshold::new(hot_threshold),
             sidetrace_threshold: AtomicHotThreshold::new(DEFAULT_SIDETRACE_THRESHOLD),
-            trace_failure_threshold: AtomicTraceFailureThreshold::new(
-                DEFAULT_TRACE_FAILURE_THRESHOLD,
+            trace_failure_threshold: AtomicTraceCompilationErrorThreshold::new(
+                DEFAULT_TRACECOMPILATION_ERROR_THRESHOLD,
             ),
             job_queue: Arc::new((Condvar::new(), Mutex::new(VecDeque::new()))),
             max_worker_threads: AtomicUsize::new(cmp::max(1, num_cpus::get() - 1)),
@@ -168,7 +173,7 @@ impl MT {
 
     /// Return this `MT` instance's current trace failure threshold. Notice that this value can be
     /// changed by other threads and is thus potentially stale as soon as it is read.
-    pub fn trace_failure_threshold(self: &Arc<Self>) -> TraceFailureThreshold {
+    pub fn trace_failure_threshold(self: &Arc<Self>) -> TraceCompilationErrorThreshold {
         self.trace_failure_threshold.load(Ordering::Relaxed)
     }
 
@@ -176,7 +181,7 @@ impl MT {
     /// marked as "do not try tracing again".
     pub fn set_trace_failure_threshold(
         self: &Arc<Self>,
-        trace_failure_threshold: TraceFailureThreshold,
+        trace_failure_threshold: TraceCompilationErrorThreshold,
     ) {
         if trace_failure_threshold < 1 {
             panic!("Trace failure threshold must be >= 1.");
@@ -321,7 +326,10 @@ impl MT {
                     }
                 }
             }
-            TransitionControlPoint::StopSideTracing(sti, parent) => {
+            TransitionControlPoint::StopSideTracing {
+                gidx: guardid,
+                parent_ctr,
+            } => {
                 // Assuming no bugs elsewhere, the `unwrap`s cannot fail, because
                 // `StartSideTracing` will have put a `Some` in the `Rc`.
                 let (hl, thread_tracer, promotions) =
@@ -343,7 +351,7 @@ impl MT {
                         self.queue_compile_job(
                             (utrace, promotions.into_boxed_slice()),
                             hl,
-                            Some((sti, parent)),
+                            Some((guardid, parent_ctr)),
                         );
                     }
                     Err(_e) => {
@@ -445,7 +453,7 @@ impl MT {
                                     if Arc::strong_count(&hl) == 2 {
                                         // Another thread was tracing this location but it's terminated.
                                         self.stats.trace_recorded_err();
-                                        match lk.trace_failed(self) {
+                                        match lk.tracecompilation_error(self) {
                                             TraceFailed::KeepTrying => {
                                                 TransitionControlPoint::StartTracing(hl)
                                             }
@@ -460,26 +468,30 @@ impl MT {
                                 }
                             }
                         }
-                        HotLocationKind::SideTracing(ref ctr, sti, ref parent) => {
+                        HotLocationKind::SideTracing {
+                            ref root_ctr,
+                            gidx,
+                            ref parent_ctr,
+                        } => {
                             let hl = loc.hot_location_arc_clone().unwrap();
                             match &*mtt.tstate.borrow() {
                                 MTThreadState::Tracing { hl: thread_hl, .. } => {
                                     // This thread is tracing something...
                                     if !Arc::ptr_eq(thread_hl, &hl) {
                                         // ...but not this Location.
-                                        TransitionControlPoint::Execute(Arc::clone(ctr))
+                                        TransitionControlPoint::Execute(Arc::clone(root_ctr))
                                     } else {
                                         // ...and it's this location: we have therefore finished
                                         // tracing the loop.
-                                        let parent = Arc::clone(parent);
-                                        lk.kind = HotLocationKind::Compiled(Arc::clone(ctr));
+                                        let parent_ctr = Arc::clone(parent_ctr);
+                                        lk.kind = HotLocationKind::Compiled(Arc::clone(root_ctr));
                                         drop(lk);
-                                        TransitionControlPoint::StopSideTracing(sti, parent)
+                                        TransitionControlPoint::StopSideTracing { gidx, parent_ctr }
                                     }
                                 }
                                 _ => {
                                     // This thread isn't tracing anything.
-                                    TransitionControlPoint::Execute(Arc::clone(ctr))
+                                    TransitionControlPoint::Execute(Arc::clone(root_ctr))
                                 }
                             }
                         }
@@ -499,7 +511,7 @@ impl MT {
                             } else {
                                 let hl = HotLocation {
                                     kind: HotLocationKind::Tracing,
-                                    trace_failure: 0,
+                                    tracecompilation_errors: 0,
                                 };
                                 if let Some(hl) = loc.count_to_hot_location(x, hl) {
                                     debug_assert!(!is_tracing);
@@ -526,16 +538,20 @@ impl MT {
     /// Perform the next step to `loc` in the `Location` state-machine for a guard failure.
     pub(crate) fn transition_guard_failure(
         self: &Arc<Self>,
-        gid: usize,
-        parent: Arc<dyn CompiledTrace>,
+        gidx: GuardIdx,
+        parent_ctr: Arc<dyn CompiledTrace>,
     ) -> TransitionGuardFailure {
-        if let Some(hl) = parent.hl().upgrade() {
+        if let Some(hl) = parent_ctr.hl().upgrade() {
             MTThread::with(|mtt| {
                 // This thread should not be tracing anything.
                 debug_assert!(!mtt.is_tracing());
                 let mut lk = hl.lock();
-                if let HotLocationKind::Compiled(ref ctr) = lk.kind {
-                    lk.kind = HotLocationKind::SideTracing(Arc::clone(ctr), gid, parent);
+                if let HotLocationKind::Compiled(ref root_ctr) = lk.kind {
+                    lk.kind = HotLocationKind::SideTracing {
+                        root_ctr: Arc::clone(root_ctr),
+                        gidx,
+                        parent_ctr,
+                    };
                     drop(lk);
                     TransitionGuardFailure::StartSideTracing(hl)
                 } else {
@@ -552,8 +568,8 @@ impl MT {
     }
 
     /// Start recording a side trace for a guard that failed in `ctr`.
-    pub(crate) fn side_trace(self: &Arc<Self>, gid: usize, parent: Arc<dyn CompiledTrace>) {
-        match self.transition_guard_failure(gid, parent) {
+    pub(crate) fn side_trace(self: &Arc<Self>, gidx: GuardIdx, parent: Arc<dyn CompiledTrace>) {
+        match self.transition_guard_failure(gidx, parent) {
             TransitionGuardFailure::NoAction => todo!(),
             TransitionGuardFailure::StartSideTracing(hl) => {
                 log_jit_state("start-side-tracing");
@@ -586,14 +602,11 @@ impl MT {
         self: &Arc<Self>,
         trace_iter: (Box<dyn AOTTraceIterator>, Box<[usize]>),
         hl_arc: Arc<Mutex<HotLocation>>,
-        sidetrace: Option<(usize, Arc<dyn CompiledTrace>)>,
+        sidetrace: Option<(GuardIdx, Arc<dyn CompiledTrace>)>,
     ) {
         self.stats.trace_recorded_ok();
         let mt = Arc::clone(self);
         let do_compile = move || {
-            debug_assert!(
-                sidetrace.is_none() || matches!(hl_arc.lock().kind, HotLocationKind::Compiled(_))
-            );
             let compiler = {
                 let lk = mt.compiler.lock();
                 Arc::clone(&*lk)
@@ -606,25 +619,18 @@ impl MT {
             };
             match compiler.compile(Arc::clone(&mt), trace_iter, sti, Arc::clone(&hl_arc)) {
                 Ok(ct) => {
-                    let mut hl = hl_arc.lock();
-                    match &hl.kind {
-                        HotLocationKind::Compiled(_) => {
-                            // The `unwrap`s cannot fail because of the condition contained
-                            // in the `debug_assert` above: if `sidetrace` is not-`None`
-                            // then `hl_arc.kind` is `Compiled`.
-                            let ctr = sidetrace.map(|x| x.1).unwrap();
-                            let guard = ctr.guard(GuardId(guardid.unwrap()));
-                            guard.setct(ct);
-                        }
-                        _ => {
-                            hl.kind = HotLocationKind::Compiled(ct);
-                        }
+                    if let Some((_, parent_ctr)) = sidetrace {
+                        parent_ctr.guard(guardid.unwrap()).set_ctr(ct);
+                    } else {
+                        let mut hl = hl_arc.lock();
+                        debug_assert_matches!(hl.kind, HotLocationKind::Compiling);
+                        hl.kind = HotLocationKind::Compiled(ct);
                     }
                     mt.stats.trace_compiled_ok();
                 }
                 Err(e) => {
                     mt.stats.trace_compiled_err();
-                    hl_arc.lock().trace_failed(&mt);
+                    hl_arc.lock().tracecompilation_error(&mt);
                     match e {
                         CompilationError::General(_reason)
                         | CompilationError::LimitExceeded(_reason) => {
@@ -774,7 +780,10 @@ enum TransitionControlPoint {
     Execute(Arc<dyn CompiledTrace>),
     StartTracing(Arc<Mutex<HotLocation>>),
     StopTracing,
-    StopSideTracing(usize, Arc<dyn CompiledTrace>),
+    StopSideTracing {
+        gidx: GuardIdx,
+        parent_ctr: Arc<dyn CompiledTrace>,
+    },
 }
 
 /// What action should a caller of [MT::transition_guard_failure] take?
@@ -844,7 +853,7 @@ mod tests {
 
     fn expect_start_side_tracing(mt: &Arc<MT>, loc: &Location) {
         let TransitionGuardFailure::StartSideTracing(hl) = mt.transition_guard_failure(
-            0,
+            GuardIdx::from(0),
             Arc::new(CompiledTraceTestingWithHl::new(Arc::downgrade(
                 &loc.hot_location_arc_clone().unwrap(),
             ))),
@@ -892,7 +901,7 @@ mod tests {
         expect_start_side_tracing(&mt, &loc);
 
         match mt.transition_control_point(&loc) {
-            TransitionControlPoint::StopSideTracing(_, _) => {
+            TransitionControlPoint::StopSideTracing { .. } => {
                 MTThread::with(|mtt| {
                     *mtt.tstate.borrow_mut() = MTThreadState::Interpreting;
                 });
@@ -1019,7 +1028,10 @@ mod tests {
                 loc.hot_location().unwrap().lock().kind,
                 HotLocationKind::Tracing
             ));
-            assert_eq!(loc.hot_location().unwrap().lock().trace_failure, i);
+            assert_eq!(
+                loc.hot_location().unwrap().lock().tracecompilation_errors,
+                i
+            );
         }
 
         assert!(matches!(
@@ -1067,7 +1079,10 @@ mod tests {
                 loc.hot_location().unwrap().lock().kind,
                 HotLocationKind::Tracing
             ));
-            assert_eq!(loc.hot_location().unwrap().lock().trace_failure, i);
+            assert_eq!(
+                loc.hot_location().unwrap().lock().tracecompilation_errors,
+                i
+            );
         }
 
         assert!(matches!(
@@ -1191,7 +1206,7 @@ mod tests {
                             break;
                         }
                         TransitionControlPoint::StopTracing
-                        | TransitionControlPoint::StopSideTracing(_, _) => unreachable!(),
+                        | TransitionControlPoint::StopSideTracing { .. } => unreachable!(),
                     }
                 }
             }));
@@ -1295,7 +1310,7 @@ mod tests {
         ));
         assert!(matches!(
             mt.transition_control_point(&loc2),
-            TransitionControlPoint::StopSideTracing(_, _)
+            TransitionControlPoint::StopSideTracing { .. }
         ));
     }
 
