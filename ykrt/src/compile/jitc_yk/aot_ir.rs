@@ -154,7 +154,7 @@ impl Module {
     }
 
     pub(crate) fn const_type(&self, c: &Const) -> &Ty {
-        &self.types[c.unwrap_val().tyidx]
+        &self.types[c.tyidx()]
     }
 
     /// Lookup a constant by its index.
@@ -182,6 +182,11 @@ impl Module {
     /// Panics if the index is out of bounds.
     pub(crate) fn func(&self, idx: FuncIdx) -> &Func {
         &self.funcs[idx]
+    }
+
+    #[cfg(tracer_swt)]
+    pub(crate) fn funcs(&self) -> &TiVec<FuncIdx, Func> {
+        &self.funcs
     }
 
     /// Lookup a global variable declaration by its index.
@@ -682,12 +687,12 @@ impl Operand {
                 // The `unwrap` can't fail for a `LocalVariable`.
                 self.to_inst(m).def_type(m).unwrap()
             }
-            Self::Const(cidx) => m.type_(m.const_(*cidx).unwrap_val().tyidx()),
+            Self::Const(cidx) => m.type_(m.const_(*cidx).tyidx()),
             Self::Global(_) => {
                 // As is the case for LLVM IR, globals are always pointer-typed in Yk AOT IR.
                 &Ty::Ptr
             }
-            _ => todo!(),
+            Self::Func(funcidx) => m.type_(m.func(*funcidx).tyidx()),
         }
     }
 
@@ -1836,7 +1841,11 @@ pub(crate) enum Const {
     #[deku(id = "0")]
     Val(ConstVal),
     #[deku(id = "1")]
-    Unimplemented(#[deku(until = "|v: &u8| *v == 0", map = "map_to_string")] String),
+    Unimplemented {
+        tyidx: TyIdx,
+        #[deku(until = "|v: &u8| *v == 0", map = "map_to_string")]
+        llvm_const_str: String,
+    },
 }
 
 impl Const {
@@ -1853,7 +1862,16 @@ impl Const {
     pub(crate) fn unwrap_val(&self) -> &ConstVal {
         match self {
             Const::Val(v) => v,
-            Const::Unimplemented(m) => panic!("unimplemented const: {}", m),
+            Const::Unimplemented { llvm_const_str, .. } => {
+                panic!("unimplemented const: {}", llvm_const_str)
+            }
+        }
+    }
+
+    pub(crate) fn tyidx(&self) -> TyIdx {
+        match self {
+            Self::Val(cv) => cv.tyidx(),
+            Self::Unimplemented { tyidx, .. } => *tyidx,
         }
     }
 }
@@ -1867,7 +1885,9 @@ impl Display for DisplayableConst<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.constant {
             Const::Val(cv) => write!(f, "{}", cv.display(self.m)),
-            Const::Unimplemented(m) => write!(f, "unimplemented <<{}>>", m),
+            Const::Unimplemented { llvm_const_str, .. } => {
+                write!(f, "unimplemented <<{}>>", llvm_const_str)
+            }
         }
     }
 }
@@ -2053,8 +2073,12 @@ mod tests {
 
     #[test]
     fn stringify_unimplemented_consts() {
-        let c = Const::Unimplemented("someoperand".into());
-        let m = Module::default();
+        let mut m = Module::default();
+        m.types.push(Ty::Integer(IntegerTy::new(8)));
+        let c = Const::Unimplemented {
+            tyidx: TyIdx::new(0),
+            llvm_const_str: "someoperand".into(),
+        };
         assert_eq!(c.display(&m).to_string(), "unimplemented <<someoperand>>");
     }
 

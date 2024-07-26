@@ -3,6 +3,8 @@
 use super::{
     AOTTraceIterator, AOTTraceIteratorError, TraceAction, TraceRecorder, TraceRecorderError, Tracer,
 };
+#[cfg(jitc_llvm)]
+use crate::compile::jitc_llvm::frame::BitcodeSection;
 use crate::mt::{MTThread, DEFAULT_TRACE_TOO_LONG};
 use std::{
     cell::RefCell,
@@ -19,14 +21,36 @@ struct TracingBBlock {
 }
 use crate::compile::jitc_yk::AOT_MOD;
 
-// Mapping of function indexes to function names.
-static FUNC_NAMES: LazyLock<HashMap<usize, String>> = LazyLock::new(|| {
+/// Mapping of function indexes to function names.
+#[cfg(jitc_llvm)]
+static FUNC_NAMES: LazyLock<HashMap<usize, CString>> = LazyLock::new(|| {
     let mut fnames = HashMap::new();
     let funcs = AOT_MOD.get_funcs();
     for (index, function) in funcs.iter().enumerate() {
         fnames.insert(index, function.name().to_string());
     }
     fnames
+});
+
+/// Mapping of function indices to function names.
+///
+/// FIXME: We shouldn't be reaching into codegen-backend-specific stuff here. There should probably
+/// be some kind of generic codegen interface that offers this information up.
+///
+/// FIXME: We also probably don't need a whole hashmap caching owned copies of all of the function
+/// names. Looking at the sole use-site of `FUNC_NAMES`, I reckon that (once the LLVM backend has
+/// been deleted) it would be sufficient to expose a thin wrapper around `Module::func_()` and use
+/// that for querying function names from indices.
+#[cfg(jitc_yk)]
+static FUNC_NAMES: LazyLock<HashMap<usize, CString>> = LazyLock::new(|| {
+    crate::compile::jitc_yk::AOT_MOD
+        .funcs()
+        .iter_enumerated()
+        .map(|(funcidx, func)| {
+            // unwrap cannot fail assuming that all symbols are UTF-8.
+            (usize::from(funcidx), CString::new(func.name()).unwrap())
+        })
+        .collect::<HashMap<_, _>>()
 });
 
 thread_local! {
