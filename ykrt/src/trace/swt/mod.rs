@@ -24,12 +24,14 @@ use crate::compile::jitc_yk::AOT_MOD;
 /// Mapping of function indexes to function names.
 #[cfg(jitc_llvm)]
 static FUNC_NAMES: LazyLock<HashMap<usize, CString>> = LazyLock::new(|| {
-    let mut fnames = HashMap::new();
-    let funcs = AOT_MOD.get_funcs();
-    for (index, function) in funcs.iter().enumerate() {
-        fnames.insert(index, function.name().to_string());
-    }
-    fnames
+    crate::compile::jitc_yk::AOT_MOD
+        .funcs()
+        .iter_enumerated()
+        .map(|(funcidx, func)| {
+            // unwrap cannot fail assuming that all symbols are UTF-8.
+            (usize::from(funcidx), CString::new(func.name()).unwrap())
+        })
+        .collect::<HashMap<_, _>>()
 });
 
 /// Mapping of function indices to function names.
@@ -121,6 +123,7 @@ impl SWTraceIterator {
     }
 }
 
+
 impl Iterator for SWTraceIterator {
     type Item = Result<TraceAction, AOTTraceIteratorError>;
 
@@ -129,7 +132,7 @@ impl Iterator for SWTraceIterator {
             .next()
             .map(|tb| match FUNC_NAMES.get(&tb.function_index) {
                 Some(name) => Ok(TraceAction::MappedAOTBBlock {
-                    func_name: CString::new(name.as_str()).unwrap(),
+                    func_name: name.to_owned(),
                     bb: tb.block_index,
                 }),
                 _ => panic!(
