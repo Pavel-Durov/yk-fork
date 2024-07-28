@@ -12,10 +12,14 @@ export YKD_NEW_CODEGEN=1
 # cargo test ::switch_many_guards_failing.newcg.c -- --nocapture |& tee ./switch_many_guards_failing.newcg.c.txt
 # cargo test ::truncate.newcg.c |& tee ./truncate.newcg.c.txt
 
-mkdir -p "logs/"
+GIT_COMMIT=$(git rev-parse HEAD)
+DIST="logs/${GIT_COMMIT}"
+
+mkdir -p ${DIST}
+
 cargo build 
 
-# cargo test ::switch_many_guards_failing.newcg.c -- --nocapture |& tee ./logs/switch_many_guards_failing.newcg.c.${YKB_TRACER}
-cargo test ::truncate.newcg.c -- --nocapture |& tee ./logs/truncate.newcg.c.${YKB_TRACER}
+cargo test ::truncate.newcg.c -- --nocapture |& tee ./${DIST}/truncate.newcg.c.${YKB_TRACER}
+cargo test ::switch_many_guards_failing.newcg.c -- --nocapture |& tee ./${DIST}/switch_many_guards_failing.newcg.c.${YKB_TRACER}
+cargo test ::switch_nested_guard.newcg.c -- --nocapture |& tee ./${DIST}/switch_nested_guard.newcg.c.${YKB_TRACER}
 
-# cargo test ::switch_nested_guard.newcg.c -- --nocapture |& tee ./logs/switch_nested_guard.newcg.c.${YKB_TRACER}

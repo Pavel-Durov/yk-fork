@@ -1,0 +1,881 @@
+warning: unused import: `crate::compile::jitc_yk::AOT_MOD`
+  --> ykrt/src/trace/swt/mod.rs:23:5
+   |
+23 | use crate::compile::jitc_yk::AOT_MOD;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: `ykrt` (lib) generated 1 warning (run `cargo fix --lib -p ykrt` to apply 1 suggestion)
+warning: `ykrt` (lib test) generated 1 warning (1 duplicate)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.88s
+     Running unittests src/lib.rs (target/debug/deps/hwtracer-ee129e754ef3e6d5)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 15 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/tests-d06e60b0cfdb4b24)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/dump_ir.rs (target/debug/deps/dump_ir-581c8afa999dd096)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/gdb_c_test.rs (target/debug/deps/gdb_c_test-64e5bbe22ae313c1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running langtest_c.rs (target/debug/deps/c_tests-afe3358ff41b9045)
+Running C tests with opt level -O0...
+
+running 1 testsyk-jit-event: start-tracing
+yk-jit-event: stop-tracing
+--- Begin aot ---
+# IR format version: 0
+# Num funcs: 16
+# Num consts: 45
+# Num global decls: 1
+# Num types: 24
+global_decl @shadowstack_0
+
+func main(%arg0: i32, %arg1: ptr) -> i32 {
+  bb0:
+    %0_0: i32 = arg(0)
+    %0_1: ptr = arg(1)
+    call yk_trace_basicblock(0i32, 0i32)
+    %0_3: ptr = alloca {0: ptr, 64: ptr, 128: ptr, 192: ptr, 256: ptr, 320: ptr}, 1, 8
+    %0_4: ptr = call malloc(1000000i64)
+    *@shadowstack_0 = %0_4
+    %0_6: ptr = alloca ptr, 1, 8
+    %0_7: ptr = alloca {0: i64}, 1, 8
+    %0_8: ptr = ptr_add %0_4, 0
+    %0_9: ptr = ptr_add %0_4, 4
+    %0_10: ptr = ptr_add %0_4, 8
+    br bb1
+  bb1:
+    # switch_many_guards_failing.newcg.c:18: YkMT *mt = yk_mt_new(NULL);
+    call yk_trace_basicblock(0i32, 1i32)
+    %1_1: ptr = call yk_mt_new(0x0)
+    br bb2
+  bb2:
+    call yk_trace_basicblock(0i32, 2i32)
+    *%0_6 = %1_1
+    # switch_many_guards_failing.newcg.c:19: yk_mt_hot_threshold_set(mt, 3);
+    call yk_mt_hot_threshold_set(%1_1, 3i32)
+    # switch_many_guards_failing.newcg.c:20: YkLocation loc = yk_location_new();
+    br bb3
+  bb3:
+    call yk_trace_basicblock(0i32, 3i32)
+    %3_1: i64 = call yk_location_new()
+    br bb4
+  bb4:
+    call yk_trace_basicblock(0i32, 4i32)
+    *%0_7 = %3_1
+    # switch_many_guards_failing.newcg.c:21: int i = 100;
+    *%0_8 = 100i32
+    # switch_many_guards_failing.newcg.c:22: int j = 10;
+    *%0_9 = 10i32
+    # switch_many_guards_failing.newcg.c:24: NOOPT_VAL(j);
+    br bb5
+  bb5:
+    call yk_trace_basicblock(0i32, 5i32)
+    %5_1: i32 = load %0_9
+    # switch_many_guards_failing.newcg.c:25: while (i > 0) {
+    br bb6
+  bb6:
+    call yk_trace_basicblock(0i32, 6i32)
+    br bb7
+  bb7:
+    call yk_trace_basicblock(0i32, 7i32)
+    %7_1: i32 = load %0_8
+    %7_2: i1 = sgt %7_1, 0i32
+    condbr %7_2, bb8, bb22 [safepoint: 1i64, (%0_3, %0_6, %0_7, %0_8, %0_9, %0_10, %7_2)]
+  bb8:
+    # switch_many_guards_failing.newcg.c:26: yk_mt_control_point(mt, &loc);
+    call yk_trace_basicblock(0i32, 8i32)
+    %8_1: ptr = load %0_6
+    %8_2: ptr = ptr_add %0_3, 0
+    *%8_2 = %0_6
+    %8_4: ptr = ptr_add %0_3, 8
+    *%8_4 = %0_7
+    %8_6: ptr = ptr_add %0_3, 16
+    *%8_6 = %0_8
+    %8_8: ptr = ptr_add %0_3, 24
+    *%8_8 = %0_9
+    %8_10: ptr = ptr_add %0_3, 32
+    *%8_10 = %0_10
+    %8_12: ptr = ptr_add %0_3, 40
+    *%8_12 = %8_1
+    %8_14: ptr = call llvm.frameaddress.p0(0i32)
+    call __ykrt_control_point(%8_1, %0_7, %0_3, %8_14, 2i64) [safepoint: 2i64, (%0_3, %0_6, %0_7, %0_8, %0_9, %0_10, %8_1)]
+    # switch_many_guards_failing.newcg.c:28: switch (j % 10) {
+    br bb9
+  bb9:
+    call yk_trace_basicblock(0i32, 9i32)
+    %9_1: i32 = load %0_9
+    %9_2: i32 = srem %9_1, 10i32
+    switch %9_2, bb20, [9 -> bb10, 8 -> bb11, 7 -> bb12, 6 -> bb13, 5 -> bb14, 4 -> bb15, 3 -> bb16, 2 -> bb17, 1 -> bb18, 0 -> bb19] [safepoint: 0i64, (%0_3, %0_6, %0_7, %0_8, %0_9, %0_10, %9_2)]
+  bb10:
+    # switch_many_guards_failing.newcg.c:30: c = 'a';
+    call yk_trace_basicblock(0i32, 10i32)
+    *%0_10 = 97i8
+    # switch_many_guards_failing.newcg.c:31: break;
+    br bb20
+  bb11:
+    # switch_many_guards_failing.newcg.c:33: c = 'b';
+    call yk_trace_basicblock(0i32, 11i32)
+    *%0_10 = 98i8
+    # switch_many_guards_failing.newcg.c:34: break;
+    br bb20
+  bb12:
+    # switch_many_guards_failing.newcg.c:36: c = 'c';
+    call yk_trace_basicblock(0i32, 12i32)
+    *%0_10 = 99i8
+    # switch_many_guards_failing.newcg.c:37: break;
+    br bb20
+  bb13:
+    # switch_many_guards_failing.newcg.c:39: c = 'd';
+    call yk_trace_basicblock(0i32, 13i32)
+    *%0_10 = 100i8
+    # switch_many_guards_failing.newcg.c:40: break;
+    br bb20
+  bb14:
+    # switch_many_guards_failing.newcg.c:42: c = 'e';
+    call yk_trace_basicblock(0i32, 14i32)
+    *%0_10 = 101i8
+    # switch_many_guards_failing.newcg.c:43: break;
+    br bb20
+  bb15:
+    # switch_many_guards_failing.newcg.c:45: c = 'f';
+    call yk_trace_basicblock(0i32, 15i32)
+    *%0_10 = 102i8
+    # switch_many_guards_failing.newcg.c:46: break;
+    br bb20
+  bb16:
+    # switch_many_guards_failing.newcg.c:48: c = 'g';
+    call yk_trace_basicblock(0i32, 16i32)
+    *%0_10 = 103i8
+    # switch_many_guards_failing.newcg.c:49: break;
+    br bb20
+  bb17:
+    # switch_many_guards_failing.newcg.c:51: c = 'h';
+    call yk_trace_basicblock(0i32, 17i32)
+    *%0_10 = 104i8
+    # switch_many_guards_failing.newcg.c:52: break;
+    br bb20
+  bb18:
+    # switch_many_guards_failing.newcg.c:54: c = 'i';
+    call yk_trace_basicblock(0i32, 18i32)
+    *%0_10 = 105i8
+    # switch_many_guards_failing.newcg.c:55: break;
+    br bb20
+  bb19:
+    # switch_many_guards_failing.newcg.c:57: c = 'j';
+    call yk_trace_basicblock(0i32, 19i32)
+    *%0_10 = 106i8
+    # switch_many_guards_failing.newcg.c:58: break;
+    br bb20
+  bb20:
+    # switch_many_guards_failing.newcg.c:60: printf("%c", c);
+    call yk_trace_basicblock(0i32, 20i32)
+    %20_1: i8 = load %0_10
+    %20_2: i32 = sext %20_1, i32
+    %20_3: i32 = call putchar(%20_2)
+    # switch_many_guards_failing.newcg.c:61: i--;
+    br bb21
+  bb21:
+    call yk_trace_basicblock(0i32, 21i32)
+    %21_1: i32 = load %0_8
+    %21_2: i32 = add %21_1, -1i32
+    *%0_8 = %21_2
+    # switch_many_guards_failing.newcg.c:62: j++;
+    %21_4: i32 = load %0_9
+    %21_5: i32 = add %21_4, 1i32
+    *%0_9 = %21_5
+    # switch_many_guards_failing.newcg.c:25: while (i > 0) {
+    br bb7
+  bb22:
+    # switch_many_guards_failing.newcg.c:64: yk_location_drop(loc);
+    call yk_trace_basicblock(0i32, 22i32)
+    %22_1: i64 = load %0_7
+    call yk_location_drop(%22_1)
+    # switch_many_guards_failing.newcg.c:65: yk_mt_drop(mt);
+    br bb23
+  bb23:
+    call yk_trace_basicblock(0i32, 23i32)
+    %23_1: ptr = load %0_6
+    call yk_mt_drop(%23_1)
+    # switch_many_guards_failing.newcg.c:66: printf("\n");
+    br bb24
+  bb24:
+    call yk_trace_basicblock(0i32, 24i32)
+    %24_1: i32 = call putchar(10i32)
+    # switch_many_guards_failing.newcg.c:68: return (EXIT_SUCCESS);
+    br bb25
+  bb25:
+    call yk_trace_basicblock(0i32, 25i32)
+    br bb27
+  bb26:
+    call yk_trace_basicblock(0i32, 26i32)
+    ret 0i32
+  bb27:
+    call yk_trace_basicblock(0i32, 27i32)
+    br bb26
+}
+
+func llvm.dbg.declare(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func yk_mt_new(%arg0: ptr) -> ptr;
+
+func yk_mt_hot_threshold_set(%arg0: ptr, %arg1: i32);
+
+func yk_location_new() -> i64;
+
+func yk_mt_control_point(%arg0: ptr, %arg1: ptr);
+
+func printf(%arg0: ptr, ...) -> i32;
+
+func yk_location_drop(%arg0: i64);
+
+func yk_mt_drop(%arg0: ptr);
+
+func llvm.dbg.value(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func putchar(%arg0: i32) -> i32;
+
+func malloc(%arg0: i64) -> ptr;
+
+func __ykrt_control_point(%arg0: ptr, %arg1: ptr, %arg2: ptr, %arg3: ptr, %arg4: i64);
+
+func llvm.frameaddress.p0(%arg0: i32) -> ptr;
+
+func llvm.experimental.stackmap(%arg0: i64, %arg1: i32, ...);
+
+func yk_trace_basicblock(%arg0: i32, %arg1: i32);
+
+--- End aot ---
+thread '<unnamed>' panicked at ykrt/src/compile/jitc_yk/trace_builder.rs:767:22:
+explicit panic
+stack backtrace:
+   0:     0x7f510c41a925 - std::backtrace_rs::backtrace::libunwind::trace::h333f9fc92c698ac9
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/../../backtrace/src/backtrace/libunwind.rs:116:5
+   1:     0x7f510c41a925 - std::backtrace_rs::backtrace::trace_unsynchronized::hda5954a724e72539
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/../../backtrace/src/backtrace/mod.rs:66:5
+   2:     0x7f510c41a925 - std::sys::backtrace::_print_fmt::h0e8914962807a191
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:68:9
+   3:     0x7f510c41a925 - <std::sys::backtrace::BacktraceLock::print::DisplayBacktrace as core::fmt::Display>::fmt::h4f36998f6fba85cc
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:41:26
+   4:     0x7f510c43d58b - core::fmt::rt::Argument::fmt::h0e2584080ac0580e
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/fmt/rt.rs:173:76
+   5:     0x7f510c43d58b - core::fmt::write::h322aa5bb797a8324
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/fmt/mod.rs:1182:21
+   6:     0x7f510c41832f - std::io::Write::write_fmt::h82e23adee1fc15a5
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/io/mod.rs:1827:15
+   7:     0x7f510c41ba71 - std::sys::backtrace::BacktraceLock::print::h02932d37660853ce
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:44:9
+   8:     0x7f510c41ba71 - std::panicking::default_hook::{{closure}}::hfbdf52fddf6ca2a8
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:269:22
+   9:     0x7f510c41b74c - std::panicking::default_hook::hcd9d479509804975
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:296:9
+  10:     0x7f510c41c141 - std::panicking::rust_panic_with_hook::hbad8b4fa563fee61
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:800:13
+  11:     0x7f510c41bfa7 - std::panicking::begin_panic_handler::{{closure}}::h35913f1c60483a96
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:674:13
+  12:     0x7f510c41ade9 - std::sys::backtrace::__rust_end_short_backtrace::h81572c5d609ceb6a
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:172:18
+  13:     0x7f510c41bc34 - rust_begin_unwind
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:665:5
+  14:     0x7f510c43b0f3 - core::panicking::panic_fmt::h26c4c1f4c57f1736
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/panicking.rs:74:14
+  15:     0x7f510c43b276 - core::panicking::panic_display::he234d58b8935f881
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/panicking.rs:264:5
+  16:     0x7f510c43b276 - core::panicking::panic_explicit::h702ac9212fdcf04a
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/panicking.rs:237:5
+  17:     0x7f510c2bc87a - ykrt::compile::jitc_yk::trace_builder::TraceBuilder::handle_call::panic_cold_explicit::h0ae9365b7c56706b
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/panic.rs:89:13
+  18:     0x7f510c2b673b - ykrt::compile::jitc_yk::trace_builder::TraceBuilder::handle_call::h9599556ba053cce6
+                               at /home/pd/git-repos/research/yk-fork/ykrt/src/compile/jitc_yk/trace_builder.rs:767:22
+  19:     0x7f510c2b0c00 - ykrt::compile::jitc_yk::trace_builder::TraceBuilder::process_block::h29b93bf1370e6976
+                               at /home/pd/git-repos/research/yk-fork/ykrt/src/compile/jitc_yk/trace_builder.rs:224:21
+  20:     0x7f510c2bb90f - ykrt::compile::jitc_yk::trace_builder::TraceBuilder::build::hb8396a22fa3899d6
+                               at /home/pd/git-repos/research/yk-fork/ykrt/src/compile/jitc_yk/trace_builder.rs:1148:21
+  21:     0x7f510c2bc543 - ykrt::compile::jitc_yk::trace_builder::build::hc82581356dffbe1d
+                               at /home/pd/git-repos/research/yk-fork/ykrt/src/compile/jitc_yk/trace_builder.rs:1205:5
+  22:     0x7f510c3303f5 - <ykrt::compile::jitc_yk::JITCYk as ykrt::compile::Compiler>::compile::hd934305289654af7
+                               at /home/pd/git-repos/research/yk-fork/ykrt/src/compile/jitc_yk/mod.rs:102:13
+  23:     0x7f510c322404 - ykrt::mt::MT::queue_compile_job::{{closure}}::h836fb8e99988cbae
+                               at /home/pd/git-repos/research/yk-fork/ykrt/src/mt.rs:628:19
+  24:     0x7f510c2adb96 - std::sys::backtrace::__rust_begin_short_backtrace::h49b5d795f94ff290
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:156:18
+  25:     0x7f510c2ad36d - std::thread::Builder::spawn_unchecked_::{{closure}}::{{closure}}::h15f45e870fb8234c
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/thread/mod.rs:529:17
+  26:     0x7f510c29a331 - <core::panic::unwind_safe::AssertUnwindSafe<F> as core::ops::function::FnOnce<()>>::call_once::h8368fb18b119b7d2
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/panic/unwind_safe.rs:272:9
+  27:     0x7f510c29a035 - std::panicking::try::do_call::hedb887dc79b98d45
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:557:40
+  28:     0x7f510c2ada6b - __rust_try
+  29:     0x7f510c2ad152 - std::panicking::try::hf8c118c593feea03
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:521:19
+  30:     0x7f510c2ad152 - std::panic::catch_unwind::hcb70ed62d48e5b01
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panic.rs:350:14
+  31:     0x7f510c2ad152 - std::thread::Builder::spawn_unchecked_::{{closure}}::he2f70e37c04f808d
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/thread/mod.rs:528:30
+  32:     0x7f510c280f9f - core::ops::function::FnOnce::call_once{{vtable.shim}}::h26f400463f5ad363
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/ops/function.rs:250:5
+  33:     0x7f510c41e57b - <alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once::h602a4227d9e11684
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/alloc/src/boxed.rs:2149:9
+  34:     0x7f510c41e57b - <alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once::haf39740772fa9e9f
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/alloc/src/boxed.rs:2149:9
+  35:     0x7f510c41e57b - std::sys::pal::unix::thread::Thread::new::thread_start::h851591212a2729e2
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/pal/unix/thread.rs:108:17
+  36:     0x7f510bf26ac3 - start_thread
+                               at ./nptl/pthread_create.c:442:8
+  37:     0x7f510bfb8850 - __GI___clone3
+                               at ./misc/../sysdeps/unix/sysv/linux/x86_64/clone3.S:81
+  38:                0x0 - <unknown>
+thread '<unnamed>' panicked at ykrt/src/mt.rs:676:46:
+called `Result::unwrap()` on an `Err` value: Any { .. }
+stack backtrace:
+   0:     0x7f510c41a925 - std::backtrace_rs::backtrace::libunwind::trace::h333f9fc92c698ac9
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/../../backtrace/src/backtrace/libunwind.rs:116:5
+   1:     0x7f510c41a925 - std::backtrace_rs::backtrace::trace_unsynchronized::hda5954a724e72539
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/../../backtrace/src/backtrace/mod.rs:66:5
+   2:     0x7f510c41a925 - std::sys::backtrace::_print_fmt::h0e8914962807a191
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:68:9
+   3:     0x7f510c41a925 - <std::sys::backtrace::BacktraceLock::print::DisplayBacktrace as core::fmt::Display>::fmt::h4f36998f6fba85cc
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:41:26
+   4:     0x7f510c43d58b - core::fmt::rt::Argument::fmt::h0e2584080ac0580e
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/fmt/rt.rs:173:76
+   5:     0x7f510c43d58b - core::fmt::write::h322aa5bb797a8324
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/fmt/mod.rs:1182:21
+   6:     0x7f510c41832f - std::io::Write::write_fmt::h82e23adee1fc15a5
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/io/mod.rs:1827:15
+   7:     0x7f510c41ba71 - std::sys::backtrace::BacktraceLock::print::h02932d37660853ce
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:44:9
+   8:     0x7f510c41ba71 - std::panicking::default_hook::{{closure}}::hfbdf52fddf6ca2a8
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:269:22
+   9:     0x7f510c41b74c - std::panicking::default_hook::hcd9d479509804975
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:296:9
+  10:     0x7f510c41c141 - std::panicking::rust_panic_with_hook::hbad8b4fa563fee61
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:800:13
+  11:     0x7f510c41bfa7 - std::panicking::begin_panic_handler::{{closure}}::h35913f1c60483a96
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:674:13
+  12:     0x7f510c41ade9 - std::sys::backtrace::__rust_end_short_backtrace::h81572c5d609ceb6a
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:172:18
+  13:     0x7f510c41bc34 - rust_begin_unwind
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:665:5
+  14:     0x7f510c43b0f3 - core::panicking::panic_fmt::h26c4c1f4c57f1736
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/panicking.rs:74:14
+  15:     0x7f510c43b6c6 - core::result::unwrap_failed::hd60517332358529c
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/result.rs:1679:5
+  16:     0x7f510c245819 - core::result::Result<T,E>::unwrap::hcc485845734635ed
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/result.rs:1102:23
+  17:     0x7f510c245819 - ykrt::mt::MT::queue_compile_job::h68d445c588c990f5
+                               at /home/pd/git-repos/research/yk-fork/ykrt/src/mt.rs:676:13
+  18:     0x7f510c244580 - ykrt::mt::MT::control_point::hed08146d7837d19c
+                               at /home/pd/git-repos/research/yk-fork/ykrt/src/mt.rs:328:25
+  19:     0x7f510c1f9065 - __ykrt_control_point
+                               at /home/pd/git-repos/research/yk-fork/ykcapi/src/lib.rs:69:9
+  20:           0x202e00 - main
+                               at /home/pd/git-repos/research/yk-fork/tests/c/switch_many_guards_failing.newcg.c:26:5
+  21:     0x7f510bebbd90 - __libc_start_call_main
+                               at ./csu/../sysdeps/nptl/libc_start_call_main.h:58:16
+  22:     0x7f510bebbe40 - __libc_start_main_impl
+                               at ./csu/../csu/libc-start.c:392:3
+  23:           0x202c05 - _start
+  24:                0x0 - <unknown>
+thread '<unnamed>' panicked at library/core/src/panicking.rs:221:5:
+panic in a function that cannot unwind
+stack backtrace:
+   0:     0x7f510c41a925 - std::backtrace_rs::backtrace::libunwind::trace::h333f9fc92c698ac9
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/../../backtrace/src/backtrace/libunwind.rs:116:5
+   1:     0x7f510c41a925 - std::backtrace_rs::backtrace::trace_unsynchronized::hda5954a724e72539
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/../../backtrace/src/backtrace/mod.rs:66:5
+   2:     0x7f510c41a925 - std::sys::backtrace::_print_fmt::h0e8914962807a191
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:68:9
+   3:     0x7f510c41a925 - <std::sys::backtrace::BacktraceLock::print::DisplayBacktrace as core::fmt::Display>::fmt::h4f36998f6fba85cc
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:41:26
+   4:     0x7f510c43d58b - core::fmt::rt::Argument::fmt::h0e2584080ac0580e
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/fmt/rt.rs:173:76
+   5:     0x7f510c43d58b - core::fmt::write::h322aa5bb797a8324
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/fmt/mod.rs:1182:21
+   6:     0x7f510c41832f - std::io::Write::write_fmt::h82e23adee1fc15a5
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/io/mod.rs:1827:15
+   7:     0x7f510c41ba71 - std::sys::backtrace::BacktraceLock::print::h02932d37660853ce
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:44:9
+   8:     0x7f510c41ba71 - std::panicking::default_hook::{{closure}}::hfbdf52fddf6ca2a8
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:269:22
+   9:     0x7f510c41b74c - std::panicking::default_hook::hcd9d479509804975
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:296:9
+  10:     0x7f510c41c141 - std::panicking::rust_panic_with_hook::hbad8b4fa563fee61
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:800:13
+  11:     0x7f510c41bf73 - std::panicking::begin_panic_handler::{{closure}}::h35913f1c60483a96
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:667:13
+  12:     0x7f510c41ade9 - std::sys::backtrace::__rust_end_short_backtrace::h81572c5d609ceb6a
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:172:18
+  13:     0x7f510c41bc34 - rust_begin_unwind
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:665:5
+  14:     0x7f510c43b135 - core::panicking::panic_nounwind_fmt::runtime::h164f5e44e4c673ac
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/panicking.rs:112:18
+  15:     0x7f510c43b135 - core::panicking::panic_nounwind_fmt::h7f66915fa8f2b044
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/panicking.rs:122:5
+  16:     0x7f510c43b1c2 - core::panicking::panic_nounwind::h6da883039280a44d
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/panicking.rs:221:5
+  17:     0x7f510c43b3e6 - core::panicking::panic_cannot_unwind::hf400439ed91f523b
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/panicking.rs:309:5
+  18:     0x7f510c1f8fce - __ykrt_control_point
+                               at /home/pd/git-repos/research/yk-fork/ykcapi/src/lib.rs:55:1
+  19:           0x202e00 - main
+                               at /home/pd/git-repos/research/yk-fork/tests/c/switch_many_guards_failing.newcg.c:26:5
+  20:     0x7f510bebbd90 - __libc_start_call_main
+                               at ./csu/../sysdeps/nptl/libc_start_call_main.h:58:16
+  21:     0x7f510bebbe40 - __libc_start_main_impl
+                               at ./csu/../csu/libc-start.c:392:3
+  22:           0x202c05 - _start
+  23:                0x0 - <unknown>
+thread caused non-unwinding panic. aborting.
+
+test lang_tests::switch_many_guards_failing.newcg.c ... [0m[31mFAILED[0m
+
+failures:
+
+---- lang_tests::switch_many_guards_failing.newcg.c status ----
+Exited due to signal: 6
+
+---- lang_tests::switch_many_guards_failing.newcg.c stderr ----
+
+yk-jit-event: start-tracing
+yk-jit-event: stop-tracing
+--- Begin aot ---
+# IR format version: 0
+# Num funcs: 16
+# Num consts: 45
+# Num global decls: 1
+# Num types: 24
+global_decl @shadowstack_0
+
+func main(%arg0: i32, %arg1: ptr) -> i32 {
+  bb0:
+    %0_0: i32 = arg(0)
+    %0_1: ptr = arg(1)
+    call yk_trace_basicblock(0i32, 0i32)
+    %0_3: ptr = alloca {0: ptr, 64: ptr, 128: ptr, 192: ptr, 256: ptr, 320: ptr}, 1, 8
+    %0_4: ptr = call malloc(1000000i64)
+    *@shadowstack_0 = %0_4
+    %0_6: ptr = alloca ptr, 1, 8
+    %0_7: ptr = alloca {0: i64}, 1, 8
+    %0_8: ptr = ptr_add %0_4, 0
+    %0_9: ptr = ptr_add %0_4, 4
+    %0_10: ptr = ptr_add %0_4, 8
+    br bb1
+  bb1:
+    # switch_many_guards_failing.newcg.c:18: YkMT *mt = yk_mt_new(NULL);
+    call yk_trace_basicblock(0i32, 1i32)
+    %1_1: ptr = call yk_mt_new(0x0)
+    br bb2
+  bb2:
+    call yk_trace_basicblock(0i32, 2i32)
+    *%0_6 = %1_1
+    # switch_many_guards_failing.newcg.c:19: yk_mt_hot_threshold_set(mt, 3);
+    call yk_mt_hot_threshold_set(%1_1, 3i32)
+    # switch_many_guards_failing.newcg.c:20: YkLocation loc = yk_location_new();
+    br bb3
+  bb3:
+    call yk_trace_basicblock(0i32, 3i32)
+    %3_1: i64 = call yk_location_new()
+    br bb4
+  bb4:
+    call yk_trace_basicblock(0i32, 4i32)
+    *%0_7 = %3_1
+    # switch_many_guards_failing.newcg.c:21: int i = 100;
+    *%0_8 = 100i32
+    # switch_many_guards_failing.newcg.c:22: int j = 10;
+    *%0_9 = 10i32
+    # switch_many_guards_failing.newcg.c:24: NOOPT_VAL(j);
+    br bb5
+  bb5:
+    call yk_trace_basicblock(0i32, 5i32)
+    %5_1: i32 = load %0_9
+    # switch_many_guards_failing.newcg.c:25: while (i > 0) {
+    br bb6
+  bb6:
+    call yk_trace_basicblock(0i32, 6i32)
+    br bb7
+  bb7:
+    call yk_trace_basicblock(0i32, 7i32)
+    %7_1: i32 = load %0_8
+    %7_2: i1 = sgt %7_1, 0i32
+    condbr %7_2, bb8, bb22 [safepoint: 1i64, (%0_3, %0_6, %0_7, %0_8, %0_9, %0_10, %7_2)]
+  bb8:
+    # switch_many_guards_failing.newcg.c:26: yk_mt_control_point(mt, &loc);
+    call yk_trace_basicblock(0i32, 8i32)
+    %8_1: ptr = load %0_6
+    %8_2: ptr = ptr_add %0_3, 0
+    *%8_2 = %0_6
+    %8_4: ptr = ptr_add %0_3, 8
+    *%8_4 = %0_7
+    %8_6: ptr = ptr_add %0_3, 16
+    *%8_6 = %0_8
+    %8_8: ptr = ptr_add %0_3, 24
+    *%8_8 = %0_9
+    %8_10: ptr = ptr_add %0_3, 32
+    *%8_10 = %0_10
+    %8_12: ptr = ptr_add %0_3, 40
+    *%8_12 = %8_1
+    %8_14: ptr = call llvm.frameaddress.p0(0i32)
+    call __ykrt_control_point(%8_1, %0_7, %0_3, %8_14, 2i64) [safepoint: 2i64, (%0_3, %0_6, %0_7, %0_8, %0_9, %0_10, %8_1)]
+    # switch_many_guards_failing.newcg.c:28: switch (j % 10) {
+    br bb9
+  bb9:
+    call yk_trace_basicblock(0i32, 9i32)
+    %9_1: i32 = load %0_9
+    %9_2: i32 = srem %9_1, 10i32
+    switch %9_2, bb20, [9 -> bb10, 8 -> bb11, 7 -> bb12, 6 -> bb13, 5 -> bb14, 4 -> bb15, 3 -> bb16, 2 -> bb17, 1 -> bb18, 0 -> bb19] [safepoint: 0i64, (%0_3, %0_6, %0_7, %0_8, %0_9, %0_10, %9_2)]
+  bb10:
+    # switch_many_guards_failing.newcg.c:30: c = 'a';
+    call yk_trace_basicblock(0i32, 10i32)
+    *%0_10 = 97i8
+    # switch_many_guards_failing.newcg.c:31: break;
+    br bb20
+  bb11:
+    # switch_many_guards_failing.newcg.c:33: c = 'b';
+    call yk_trace_basicblock(0i32, 11i32)
+    *%0_10 = 98i8
+    # switch_many_guards_failing.newcg.c:34: break;
+    br bb20
+  bb12:
+    # switch_many_guards_failing.newcg.c:36: c = 'c';
+    call yk_trace_basicblock(0i32, 12i32)
+    *%0_10 = 99i8
+    # switch_many_guards_failing.newcg.c:37: break;
+    br bb20
+  bb13:
+    # switch_many_guards_failing.newcg.c:39: c = 'd';
+    call yk_trace_basicblock(0i32, 13i32)
+    *%0_10 = 100i8
+    # switch_many_guards_failing.newcg.c:40: break;
+    br bb20
+  bb14:
+    # switch_many_guards_failing.newcg.c:42: c = 'e';
+    call yk_trace_basicblock(0i32, 14i32)
+    *%0_10 = 101i8
+    # switch_many_guards_failing.newcg.c:43: break;
+    br bb20
+  bb15:
+    # switch_many_guards_failing.newcg.c:45: c = 'f';
+    call yk_trace_basicblock(0i32, 15i32)
+    *%0_10 = 102i8
+    # switch_many_guards_failing.newcg.c:46: break;
+    br bb20
+  bb16:
+    # switch_many_guards_failing.newcg.c:48: c = 'g';
+    call yk_trace_basicblock(0i32, 16i32)
+    *%0_10 = 103i8
+    # switch_many_guards_failing.newcg.c:49: break;
+    br bb20
+  bb17:
+    # switch_many_guards_failing.newcg.c:51: c = 'h';
+    call yk_trace_basicblock(0i32, 17i32)
+    *%0_10 = 104i8
+    # switch_many_guards_failing.newcg.c:52: break;
+    br bb20
+  bb18:
+    # switch_many_guards_failing.newcg.c:54: c = 'i';
+    call yk_trace_basicblock(0i32, 18i32)
+    *%0_10 = 105i8
+    # switch_many_guards_failing.newcg.c:55: break;
+    br bb20
+  bb19:
+    # switch_many_guards_failing.newcg.c:57: c = 'j';
+    call yk_trace_basicblock(0i32, 19i32)
+    *%0_10 = 106i8
+    # switch_many_guards_failing.newcg.c:58: break;
+    br bb20
+  bb20:
+    # switch_many_guards_failing.newcg.c:60: printf("%c", c);
+    call yk_trace_basicblock(0i32, 20i32)
+    %20_1: i8 = load %0_10
+    %20_2: i32 = sext %20_1, i32
+    %20_3: i32 = call putchar(%20_2)
+    # switch_many_guards_failing.newcg.c:61: i--;
+    br bb21
+  bb21:
+    call yk_trace_basicblock(0i32, 21i32)
+    %21_1: i32 = load %0_8
+    %21_2: i32 = add %21_1, -1i32
+    *%0_8 = %21_2
+    # switch_many_guards_failing.newcg.c:62: j++;
+    %21_4: i32 = load %0_9
+    %21_5: i32 = add %21_4, 1i32
+    *%0_9 = %21_5
+    # switch_many_guards_failing.newcg.c:25: while (i > 0) {
+    br bb7
+  bb22:
+    # switch_many_guards_failing.newcg.c:64: yk_location_drop(loc);
+    call yk_trace_basicblock(0i32, 22i32)
+    %22_1: i64 = load %0_7
+    call yk_location_drop(%22_1)
+    # switch_many_guards_failing.newcg.c:65: yk_mt_drop(mt);
+    br bb23
+  bb23:
+    call yk_trace_basicblock(0i32, 23i32)
+    %23_1: ptr = load %0_6
+    call yk_mt_drop(%23_1)
+    # switch_many_guards_failing.newcg.c:66: printf("\n");
+    br bb24
+  bb24:
+    call yk_trace_basicblock(0i32, 24i32)
+    %24_1: i32 = call putchar(10i32)
+    # switch_many_guards_failing.newcg.c:68: return (EXIT_SUCCESS);
+    br bb25
+  bb25:
+    call yk_trace_basicblock(0i32, 25i32)
+    br bb27
+  bb26:
+    call yk_trace_basicblock(0i32, 26i32)
+    ret 0i32
+  bb27:
+    call yk_trace_basicblock(0i32, 27i32)
+    br bb26
+}
+
+func llvm.dbg.declare(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func yk_mt_new(%arg0: ptr) -> ptr;
+
+func yk_mt_hot_threshold_set(%arg0: ptr, %arg1: i32);
+
+func yk_location_new() -> i64;
+
+func yk_mt_control_point(%arg0: ptr, %arg1: ptr);
+
+func printf(%arg0: ptr, ...) -> i32;
+
+func yk_location_drop(%arg0: i64);
+
+func yk_mt_drop(%arg0: ptr);
+
+func llvm.dbg.value(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func putchar(%arg0: i32) -> i32;
+
+func malloc(%arg0: i64) -> ptr;
+
+func __ykrt_control_point(%arg0: ptr, %arg1: ptr, %arg2: ptr, %arg3: ptr, %arg4: i64);
+
+func llvm.frameaddress.p0(%arg0: i32) -> ptr;
+
+func llvm.experimental.stackmap(%arg0: i64, %arg1: i32, ...);
+
+func yk_trace_basicblock(%arg0: i32, %arg1: i32);
+
+--- End aot ---
+thread '<unnamed>' panicked at ykrt/src/compile/jitc_yk/trace_builder.rs:767:22:
+explicit panic
+stack backtrace:
+   0:     0x7f510c41a925 - std::backtrace_rs::backtrace::libunwind::trace::h333f9fc92c698ac9
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/../../backtrace/src/backtrace/libunwind.rs:116:5
+   1:     0x7f510c41a925 - std::backtrace_rs::backtrace::trace_unsynchronized::hda5954a724e72539
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/../../backtrace/src/backtrace/mod.rs:66:5
+   2:     0x7f510c41a925 - std::sys::backtrace::_print_fmt::h0e8914962807a191
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:68:9
+   3:     0x7f510c41a925 - <std::sys::backtrace::BacktraceLock::print::DisplayBacktrace as core::fmt::Display>::fmt::h4f36998f6fba85cc
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:41:26
+   4:     0x7f510c43d58b - core::fmt::rt::Argument::fmt::h0e2584080ac0580e
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/fmt/rt.rs:173:76
+   5:     0x7f510c43d58b - core::fmt::write::h322aa5bb797a8324
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/fmt/mod.rs:1182:21
+   6:     0x7f510c41832f - std::io::Write::write_fmt::h82e23adee1fc15a5
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/io/mod.rs:1827:15
+   7:     0x7f510c41ba71 - std::sys::backtrace::BacktraceLock::print::h02932d37660853ce
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:44:9
+   8:     0x7f510c41ba71 - std::panicking::default_hook::{{closure}}::hfbdf52fddf6ca2a8
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:269:22
+   9:     0x7f510c41b74c - std::panicking::default_hook::hcd9d479509804975
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:296:9
+  10:     0x7f510c41c141 - std::panicking::rust_panic_with_hook::hbad8b4fa563fee61
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:800:13
+  11:     0x7f510c41bfa7 - std::panicking::begin_panic_handler::{{closure}}::h35913f1c60483a96
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:674:13
+  12:     0x7f510c41ade9 - std::sys::backtrace::__rust_end_short_backtrace::h81572c5d609ceb6a
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:172:18
+  13:     0x7f510c41bc34 - rust_begin_unwind
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:665:5
+  14:     0x7f510c43b0f3 - core::panicking::panic_fmt::h26c4c1f4c57f1736
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/panicking.rs:74:14
+  15:     0x7f510c43b276 - core::panicking::panic_display::he234d58b8935f881
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/panicking.rs:264:5
+  16:     0x7f510c43b276 - core::panicking::panic_explicit::h702ac9212fdcf04a
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/panicking.rs:237:5
+  17:     0x7f510c2bc87a - ykrt::compile::jitc_yk::trace_builder::TraceBuilder::handle_call::panic_cold_explicit::h0ae9365b7c56706b
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/panic.rs:89:13
+  18:     0x7f510c2b673b - ykrt::compile::jitc_yk::trace_builder::TraceBuilder::handle_call::h9599556ba053cce6
+                               at /home/pd/git-repos/research/yk-fork/ykrt/src/compile/jitc_yk/trace_builder.rs:767:22
+  19:     0x7f510c2b0c00 - ykrt::compile::jitc_yk::trace_builder::TraceBuilder::process_block::h29b93bf1370e6976
+                               at /home/pd/git-repos/research/yk-fork/ykrt/src/compile/jitc_yk/trace_builder.rs:224:21
+  20:     0x7f510c2bb90f - ykrt::compile::jitc_yk::trace_builder::TraceBuilder::build::hb8396a22fa3899d6
+                               at /home/pd/git-repos/research/yk-fork/ykrt/src/compile/jitc_yk/trace_builder.rs:1148:21
+  21:     0x7f510c2bc543 - ykrt::compile::jitc_yk::trace_builder::build::hc82581356dffbe1d
+                               at /home/pd/git-repos/research/yk-fork/ykrt/src/compile/jitc_yk/trace_builder.rs:1205:5
+  22:     0x7f510c3303f5 - <ykrt::compile::jitc_yk::JITCYk as ykrt::compile::Compiler>::compile::hd934305289654af7
+                               at /home/pd/git-repos/research/yk-fork/ykrt/src/compile/jitc_yk/mod.rs:102:13
+  23:     0x7f510c322404 - ykrt::mt::MT::queue_compile_job::{{closure}}::h836fb8e99988cbae
+                               at /home/pd/git-repos/research/yk-fork/ykrt/src/mt.rs:628:19
+  24:     0x7f510c2adb96 - std::sys::backtrace::__rust_begin_short_backtrace::h49b5d795f94ff290
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:156:18
+  25:     0x7f510c2ad36d - std::thread::Builder::spawn_unchecked_::{{closure}}::{{closure}}::h15f45e870fb8234c
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/thread/mod.rs:529:17
+  26:     0x7f510c29a331 - <core::panic::unwind_safe::AssertUnwindSafe<F> as core::ops::function::FnOnce<()>>::call_once::h8368fb18b119b7d2
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/panic/unwind_safe.rs:272:9
+  27:     0x7f510c29a035 - std::panicking::try::do_call::hedb887dc79b98d45
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:557:40
+  28:     0x7f510c2ada6b - __rust_try
+  29:     0x7f510c2ad152 - std::panicking::try::hf8c118c593feea03
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:521:19
+  30:     0x7f510c2ad152 - std::panic::catch_unwind::hcb70ed62d48e5b01
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panic.rs:350:14
+  31:     0x7f510c2ad152 - std::thread::Builder::spawn_unchecked_::{{closure}}::he2f70e37c04f808d
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/thread/mod.rs:528:30
+  32:     0x7f510c280f9f - core::ops::function::FnOnce::call_once{{vtable.shim}}::h26f400463f5ad363
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/ops/function.rs:250:5
+  33:     0x7f510c41e57b - <alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once::h602a4227d9e11684
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/alloc/src/boxed.rs:2149:9
+  34:     0x7f510c41e57b - <alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once::haf39740772fa9e9f
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/alloc/src/boxed.rs:2149:9
+  35:     0x7f510c41e57b - std::sys::pal::unix::thread::Thread::new::thread_start::h851591212a2729e2
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/pal/unix/thread.rs:108:17
+  36:     0x7f510bf26ac3 - start_thread
+                               at ./nptl/pthread_create.c:442:8
+  37:     0x7f510bfb8850 - __GI___clone3
+                               at ./misc/../sysdeps/unix/sysv/linux/x86_64/clone3.S:81
+  38:                0x0 - <unknown>
+thread '<unnamed>' panicked at ykrt/src/mt.rs:676:46:
+called `Result::unwrap()` on an `Err` value: Any { .. }
+stack backtrace:
+   0:     0x7f510c41a925 - std::backtrace_rs::backtrace::libunwind::trace::h333f9fc92c698ac9
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/../../backtrace/src/backtrace/libunwind.rs:116:5
+   1:     0x7f510c41a925 - std::backtrace_rs::backtrace::trace_unsynchronized::hda5954a724e72539
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/../../backtrace/src/backtrace/mod.rs:66:5
+   2:     0x7f510c41a925 - std::sys::backtrace::_print_fmt::h0e8914962807a191
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:68:9
+   3:     0x7f510c41a925 - <std::sys::backtrace::BacktraceLock::print::DisplayBacktrace as core::fmt::Display>::fmt::h4f36998f6fba85cc
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:41:26
+   4:     0x7f510c43d58b - core::fmt::rt::Argument::fmt::h0e2584080ac0580e
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/fmt/rt.rs:173:76
+   5:     0x7f510c43d58b - core::fmt::write::h322aa5bb797a8324
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/fmt/mod.rs:1182:21
+   6:     0x7f510c41832f - std::io::Write::write_fmt::h82e23adee1fc15a5
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/io/mod.rs:1827:15
+   7:     0x7f510c41ba71 - std::sys::backtrace::BacktraceLock::print::h02932d37660853ce
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:44:9
+   8:     0x7f510c41ba71 - std::panicking::default_hook::{{closure}}::hfbdf52fddf6ca2a8
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:269:22
+   9:     0x7f510c41b74c - std::panicking::default_hook::hcd9d479509804975
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:296:9
+  10:     0x7f510c41c141 - std::panicking::rust_panic_with_hook::hbad8b4fa563fee61
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:800:13
+  11:     0x7f510c41bfa7 - std::panicking::begin_panic_handler::{{closure}}::h35913f1c60483a96
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:674:13
+  12:     0x7f510c41ade9 - std::sys::backtrace::__rust_end_short_backtrace::h81572c5d609ceb6a
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:172:18
+  13:     0x7f510c41bc34 - rust_begin_unwind
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:665:5
+  14:     0x7f510c43b0f3 - core::panicking::panic_fmt::h26c4c1f4c57f1736
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/panicking.rs:74:14
+  15:     0x7f510c43b6c6 - core::result::unwrap_failed::hd60517332358529c
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/result.rs:1679:5
+  16:     0x7f510c245819 - core::result::Result<T,E>::unwrap::hcc485845734635ed
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/result.rs:1102:23
+  17:     0x7f510c245819 - ykrt::mt::MT::queue_compile_job::h68d445c588c990f5
+                               at /home/pd/git-repos/research/yk-fork/ykrt/src/mt.rs:676:13
+  18:     0x7f510c244580 - ykrt::mt::MT::control_point::hed08146d7837d19c
+                               at /home/pd/git-repos/research/yk-fork/ykrt/src/mt.rs:328:25
+  19:     0x7f510c1f9065 - __ykrt_control_point
+                               at /home/pd/git-repos/research/yk-fork/ykcapi/src/lib.rs:69:9
+  20:           0x202e00 - main
+                               at /home/pd/git-repos/research/yk-fork/tests/c/switch_many_guards_failing.newcg.c:26:5
+  21:     0x7f510bebbd90 - __libc_start_call_main
+                               at ./csu/../sysdeps/nptl/libc_start_call_main.h:58:16
+  22:     0x7f510bebbe40 - __libc_start_main_impl
+                               at ./csu/../csu/libc-start.c:392:3
+  23:           0x202c05 - _start
+  24:                0x0 - <unknown>
+thread '<unnamed>' panicked at library/core/src/panicking.rs:221:5:
+panic in a function that cannot unwind
+stack backtrace:
+   0:     0x7f510c41a925 - std::backtrace_rs::backtrace::libunwind::trace::h333f9fc92c698ac9
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/../../backtrace/src/backtrace/libunwind.rs:116:5
+   1:     0x7f510c41a925 - std::backtrace_rs::backtrace::trace_unsynchronized::hda5954a724e72539
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/../../backtrace/src/backtrace/mod.rs:66:5
+   2:     0x7f510c41a925 - std::sys::backtrace::_print_fmt::h0e8914962807a191
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:68:9
+   3:     0x7f510c41a925 - <std::sys::backtrace::BacktraceLock::print::DisplayBacktrace as core::fmt::Display>::fmt::h4f36998f6fba85cc
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:41:26
+   4:     0x7f510c43d58b - core::fmt::rt::Argument::fmt::h0e2584080ac0580e
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/fmt/rt.rs:173:76
+   5:     0x7f510c43d58b - core::fmt::write::h322aa5bb797a8324
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/fmt/mod.rs:1182:21
+   6:     0x7f510c41832f - std::io::Write::write_fmt::h82e23adee1fc15a5
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/io/mod.rs:1827:15
+   7:     0x7f510c41ba71 - std::sys::backtrace::BacktraceLock::print::h02932d37660853ce
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:44:9
+   8:     0x7f510c41ba71 - std::panicking::default_hook::{{closure}}::hfbdf52fddf6ca2a8
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:269:22
+   9:     0x7f510c41b74c - std::panicking::default_hook::hcd9d479509804975
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:296:9
+  10:     0x7f510c41c141 - std::panicking::rust_panic_with_hook::hbad8b4fa563fee61
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:800:13
+  11:     0x7f510c41bf73 - std::panicking::begin_panic_handler::{{closure}}::h35913f1c60483a96
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:667:13
+  12:     0x7f510c41ade9 - std::sys::backtrace::__rust_end_short_backtrace::h81572c5d609ceb6a
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/sys/backtrace.rs:172:18
+  13:     0x7f510c41bc34 - rust_begin_unwind
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/std/src/panicking.rs:665:5
+  14:     0x7f510c43b135 - core::panicking::panic_nounwind_fmt::runtime::h164f5e44e4c673ac
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/panicking.rs:112:18
+  15:     0x7f510c43b135 - core::panicking::panic_nounwind_fmt::h7f66915fa8f2b044
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/panicking.rs:122:5
+  16:     0x7f510c43b1c2 - core::panicking::panic_nounwind::h6da883039280a44d
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/panicking.rs:221:5
+  17:     0x7f510c43b3e6 - core::panicking::panic_cannot_unwind::hf400439ed91f523b
+                               at /rustc/7120fdac7a6e55a5e4b606256042890b36067052/library/core/src/panicking.rs:309:5
+  18:     0x7f510c1f8fce - __ykrt_control_point
+                               at /home/pd/git-repos/research/yk-fork/ykcapi/src/lib.rs:55:1
+  19:           0x202e00 - main
+                               at /home/pd/git-repos/research/yk-fork/tests/c/switch_many_guards_failing.newcg.c:26:5
+  20:     0x7f510bebbd90 - __libc_start_call_main
+                               at ./csu/../sysdeps/nptl/libc_start_call_main.h:58:16
+  21:     0x7f510bebbe40 - __libc_start_main_impl
+                               at ./csu/../csu/libc-start.c:392:3
+  22:           0x202c05 - _start
+  23:                0x0 - <unknown>
+thread caused non-unwinding panic. aborting.
+
+
+---- lang_tests::switch_many_guards_failing.newcg.c stdout ----
+
+Literal text:
+   |
+
+Pattern (error at line 1):
+>> |jihgfedcbajihgfedcbajihgfedcbajihgfedcbajihgfedcbajihgfedcbajihgfedcbajihgfedcbajihgfedcbajihgfedcba
+
+Text (error at line 1):
+>>
+failures:
+    lang_tests::switch_many_guards_failing.newcg.c
+
+test result: [0m[31mFAILED[0m. 0 passed; 1 failed; 0 ignored; 0 measured; 52 filtered out
+
+error: test failed, to rerun pass `-p tests --test c_tests`
+
+Caused by:
+  process didn't exit successfully: `/home/pd/git-repos/research/yk-fork/target/debug/deps/c_tests-afe3358ff41b9045 '::switch_many_guards_failing.newcg.c' --nocapture` (exit status: 1)
