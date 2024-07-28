@@ -1,0 +1,733 @@
+   Compiling ykrt v0.1.0 (/home/pd/git-repos/research/yk-fork/ykrt)
+   Compiling ykcapi v0.1.0 (/home/pd/git-repos/research/yk-fork/ykcapi)
+warning: unused import: `crate::compile::jitc_yk::AOT_MOD`
+  --> ykrt/src/trace/swt/mod.rs:23:5
+   |
+23 | use crate::compile::jitc_yk::AOT_MOD;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: `ykrt` (lib) generated 1 warning (run `cargo fix --lib -p ykrt` to apply 1 suggestion)
+   Compiling tests v0.1.0 (/home/pd/git-repos/research/yk-fork/tests)
+warning: `ykrt` (lib test) generated 1 warning (1 duplicate)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 23.35s
+     Running unittests src/lib.rs (target/debug/deps/hwtracer-ee129e754ef3e6d5)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 15 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/tests-d06e60b0cfdb4b24)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/dump_ir.rs (target/debug/deps/dump_ir-581c8afa999dd096)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/gdb_c_test.rs (target/debug/deps/gdb_c_test-64e5bbe22ae313c1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running langtest_c.rs (target/debug/deps/c_tests-afe3358ff41b9045)
+Running C tests with opt level -O0...
+
+running 1 testsyk-jit-event: start-tracing
+yk-jit-event: stop-tracing
+--- Begin aot ---
+# IR format version: 0
+# Num funcs: 16
+# Num consts: 51
+# Num global decls: 3
+# Num types: 24
+global_decl @shadowstack_0
+global_decl @.str
+global_decl @.str.1
+
+func main(%arg0: i32, %arg1: ptr) -> i32 {
+  bb0:
+    %0_0: i32 = arg(0)
+    %0_1: ptr = arg(1)
+    call yk_trace_basicblock(0i32, 0i32)
+    %0_3: ptr = alloca {0: ptr, 64: ptr, 128: ptr, 192: ptr, 256: ptr, 320: ptr, 384: ptr, 448: ptr}, 1, 8
+    %0_4: ptr = call malloc(1000000i64)
+    *@shadowstack_0 = %0_4
+    %0_6: ptr = alloca ptr, 1, 8
+    %0_7: ptr = alloca {0: i64}, 1, 8
+    %0_8: ptr = ptr_add %0_4, 0
+    %0_9: ptr = ptr_add %0_4, 4
+    %0_10: ptr = ptr_add %0_4, 8
+    %0_11: ptr = ptr_add %0_4, 12
+    %0_12: ptr = ptr_add %0_4, 13
+    br bb1
+  bb1:
+    # switch_nested_guard.newcg.c:16: YkMT *mt = yk_mt_new(NULL);
+    call yk_trace_basicblock(0i32, 1i32)
+    %1_1: ptr = call yk_mt_new(0x0)
+    br bb2
+  bb2:
+    call yk_trace_basicblock(0i32, 2i32)
+    *%0_6 = %1_1
+    # switch_nested_guard.newcg.c:17: yk_mt_hot_threshold_set(mt, 0);
+    call yk_mt_hot_threshold_set(%1_1, 0i32)
+    # switch_nested_guard.newcg.c:18: YkLocation loc = yk_location_new();
+    br bb3
+  bb3:
+    call yk_trace_basicblock(0i32, 3i32)
+    %3_1: i64 = call yk_location_new()
+    br bb4
+  bb4:
+    call yk_trace_basicblock(0i32, 4i32)
+    *%0_7 = %3_1
+    # switch_nested_guard.newcg.c:22: int i = 12;
+    *%0_8 = 12i32
+    # switch_nested_guard.newcg.c:23: int j = 0;
+    *%0_9 = 0i32
+    # switch_nested_guard.newcg.c:24: int k = 0;
+    *%0_10 = 0i32
+    # switch_nested_guard.newcg.c:26: NOOPT_VAL(j);
+    br bb5
+  bb5:
+    call yk_trace_basicblock(0i32, 5i32)
+    %5_1: i32 = load %0_9
+    # switch_nested_guard.newcg.c:27: while (i > 0) {
+    br bb6
+  bb6:
+    call yk_trace_basicblock(0i32, 6i32)
+    br bb7
+  bb7:
+    call yk_trace_basicblock(0i32, 7i32)
+    %7_1: i32 = load %0_8
+    %7_2: i1 = sgt %7_1, 0i32
+    condbr %7_2, bb8, bb26 [safepoint: 2i64, (%0_3, %0_6, %0_7, %0_8, %0_9, %0_10, %0_11, %0_12, %7_2)]
+  bb8:
+    # switch_nested_guard.newcg.c:28: yk_mt_control_point(mt, &loc);
+    call yk_trace_basicblock(0i32, 8i32)
+    %8_1: ptr = load %0_6
+    %8_2: ptr = ptr_add %0_3, 0
+    *%8_2 = %0_6
+    %8_4: ptr = ptr_add %0_3, 8
+    *%8_4 = %0_7
+    %8_6: ptr = ptr_add %0_3, 16
+    *%8_6 = %0_8
+    %8_8: ptr = ptr_add %0_3, 24
+    *%8_8 = %0_9
+    %8_10: ptr = ptr_add %0_3, 32
+    *%8_10 = %0_10
+    %8_12: ptr = ptr_add %0_3, 40
+    *%8_12 = %0_11
+    %8_14: ptr = ptr_add %0_3, 48
+    *%8_14 = %0_12
+    %8_16: ptr = ptr_add %0_3, 56
+    *%8_16 = %8_1
+    %8_18: ptr = call llvm.frameaddress.p0(0i32)
+    call __ykrt_control_point(%8_1, %0_7, %0_3, %8_18, 3i64) [safepoint: 3i64, (%0_3, %0_6, %0_7, %0_8, %0_9, %0_10, %0_11, %0_12, %8_1)]
+    # switch_nested_guard.newcg.c:30: switch (j % 7) {
+    br bb9
+  bb9:
+    call yk_trace_basicblock(0i32, 9i32)
+    %9_1: i32 = load %0_9
+    %9_2: i32 = srem %9_1, 7i32
+    switch %9_2, bb24, [6 -> bb10, 5 -> bb18, 4 -> bb19, 3 -> bb20, 2 -> bb21, 1 -> bb22, 0 -> bb23] [safepoint: 0i64, (%0_3, %0_6, %0_7, %0_8, %0_9, %0_10, %0_11, %0_12, %9_2)]
+  bb10:
+    # switch_nested_guard.newcg.c:32: switch (k % 5) {
+    call yk_trace_basicblock(0i32, 10i32)
+    %10_1: i32 = load %0_10
+    %10_2: i32 = srem %10_1, 5i32
+    switch %10_2, bb16, [4 -> bb11, 3 -> bb12, 2 -> bb13, 1 -> bb14, 0 -> bb15] [safepoint: 1i64, (%0_3, %0_6, %0_7, %0_8, %0_9, %0_10, %0_11, %0_12, %10_2)]
+  bb11:
+    # switch_nested_guard.newcg.c:34: d = 'i';
+    call yk_trace_basicblock(0i32, 11i32)
+    *%0_12 = 105i8
+    # switch_nested_guard.newcg.c:35: break;
+    br bb16
+  bb12:
+    # switch_nested_guard.newcg.c:37: d = 'j';
+    call yk_trace_basicblock(0i32, 12i32)
+    *%0_12 = 106i8
+    # switch_nested_guard.newcg.c:38: break;
+    br bb16
+  bb13:
+    # switch_nested_guard.newcg.c:40: d = 'k';
+    call yk_trace_basicblock(0i32, 13i32)
+    *%0_12 = 107i8
+    # switch_nested_guard.newcg.c:41: break;
+    br bb16
+  bb14:
+    # switch_nested_guard.newcg.c:43: d = 'l';
+    call yk_trace_basicblock(0i32, 14i32)
+    *%0_12 = 108i8
+    # switch_nested_guard.newcg.c:44: break;
+    br bb16
+  bb15:
+    # switch_nested_guard.newcg.c:46: d = 'm';
+    call yk_trace_basicblock(0i32, 15i32)
+    *%0_12 = 109i8
+    # switch_nested_guard.newcg.c:47: break;
+    br bb16
+  bb16:
+    # switch_nested_guard.newcg.c:49: printf("1> %c\n", d);
+    call yk_trace_basicblock(0i32, 16i32)
+    %16_1: i8 = load %0_12
+    %16_2: i32 = sext %16_1, i32
+    %16_3: i32 = call printf(@.str, %16_2)
+    br bb17
+  bb17:
+    # switch_nested_guard.newcg.c:50: c = 'a';
+    call yk_trace_basicblock(0i32, 17i32)
+    *%0_11 = 97i8
+    # switch_nested_guard.newcg.c:51: break;
+    br bb24
+  bb18:
+    # switch_nested_guard.newcg.c:53: c = 'b';
+    call yk_trace_basicblock(0i32, 18i32)
+    *%0_11 = 98i8
+    # switch_nested_guard.newcg.c:54: break;
+    br bb24
+  bb19:
+    # switch_nested_guard.newcg.c:56: c = 'c';
+    call yk_trace_basicblock(0i32, 19i32)
+    *%0_11 = 99i8
+    # switch_nested_guard.newcg.c:57: break;
+    br bb24
+  bb20:
+    # switch_nested_guard.newcg.c:59: c = 'd';
+    call yk_trace_basicblock(0i32, 20i32)
+    *%0_11 = 100i8
+    # switch_nested_guard.newcg.c:60: break;
+    br bb24
+  bb21:
+    # switch_nested_guard.newcg.c:62: c = 'e';
+    call yk_trace_basicblock(0i32, 21i32)
+    *%0_11 = 101i8
+    # switch_nested_guard.newcg.c:63: break;
+    br bb24
+  bb22:
+    # switch_nested_guard.newcg.c:65: c = 'f';
+    call yk_trace_basicblock(0i32, 22i32)
+    *%0_11 = 102i8
+    # switch_nested_guard.newcg.c:66: break;
+    br bb24
+  bb23:
+    # switch_nested_guard.newcg.c:68: c = 'g';
+    call yk_trace_basicblock(0i32, 23i32)
+    *%0_11 = 103i8
+    # switch_nested_guard.newcg.c:69: break;
+    br bb24
+  bb24:
+    # switch_nested_guard.newcg.c:71: printf("2> %c\n", c);
+    call yk_trace_basicblock(0i32, 24i32)
+    %24_1: i8 = load %0_11
+    %24_2: i32 = sext %24_1, i32
+    %24_3: i32 = call printf(@.str.1, %24_2)
+    # switch_nested_guard.newcg.c:72: i--;
+    br bb25
+  bb25:
+    call yk_trace_basicblock(0i32, 25i32)
+    %25_1: i32 = load %0_8
+    %25_2: i32 = add %25_1, -1i32
+    *%0_8 = %25_2
+    # switch_nested_guard.newcg.c:73: j++;
+    %25_4: i32 = load %0_9
+    %25_5: i32 = add %25_4, 1i32
+    *%0_9 = %25_5
+    # switch_nested_guard.newcg.c:74: k++;
+    %25_7: i32 = load %0_10
+    %25_8: i32 = add %25_7, 1i32
+    *%0_10 = %25_8
+    # switch_nested_guard.newcg.c:27: while (i > 0) {
+    br bb7
+  bb26:
+    # switch_nested_guard.newcg.c:76: yk_location_drop(loc);
+    call yk_trace_basicblock(0i32, 26i32)
+    %26_1: i64 = load %0_7
+    call yk_location_drop(%26_1)
+    # switch_nested_guard.newcg.c:77: yk_mt_drop(mt);
+    br bb27
+  bb27:
+    call yk_trace_basicblock(0i32, 27i32)
+    %27_1: ptr = load %0_6
+    call yk_mt_drop(%27_1)
+    # switch_nested_guard.newcg.c:78: printf("\n");
+    br bb28
+  bb28:
+    call yk_trace_basicblock(0i32, 28i32)
+    %28_1: i32 = call putchar(10i32)
+    # switch_nested_guard.newcg.c:80: return (EXIT_SUCCESS);
+    br bb29
+  bb29:
+    call yk_trace_basicblock(0i32, 29i32)
+    br bb31
+  bb30:
+    call yk_trace_basicblock(0i32, 30i32)
+    ret 0i32
+  bb31:
+    call yk_trace_basicblock(0i32, 31i32)
+    br bb30
+}
+
+func llvm.dbg.declare(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func yk_mt_new(%arg0: ptr) -> ptr;
+
+func yk_mt_hot_threshold_set(%arg0: ptr, %arg1: i32);
+
+func yk_location_new() -> i64;
+
+func yk_mt_control_point(%arg0: ptr, %arg1: ptr);
+
+func printf(%arg0: ptr, ...) -> i32;
+
+func yk_location_drop(%arg0: i64);
+
+func yk_mt_drop(%arg0: ptr);
+
+func llvm.dbg.value(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func putchar(%arg0: i32) -> i32;
+
+func malloc(%arg0: i64) -> ptr;
+
+func __ykrt_control_point(%arg0: ptr, %arg1: ptr, %arg2: ptr, %arg3: ptr, %arg4: i64);
+
+func llvm.frameaddress.p0(%arg0: i32) -> ptr;
+
+func llvm.experimental.stackmap(%arg0: i64, %arg1: i32, ...);
+
+func yk_trace_basicblock(%arg0: i32, %arg1: i32);
+
+--- End aot ---
+bb9: Call { callee: FuncIdx(15), args: [Const(ConstIdx(0)), Const(ConstIdx(14))], safepoint: None }
+bb9: Load { ptr: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(9) }), tyidx: TyIdx(1), volatile: false }
+bb9: BinaryOp { lhs: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(9), iidx: InstIdx(1) }), binop: SRem, rhs: Const(ConstIdx(10)) }
+bb9: Switch { test_val: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(9), iidx: InstIdx(2) }), default_dest: BBlockIdx(24), case_values: [6, 5, 4, 3, 2, 1, 0], case_dests: [BBlockIdx(10), BBlockIdx(18), BBlockIdx(19), BBlockIdx(20), BBlockIdx(21), BBlockIdx(22), BBlockIdx(23)], safepoint: DeoptSafepoint { id: Const(ConstIdx(15)), lives: [LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(3) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(6) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(7) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(8) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(9) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(10) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(11) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(12) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(9), iidx: InstIdx(2) })] } }
+bb23: Call { callee: FuncIdx(15), args: [Const(ConstIdx(0)), Const(ConstIdx(40))], safepoint: None }
+bb23: Store { val: Const(ConstIdx(41)), tgt: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(11) }), volatile: false }
+bb23: Br { succ: BBlockIdx(24) }
+bb24: Call { callee: FuncIdx(15), args: [Const(ConstIdx(0)), Const(ConstIdx(42))], safepoint: None }
+bb24: Load { ptr: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(11) }), tyidx: TyIdx(7), volatile: false }
+bb24: Cast { cast_kind: SExt, val: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(24), iidx: InstIdx(1) }), dest_tyidx: TyIdx(1) }
+bb24: Call { callee: FuncIdx(6), args: [Global(GlobalDeclIdx(2)), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(24), iidx: InstIdx(2) })], safepoint: None }
+bb24: Br { succ: BBlockIdx(25) }
+bb25: Call { callee: FuncIdx(15), args: [Const(ConstIdx(0)), Const(ConstIdx(43))], safepoint: None }
+bb25: Load { ptr: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(8) }), tyidx: TyIdx(1), volatile: false }
+bb25: BinaryOp { lhs: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(25), iidx: InstIdx(1) }), binop: Add, rhs: Const(ConstIdx(44)) }
+bb25: Store { val: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(25), iidx: InstIdx(2) }), tgt: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(8) }), volatile: false }
+bb25: Load { ptr: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(9) }), tyidx: TyIdx(1), volatile: false }
+bb25: BinaryOp { lhs: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(25), iidx: InstIdx(4) }), binop: Add, rhs: Const(ConstIdx(2)) }
+bb25: Store { val: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(25), iidx: InstIdx(5) }), tgt: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(9) }), volatile: false }
+bb25: Load { ptr: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(10) }), tyidx: TyIdx(1), volatile: false }
+bb25: BinaryOp { lhs: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(25), iidx: InstIdx(7) }), binop: Add, rhs: Const(ConstIdx(2)) }
+bb25: Store { val: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(25), iidx: InstIdx(8) }), tgt: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(10) }), volatile: false }
+bb25: Br { succ: BBlockIdx(7) }
+bb7: Call { callee: FuncIdx(15), args: [Const(ConstIdx(0)), Const(ConstIdx(10))], safepoint: None }
+bb7: Load { ptr: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(8) }), tyidx: TyIdx(1), volatile: false }
+bb7: ICmp { tyidx: TyIdx(6), lhs: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(7), iidx: InstIdx(1) }), pred: SignedGreater, rhs: Const(ConstIdx(0)) }
+bb7: CondBr { cond: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(7), iidx: InstIdx(2) }), true_bb: BBlockIdx(8), false_bb: BBlockIdx(26), safepoint: DeoptSafepoint { id: Const(ConstIdx(11)), lives: [LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(3) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(6) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(7) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(8) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(9) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(10) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(11) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(12) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(7), iidx: InstIdx(2) })] } }
+bb8: Call { callee: FuncIdx(15), args: [Const(ConstIdx(0)), Const(ConstIdx(12))], safepoint: None }
+bb8: Load { ptr: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(6) }), tyidx: TyIdx(2), volatile: false }
+bb8: PtrAdd { tyidx: TyIdx(2), ptr: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(3) }), const_off: 0, dyn_elem_counts: [], dyn_elem_sizes: [] }
+yk-jit-event: enter-jit-code
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: deoptimise
+yk-jit-event: start-side-tracing
+yk-jit-event: stop-tracing
+--- Begin aot ---
+# IR format version: 0
+# Num funcs: 16
+# Num consts: 51
+# Num global decls: 3
+# Num types: 24
+global_decl @shadowstack_0
+global_decl @.str
+global_decl @.str.1
+
+func main(%arg0: i32, %arg1: ptr) -> i32 {
+  bb0:
+    %0_0: i32 = arg(0)
+    %0_1: ptr = arg(1)
+    call yk_trace_basicblock(0i32, 0i32)
+    %0_3: ptr = alloca {0: ptr, 64: ptr, 128: ptr, 192: ptr, 256: ptr, 320: ptr, 384: ptr, 448: ptr}, 1, 8
+    %0_4: ptr = call malloc(1000000i64)
+    *@shadowstack_0 = %0_4
+    %0_6: ptr = alloca ptr, 1, 8
+    %0_7: ptr = alloca {0: i64}, 1, 8
+    %0_8: ptr = ptr_add %0_4, 0
+    %0_9: ptr = ptr_add %0_4, 4
+    %0_10: ptr = ptr_add %0_4, 8
+    %0_11: ptr = ptr_add %0_4, 12
+    %0_12: ptr = ptr_add %0_4, 13
+    br bb1
+  bb1:
+    # switch_nested_guard.newcg.c:16: YkMT *mt = yk_mt_new(NULL);
+    call yk_trace_basicblock(0i32, 1i32)
+    %1_1: ptr = call yk_mt_new(0x0)
+    br bb2
+  bb2:
+    call yk_trace_basicblock(0i32, 2i32)
+    *%0_6 = %1_1
+    # switch_nested_guard.newcg.c:17: yk_mt_hot_threshold_set(mt, 0);
+    call yk_mt_hot_threshold_set(%1_1, 0i32)
+    # switch_nested_guard.newcg.c:18: YkLocation loc = yk_location_new();
+    br bb3
+  bb3:
+    call yk_trace_basicblock(0i32, 3i32)
+    %3_1: i64 = call yk_location_new()
+    br bb4
+  bb4:
+    call yk_trace_basicblock(0i32, 4i32)
+    *%0_7 = %3_1
+    # switch_nested_guard.newcg.c:22: int i = 12;
+    *%0_8 = 12i32
+    # switch_nested_guard.newcg.c:23: int j = 0;
+    *%0_9 = 0i32
+    # switch_nested_guard.newcg.c:24: int k = 0;
+    *%0_10 = 0i32
+    # switch_nested_guard.newcg.c:26: NOOPT_VAL(j);
+    br bb5
+  bb5:
+    call yk_trace_basicblock(0i32, 5i32)
+    %5_1: i32 = load %0_9
+    # switch_nested_guard.newcg.c:27: while (i > 0) {
+    br bb6
+  bb6:
+    call yk_trace_basicblock(0i32, 6i32)
+    br bb7
+  bb7:
+    call yk_trace_basicblock(0i32, 7i32)
+    %7_1: i32 = load %0_8
+    %7_2: i1 = sgt %7_1, 0i32
+    condbr %7_2, bb8, bb26 [safepoint: 2i64, (%0_3, %0_6, %0_7, %0_8, %0_9, %0_10, %0_11, %0_12, %7_2)]
+  bb8:
+    # switch_nested_guard.newcg.c:28: yk_mt_control_point(mt, &loc);
+    call yk_trace_basicblock(0i32, 8i32)
+    %8_1: ptr = load %0_6
+    %8_2: ptr = ptr_add %0_3, 0
+    *%8_2 = %0_6
+    %8_4: ptr = ptr_add %0_3, 8
+    *%8_4 = %0_7
+    %8_6: ptr = ptr_add %0_3, 16
+    *%8_6 = %0_8
+    %8_8: ptr = ptr_add %0_3, 24
+    *%8_8 = %0_9
+    %8_10: ptr = ptr_add %0_3, 32
+    *%8_10 = %0_10
+    %8_12: ptr = ptr_add %0_3, 40
+    *%8_12 = %0_11
+    %8_14: ptr = ptr_add %0_3, 48
+    *%8_14 = %0_12
+    %8_16: ptr = ptr_add %0_3, 56
+    *%8_16 = %8_1
+    %8_18: ptr = call llvm.frameaddress.p0(0i32)
+    call __ykrt_control_point(%8_1, %0_7, %0_3, %8_18, 3i64) [safepoint: 3i64, (%0_3, %0_6, %0_7, %0_8, %0_9, %0_10, %0_11, %0_12, %8_1)]
+    # switch_nested_guard.newcg.c:30: switch (j % 7) {
+    br bb9
+  bb9:
+    call yk_trace_basicblock(0i32, 9i32)
+    %9_1: i32 = load %0_9
+    %9_2: i32 = srem %9_1, 7i32
+    switch %9_2, bb24, [6 -> bb10, 5 -> bb18, 4 -> bb19, 3 -> bb20, 2 -> bb21, 1 -> bb22, 0 -> bb23] [safepoint: 0i64, (%0_3, %0_6, %0_7, %0_8, %0_9, %0_10, %0_11, %0_12, %9_2)]
+  bb10:
+    # switch_nested_guard.newcg.c:32: switch (k % 5) {
+    call yk_trace_basicblock(0i32, 10i32)
+    %10_1: i32 = load %0_10
+    %10_2: i32 = srem %10_1, 5i32
+    switch %10_2, bb16, [4 -> bb11, 3 -> bb12, 2 -> bb13, 1 -> bb14, 0 -> bb15] [safepoint: 1i64, (%0_3, %0_6, %0_7, %0_8, %0_9, %0_10, %0_11, %0_12, %10_2)]
+  bb11:
+    # switch_nested_guard.newcg.c:34: d = 'i';
+    call yk_trace_basicblock(0i32, 11i32)
+    *%0_12 = 105i8
+    # switch_nested_guard.newcg.c:35: break;
+    br bb16
+  bb12:
+    # switch_nested_guard.newcg.c:37: d = 'j';
+    call yk_trace_basicblock(0i32, 12i32)
+    *%0_12 = 106i8
+    # switch_nested_guard.newcg.c:38: break;
+    br bb16
+  bb13:
+    # switch_nested_guard.newcg.c:40: d = 'k';
+    call yk_trace_basicblock(0i32, 13i32)
+    *%0_12 = 107i8
+    # switch_nested_guard.newcg.c:41: break;
+    br bb16
+  bb14:
+    # switch_nested_guard.newcg.c:43: d = 'l';
+    call yk_trace_basicblock(0i32, 14i32)
+    *%0_12 = 108i8
+    # switch_nested_guard.newcg.c:44: break;
+    br bb16
+  bb15:
+    # switch_nested_guard.newcg.c:46: d = 'm';
+    call yk_trace_basicblock(0i32, 15i32)
+    *%0_12 = 109i8
+    # switch_nested_guard.newcg.c:47: break;
+    br bb16
+  bb16:
+    # switch_nested_guard.newcg.c:49: printf("1> %c\n", d);
+    call yk_trace_basicblock(0i32, 16i32)
+    %16_1: i8 = load %0_12
+    %16_2: i32 = sext %16_1, i32
+    %16_3: i32 = call printf(@.str, %16_2)
+    br bb17
+  bb17:
+    # switch_nested_guard.newcg.c:50: c = 'a';
+    call yk_trace_basicblock(0i32, 17i32)
+    *%0_11 = 97i8
+    # switch_nested_guard.newcg.c:51: break;
+    br bb24
+  bb18:
+    # switch_nested_guard.newcg.c:53: c = 'b';
+    call yk_trace_basicblock(0i32, 18i32)
+    *%0_11 = 98i8
+    # switch_nested_guard.newcg.c:54: break;
+    br bb24
+  bb19:
+    # switch_nested_guard.newcg.c:56: c = 'c';
+    call yk_trace_basicblock(0i32, 19i32)
+    *%0_11 = 99i8
+    # switch_nested_guard.newcg.c:57: break;
+    br bb24
+  bb20:
+    # switch_nested_guard.newcg.c:59: c = 'd';
+    call yk_trace_basicblock(0i32, 20i32)
+    *%0_11 = 100i8
+    # switch_nested_guard.newcg.c:60: break;
+    br bb24
+  bb21:
+    # switch_nested_guard.newcg.c:62: c = 'e';
+    call yk_trace_basicblock(0i32, 21i32)
+    *%0_11 = 101i8
+    # switch_nested_guard.newcg.c:63: break;
+    br bb24
+  bb22:
+    # switch_nested_guard.newcg.c:65: c = 'f';
+    call yk_trace_basicblock(0i32, 22i32)
+    *%0_11 = 102i8
+    # switch_nested_guard.newcg.c:66: break;
+    br bb24
+  bb23:
+    # switch_nested_guard.newcg.c:68: c = 'g';
+    call yk_trace_basicblock(0i32, 23i32)
+    *%0_11 = 103i8
+    # switch_nested_guard.newcg.c:69: break;
+    br bb24
+  bb24:
+    # switch_nested_guard.newcg.c:71: printf("2> %c\n", c);
+    call yk_trace_basicblock(0i32, 24i32)
+    %24_1: i8 = load %0_11
+    %24_2: i32 = sext %24_1, i32
+    %24_3: i32 = call printf(@.str.1, %24_2)
+    # switch_nested_guard.newcg.c:72: i--;
+    br bb25
+  bb25:
+    call yk_trace_basicblock(0i32, 25i32)
+    %25_1: i32 = load %0_8
+    %25_2: i32 = add %25_1, -1i32
+    *%0_8 = %25_2
+    # switch_nested_guard.newcg.c:73: j++;
+    %25_4: i32 = load %0_9
+    %25_5: i32 = add %25_4, 1i32
+    *%0_9 = %25_5
+    # switch_nested_guard.newcg.c:74: k++;
+    %25_7: i32 = load %0_10
+    %25_8: i32 = add %25_7, 1i32
+    *%0_10 = %25_8
+    # switch_nested_guard.newcg.c:27: while (i > 0) {
+    br bb7
+  bb26:
+    # switch_nested_guard.newcg.c:76: yk_location_drop(loc);
+    call yk_trace_basicblock(0i32, 26i32)
+    %26_1: i64 = load %0_7
+    call yk_location_drop(%26_1)
+    # switch_nested_guard.newcg.c:77: yk_mt_drop(mt);
+    br bb27
+  bb27:
+    call yk_trace_basicblock(0i32, 27i32)
+    %27_1: ptr = load %0_6
+    call yk_mt_drop(%27_1)
+    # switch_nested_guard.newcg.c:78: printf("\n");
+    br bb28
+  bb28:
+    call yk_trace_basicblock(0i32, 28i32)
+    %28_1: i32 = call putchar(10i32)
+    # switch_nested_guard.newcg.c:80: return (EXIT_SUCCESS);
+    br bb29
+  bb29:
+    call yk_trace_basicblock(0i32, 29i32)
+    br bb31
+  bb30:
+    call yk_trace_basicblock(0i32, 30i32)
+    ret 0i32
+  bb31:
+    call yk_trace_basicblock(0i32, 31i32)
+    br bb30
+}
+
+func llvm.dbg.declare(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func yk_mt_new(%arg0: ptr) -> ptr;
+
+func yk_mt_hot_threshold_set(%arg0: ptr, %arg1: i32);
+
+func yk_location_new() -> i64;
+
+func yk_mt_control_point(%arg0: ptr, %arg1: ptr);
+
+func printf(%arg0: ptr, ...) -> i32;
+
+func yk_location_drop(%arg0: i64);
+
+func yk_mt_drop(%arg0: ptr);
+
+func llvm.dbg.value(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func putchar(%arg0: i32) -> i32;
+
+func malloc(%arg0: i64) -> ptr;
+
+func __ykrt_control_point(%arg0: ptr, %arg1: ptr, %arg2: ptr, %arg3: ptr, %arg4: i64);
+
+func llvm.frameaddress.p0(%arg0: i32) -> ptr;
+
+func llvm.experimental.stackmap(%arg0: i64, %arg1: i32, ...);
+
+func yk_trace_basicblock(%arg0: i32, %arg1: i32);
+
+--- End aot ---
+bb10: Call { callee: FuncIdx(15), args: [Const(ConstIdx(0)), Const(ConstIdx(16))], safepoint: None }
+bb10: Load { ptr: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(10) }), tyidx: TyIdx(1), volatile: false }
+bb10: BinaryOp { lhs: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(10), iidx: InstIdx(1) }), binop: SRem, rhs: Const(ConstIdx(8)) }
+bb10: Switch { test_val: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(10), iidx: InstIdx(2) }), default_dest: BBlockIdx(16), case_values: [4, 3, 2, 1, 0], case_dests: [BBlockIdx(11), BBlockIdx(12), BBlockIdx(13), BBlockIdx(14), BBlockIdx(15)], safepoint: DeoptSafepoint { id: Const(ConstIdx(17)), lives: [LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(3) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(6) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(7) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(8) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(9) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(10) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(11) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(12) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(10), iidx: InstIdx(2) })] } }
+bb14: Call { callee: FuncIdx(15), args: [Const(ConstIdx(0)), Const(ConstIdx(23))], safepoint: None }
+bb14: Store { val: Const(ConstIdx(24)), tgt: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(12) }), volatile: false }
+bb14: Br { succ: BBlockIdx(16) }
+bb16: Call { callee: FuncIdx(15), args: [Const(ConstIdx(0)), Const(ConstIdx(27))], safepoint: None }
+bb16: Load { ptr: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(12) }), tyidx: TyIdx(7), volatile: false }
+bb16: Cast { cast_kind: SExt, val: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(16), iidx: InstIdx(1) }), dest_tyidx: TyIdx(1) }
+bb16: Call { callee: FuncIdx(6), args: [Global(GlobalDeclIdx(1)), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(16), iidx: InstIdx(2) })], safepoint: None }
+bb16: Br { succ: BBlockIdx(17) }
+bb17: Call { callee: FuncIdx(15), args: [Const(ConstIdx(0)), Const(ConstIdx(28))], safepoint: None }
+bb17: Store { val: Const(ConstIdx(29)), tgt: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(11) }), volatile: false }
+bb17: Br { succ: BBlockIdx(24) }
+bb24: Call { callee: FuncIdx(15), args: [Const(ConstIdx(0)), Const(ConstIdx(42))], safepoint: None }
+bb24: Load { ptr: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(11) }), tyidx: TyIdx(7), volatile: false }
+bb24: Cast { cast_kind: SExt, val: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(24), iidx: InstIdx(1) }), dest_tyidx: TyIdx(1) }
+bb24: Call { callee: FuncIdx(6), args: [Global(GlobalDeclIdx(2)), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(24), iidx: InstIdx(2) })], safepoint: None }
+bb24: Br { succ: BBlockIdx(25) }
+bb25: Call { callee: FuncIdx(15), args: [Const(ConstIdx(0)), Const(ConstIdx(43))], safepoint: None }
+bb25: Load { ptr: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(8) }), tyidx: TyIdx(1), volatile: false }
+bb25: BinaryOp { lhs: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(25), iidx: InstIdx(1) }), binop: Add, rhs: Const(ConstIdx(44)) }
+bb25: Store { val: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(25), iidx: InstIdx(2) }), tgt: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(8) }), volatile: false }
+bb25: Load { ptr: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(9) }), tyidx: TyIdx(1), volatile: false }
+bb25: BinaryOp { lhs: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(25), iidx: InstIdx(4) }), binop: Add, rhs: Const(ConstIdx(2)) }
+bb25: Store { val: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(25), iidx: InstIdx(5) }), tgt: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(9) }), volatile: false }
+bb25: Load { ptr: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(10) }), tyidx: TyIdx(1), volatile: false }
+bb25: BinaryOp { lhs: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(25), iidx: InstIdx(7) }), binop: Add, rhs: Const(ConstIdx(2)) }
+bb25: Store { val: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(25), iidx: InstIdx(8) }), tgt: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(10) }), volatile: false }
+bb25: Br { succ: BBlockIdx(7) }
+bb7: Call { callee: FuncIdx(15), args: [Const(ConstIdx(0)), Const(ConstIdx(10))], safepoint: None }
+bb7: Load { ptr: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(8) }), tyidx: TyIdx(1), volatile: false }
+bb7: ICmp { tyidx: TyIdx(6), lhs: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(7), iidx: InstIdx(1) }), pred: SignedGreater, rhs: Const(ConstIdx(0)) }
+bb7: CondBr { cond: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(7), iidx: InstIdx(2) }), true_bb: BBlockIdx(8), false_bb: BBlockIdx(26), safepoint: DeoptSafepoint { id: Const(ConstIdx(11)), lives: [LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(3) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(6) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(7) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(8) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(9) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(10) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(11) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(12) }), LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(7), iidx: InstIdx(2) })] } }
+bb8: Call { callee: FuncIdx(15), args: [Const(ConstIdx(0)), Const(ConstIdx(12))], safepoint: None }
+bb8: Load { ptr: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(6) }), tyidx: TyIdx(2), volatile: false }
+bb8: PtrAdd { tyidx: TyIdx(2), ptr: LocalVariable(InstID { funcidx: FuncIdx(0), bbidx: BBlockIdx(0), iidx: InstIdx(3) }), const_off: 0, dyn_elem_counts: [], dyn_elem_sizes: [] }
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+2> g
+2> f
+2> e
+2> d
+2> c
+2> b
+1> l
+2> a
+2> g
+1> j
+2> a
+1> i
+2> a
+1> m
+2> a
+1> l
+2> a
+
+
+test lang_tests::switch_nested_guard.newcg.c ... [0m[32mok[0m
+
+test result: [0m[32mok[0m. 1 passed; 0 failed; 0 ignored; 0 measured; 52 filtered out
+
+     Running langtest_ir_lowering.rs (target/debug/deps/ir_lowering_tests-481f92c06ef8614e)
+Running IR lowering tests...
+
+running 0 tests
+
+test result: [0m[32mok[0m. 0 passed; 0 failed; 0 ignored; 0 measured; 15 filtered out
+
+     Running unittests src/main.rs (target/debug/deps/xtask-3c37d1ab81196a92)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/ykaddr-d1c6d3be7ce6d20d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/ykbuild-ef866be891cd5609)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/ykcapi-ab49a43db501bbc8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/ykrt-f26ff41f31919f07)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 130 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/yksmp-ddb4178b5982491b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/yktracec-465a818b1aac4776)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
