@@ -19,6 +19,7 @@ struct TracingBBlock {
     function_index: usize,
     block_index: usize,
 }
+#[cfg(jitc_yk)]
 use crate::compile::jitc_yk::AOT_MOD;
 
 /// Mapping of function indexes to function names.

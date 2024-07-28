@@ -328,7 +328,7 @@ index!(TyIdx);
 /// An index into [Func::bblocks].
 #[deku_derive(DekuRead)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub(crate) struct BBlockIdx(usize);
+pub(crate) struct BBlockIdx(pub usize);
 index!(BBlockIdx);
 
 /// An index into [BBlock::insts].

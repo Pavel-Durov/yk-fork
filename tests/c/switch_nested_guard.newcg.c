@@ -1,8 +1,7 @@
 // Run-time:
 //   env-var: YKD_LOG_IR=-:aot
+//   env-var: YK_LOG=4
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   stdout:
-//     gfedcblagfedcbjagfedcbmagfedcbkagfedcbiagfedcblagfedcbjagfedcbmagfedcbkagfedcbiagfedcblagfedcbjagfedcbmagfedcbkagf
 
 // Check that guard failures in nested switches work as expected.
 
@@ -15,9 +14,12 @@
 
 int main(int argc, char **argv) {
   YkMT *mt = yk_mt_new(NULL);
-  yk_mt_hot_threshold_set(mt, 3);
+  yk_mt_hot_threshold_set(mt, 0);
   YkLocation loc = yk_location_new();
-  int i = 100;
+  // i = 11 -> gfedcblagfed
+  // i = 12 -> hwt: gfedcblagfed(c), swt: gfedcblagfed(e)
+  // otiginal i = 100;
+  int i = 12;
   int j = 0;
   int k = 0;
   NOOPT_VAL(i);
@@ -44,7 +46,7 @@ int main(int argc, char **argv) {
         d = 'm';
         break;
       }
-      printf("%c", d);
+      printf("1> %c\n", d);
       c = 'a';
       break;
     case 5:
@@ -66,7 +68,7 @@ int main(int argc, char **argv) {
       c = 'g';
       break;
     }
-    printf("%c", c);
+    printf("2> %c\n", c);
     i--;
     j++;
     k++;
