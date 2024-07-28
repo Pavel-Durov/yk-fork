@@ -1,0 +1,227 @@
+--- Begin aot ---
+# IR format version: 0
+# Num funcs: 15
+# Num consts: 26
+# Num global decls: 1
+# Num types: 23
+global_decl @shadowstack_0
+
+func main(%arg0: i32, %arg1: ptr) -> i32 {
+  bb0:
+    %0_0: i32 = arg(0)
+    %0_1: ptr = arg(1)
+    %0_2: ptr = alloca {0: ptr, 64: ptr, 128: ptr, 192: ptr, 256: ptr, 320: ptr, 384: ptr, 448: ptr}, 1, 8
+    %0_3: ptr = call malloc(1000000i64)
+    *@shadowstack_0 = %0_3
+    %0_5: ptr = alloca ptr, 1, 8
+    %0_6: ptr = alloca {0: i64}, 1, 8
+    %0_7: ptr = ptr_add %0_3, 0
+    %0_8: ptr = ptr_add %0_3, 4
+    %0_9: ptr = ptr_add %0_3, 8
+    %0_10: ptr = ptr_add %0_3, 12
+    %0_11: ptr = ptr_add %0_3, 13
+    br bb1
+  bb1:
+    # switch_nested_guard.newcg.c:17: YkMT *mt = yk_mt_new(NULL);
+    %1_0: ptr = call yk_mt_new(0x0)
+    br bb2
+  bb2:
+    *%0_5 = %1_0
+    # switch_nested_guard.newcg.c:18: yk_mt_hot_threshold_set(mt, 3);
+    call yk_mt_hot_threshold_set(%1_0, 3i32)
+    # switch_nested_guard.newcg.c:19: YkLocation loc = yk_location_new();
+    br bb3
+  bb3:
+    %3_0: i64 = call yk_location_new()
+    br bb4
+  bb4:
+    *%0_6 = %3_0
+    # switch_nested_guard.newcg.c:20: int i = 100;
+    *%0_7 = 100i32
+    # switch_nested_guard.newcg.c:21: int j = 0;
+    *%0_8 = 0i32
+    # switch_nested_guard.newcg.c:22: int k = 0;
+    *%0_9 = 0i32
+    # switch_nested_guard.newcg.c:24: NOOPT_VAL(j);
+    br bb5
+  bb5:
+    %5_0: i32 = load %0_8
+    # switch_nested_guard.newcg.c:25: while (i > 0) {
+    br bb6
+  bb6:
+    br bb7
+  bb7:
+    %7_0: i32 = load %0_7
+    %7_1: i1 = sgt %7_0, 0i32
+    condbr %7_1, bb8, bb26 [safepoint: 2i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %0_10, %0_11, %7_1)]
+  bb8:
+    # switch_nested_guard.newcg.c:26: yk_mt_control_point(mt, &loc);
+    %8_0: ptr = load %0_5
+    %8_1: ptr = ptr_add %0_2, 0
+    *%8_1 = %0_5
+    %8_3: ptr = ptr_add %0_2, 8
+    *%8_3 = %0_6
+    %8_5: ptr = ptr_add %0_2, 16
+    *%8_5 = %0_7
+    %8_7: ptr = ptr_add %0_2, 24
+    *%8_7 = %0_8
+    %8_9: ptr = ptr_add %0_2, 32
+    *%8_9 = %0_9
+    %8_11: ptr = ptr_add %0_2, 40
+    *%8_11 = %0_10
+    %8_13: ptr = ptr_add %0_2, 48
+    *%8_13 = %0_11
+    %8_15: ptr = ptr_add %0_2, 56
+    *%8_15 = %8_0
+    %8_17: ptr = call llvm.frameaddress.p0(0i32)
+    call __ykrt_control_point(%8_0, %0_6, %0_2, %8_17, 3i64) [safepoint: 3i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %0_10, %0_11, %8_0)]
+    # switch_nested_guard.newcg.c:28: switch (j % 7) {
+    br bb9
+  bb9:
+    %9_0: i32 = load %0_8
+    %9_1: i32 = srem %9_0, 7i32
+    switch %9_1, bb24, [6 -> bb10, 5 -> bb18, 4 -> bb19, 3 -> bb20, 2 -> bb21, 1 -> bb22, 0 -> bb23] [safepoint: 0i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %0_10, %0_11, %9_1)]
+  bb10:
+    # switch_nested_guard.newcg.c:30: switch (k % 5) {
+    %10_0: i32 = load %0_9
+    %10_1: i32 = srem %10_0, 5i32
+    switch %10_1, bb16, [4 -> bb11, 3 -> bb12, 2 -> bb13, 1 -> bb14, 0 -> bb15] [safepoint: 1i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %0_10, %0_11, %10_1)]
+  bb11:
+    # switch_nested_guard.newcg.c:32: d = 'i';
+    *%0_11 = 105i8
+    # switch_nested_guard.newcg.c:33: break;
+    br bb16
+  bb12:
+    # switch_nested_guard.newcg.c:35: d = 'j';
+    *%0_11 = 106i8
+    # switch_nested_guard.newcg.c:36: break;
+    br bb16
+  bb13:
+    # switch_nested_guard.newcg.c:38: d = 'k';
+    *%0_11 = 107i8
+    # switch_nested_guard.newcg.c:39: break;
+    br bb16
+  bb14:
+    # switch_nested_guard.newcg.c:41: d = 'l';
+    *%0_11 = 108i8
+    # switch_nested_guard.newcg.c:42: break;
+    br bb16
+  bb15:
+    # switch_nested_guard.newcg.c:44: d = 'm';
+    *%0_11 = 109i8
+    # switch_nested_guard.newcg.c:45: break;
+    br bb16
+  bb16:
+    # switch_nested_guard.newcg.c:47: printf("%c", d);
+    %16_0: i8 = load %0_11
+    %16_1: i32 = sext %16_0, i32
+    %16_2: i32 = call putchar(%16_1)
+    br bb17
+  bb17:
+    # switch_nested_guard.newcg.c:48: c = 'a';
+    *%0_10 = 97i8
+    # switch_nested_guard.newcg.c:49: break;
+    br bb24
+  bb18:
+    # switch_nested_guard.newcg.c:51: c = 'b';
+    *%0_10 = 98i8
+    # switch_nested_guard.newcg.c:52: break;
+    br bb24
+  bb19:
+    # switch_nested_guard.newcg.c:54: c = 'c';
+    *%0_10 = 99i8
+    # switch_nested_guard.newcg.c:55: break;
+    br bb24
+  bb20:
+    # switch_nested_guard.newcg.c:57: c = 'd';
+    *%0_10 = 100i8
+    # switch_nested_guard.newcg.c:58: break;
+    br bb24
+  bb21:
+    # switch_nested_guard.newcg.c:60: c = 'e';
+    *%0_10 = 101i8
+    # switch_nested_guard.newcg.c:61: break;
+    br bb24
+  bb22:
+    # switch_nested_guard.newcg.c:63: c = 'f';
+    *%0_10 = 102i8
+    # switch_nested_guard.newcg.c:64: break;
+    br bb24
+  bb23:
+    # switch_nested_guard.newcg.c:66: c = 'g';
+    *%0_10 = 103i8
+    # switch_nested_guard.newcg.c:67: break;
+    br bb24
+  bb24:
+    # switch_nested_guard.newcg.c:69: printf("%c", c);
+    %24_0: i8 = load %0_10
+    %24_1: i32 = sext %24_0, i32
+    %24_2: i32 = call putchar(%24_1)
+    # switch_nested_guard.newcg.c:70: i--;
+    br bb25
+  bb25:
+    %25_0: i32 = load %0_7
+    %25_1: i32 = add %25_0, -1i32
+    *%0_7 = %25_1
+    # switch_nested_guard.newcg.c:71: j++;
+    %25_3: i32 = load %0_8
+    %25_4: i32 = add %25_3, 1i32
+    *%0_8 = %25_4
+    # switch_nested_guard.newcg.c:72: k++;
+    %25_6: i32 = load %0_9
+    %25_7: i32 = add %25_6, 1i32
+    *%0_9 = %25_7
+    # switch_nested_guard.newcg.c:25: while (i > 0) {
+    br bb7
+  bb26:
+    # switch_nested_guard.newcg.c:74: yk_location_drop(loc);
+    %26_0: i64 = load %0_6
+    call yk_location_drop(%26_0)
+    # switch_nested_guard.newcg.c:75: yk_mt_drop(mt);
+    br bb27
+  bb27:
+    %27_0: ptr = load %0_5
+    call yk_mt_drop(%27_0)
+    # switch_nested_guard.newcg.c:76: printf("\n");
+    br bb28
+  bb28:
+    %28_0: i32 = call putchar(10i32)
+    # switch_nested_guard.newcg.c:78: return (EXIT_SUCCESS);
+    br bb29
+  bb29:
+    br bb31
+  bb30:
+    ret 0i32
+  bb31:
+    br bb30
+}
+
+func llvm.dbg.declare(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func yk_mt_new(%arg0: ptr) -> ptr;
+
+func yk_mt_hot_threshold_set(%arg0: ptr, %arg1: i32);
+
+func yk_location_new() -> i64;
+
+func yk_mt_control_point(%arg0: ptr, %arg1: ptr);
+
+func printf(%arg0: ptr, ...) -> i32;
+
+func yk_location_drop(%arg0: i64);
+
+func yk_mt_drop(%arg0: ptr);
+
+func llvm.dbg.value(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func putchar(%arg0: i32) -> i32;
+
+func malloc(%arg0: i64) -> ptr;
+
+func __ykrt_control_point(%arg0: ptr, %arg1: ptr, %arg2: ptr, %arg3: ptr, %arg4: i64);
+
+func llvm.frameaddress.p0(%arg0: i32) -> ptr;
+
+func llvm.experimental.stackmap(%arg0: i64, %arg1: i32, ...);
+
+--- End aot ---
