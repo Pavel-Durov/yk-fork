@@ -259,7 +259,7 @@ impl TraceBuilder {
 
         // Decide how to translate each AOT instruction.
         for (iidx, inst) in blk.insts.iter().enumerate() {
-            println!("bb{:?}: {:?}", bid.bbidx(), inst);
+            // println!("bb{:?}: {:?}", bid.bbidx(), inst);
             match inst {
                 aot_ir::Inst::Br { .. } => Ok(()),
                 aot_ir::Inst::Load {

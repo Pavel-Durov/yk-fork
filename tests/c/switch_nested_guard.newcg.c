@@ -1,8 +1,8 @@
+// ## FIXME: crashes under SWT
 // Run-time:
-//   env-var: YKD_LOG_IR=-:aot
-//   env-var: YK_LOG=4
 //   env-var: YKD_SERIALISE_COMPILATION=1
-
+//   stdout:
+//     gfedcblagfedcbjagfedcbmagfedcbkagfedcbiagfedcblagfedcbjagfedcbmagfedcbkagfedcbiagfedcblagfedcbjagfedcbmagfedcbkagf
 
 // Check that guard failures in nested switches work as expected.
 
@@ -17,10 +17,7 @@ int main(int argc, char **argv) {
   YkMT *mt = yk_mt_new(NULL);
   yk_mt_hot_threshold_set(mt, 3);
   YkLocation loc = yk_location_new();
-  // i = 11 -> gfedcblagfed
-  // i = 12 -> hwt: gfedcblagfed(c), swt: gfedcblagfed(e)
-  // otiginal i = 100;
-  int i = 12;
+  int i = 100;
   int j = 0;
   int k = 0;
   NOOPT_VAL(i);
@@ -47,7 +44,7 @@ int main(int argc, char **argv) {
         d = 'm';
         break;
       }
-      printf("1> %c\n", d);
+      printf("%c", d);
       c = 'a';
       break;
     case 5:
@@ -69,7 +66,7 @@ int main(int argc, char **argv) {
       c = 'g';
       break;
     }
-    printf("2> %c\n", c);
+    printf("%c", c);
     i--;
     j++;
     k++;
