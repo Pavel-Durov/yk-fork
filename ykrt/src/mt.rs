@@ -8,10 +8,7 @@ use std::{
     env,
     error::Error,
     ffi::c_void,
-    fs::File,
-    io::Write,
     marker::PhantomData,
-    path::PathBuf,
     sync::{
         atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicUsize, Ordering},
         Arc,
@@ -22,7 +19,6 @@ use std::{
 use parking_lot::{Condvar, Mutex, MutexGuard};
 #[cfg(not(all(feature = "yk_testing", not(test))))]
 use parking_lot_core::SpinWait;
-use strum::EnumCount;
 
 use crate::{
     aotsmp::{load_aot_stackmaps, AOT_STACKMAPS},
@@ -30,7 +26,7 @@ use crate::{
     location::{HotLocation, HotLocationKind, Location, TraceFailed},
     log::{
         stats::{Stats, TimingState},
-        Verbosity,
+        Log, Verbosity,
     },
     trace::{default_tracer, AOTTraceIterator, TraceRecorder, Tracer},
 };
@@ -55,7 +51,7 @@ pub type AtomicTraceCompilationErrorThreshold = AtomicU16;
 /// FIXME: needs to be configurable.
 pub(crate) const DEFAULT_TRACE_TOO_LONG: usize = 5000;
 const DEFAULT_HOT_THRESHOLD: HotThreshold = 50;
-const DEFAULT_SIDETRACE_THRESHOLD: HotThreshold = 5;
+const DEFAULT_SIDETRACE_THRESHOLD: HotThreshold = 500000;
 /// How often can a [HotLocation] or [Guard] lead to an error in tracing or compilation before we
 /// give up trying to trace (or compile...) it?
 const DEFAULT_TRACECOMPILATION_ERROR_THRESHOLD: TraceCompilationErrorThreshold = 5;
@@ -88,9 +84,7 @@ pub struct MT {
     /// is only useful for general debugging purposes, and must not be relied upon for semantic
     /// correctness, because the IDs can repeat when the underlying `u64` overflows/wraps.
     compiled_trace_id: AtomicU64,
-    /// The requested [Verbosity] level for logging and the path to write to. A path of `None`
-    /// should default to the platform specific standard for logging (e.g. stderr).
-    verbosity: (Option<PathBuf>, Verbosity),
+    pub(crate) log: Log,
     pub(crate) stats: Stats,
 }
 
@@ -111,34 +105,6 @@ impl MT {
                 .map_err(|e| format!("Invalid hot threshold '{s}': {e}"))?,
             Err(_) => DEFAULT_HOT_THRESHOLD,
         };
-        let verbosity = match env::var("YK_LOG") {
-            Ok(s) => {
-                let (path, level) = match s.split(':').collect::<Vec<_>>()[..] {
-                    [path, level] => {
-                        if path == "-" {
-                            (None, level)
-                        } else {
-                            let path = PathBuf::from(path);
-                            // If there's an existing log file, truncate (i.e. empty it), so that later
-                            // appends to the log aren't appending to a previous log run.
-                            File::create(&path).ok();
-                            (Some(path), level)
-                        }
-                    }
-                    [level] => (None, level),
-                    [..] => return Err("Verbosity cannot contain multiple ':' characters".into()),
-                };
-                let level = level
-                    .parse::<u8>()
-                    .map_err(|e| format!("Invalid verbosity level '{s}': {e}"))?;
-                // These unwraps can only fail dynamically if we've got the types wrong statically
-                // (i.e. they'll fail as soon as this code is executed for the first time).
-                let max_level = u8::try_from(Verbosity::COUNT).unwrap() - 1;
-                let level = Verbosity::from_repr(cmp::min(level, max_level)).unwrap();
-                (path, level)
-            }
-            Err(_) => (None, Verbosity::Error),
-        };
         Ok(Arc::new(Self {
             hot_threshold: AtomicHotThreshold::new(hot_threshold),
             sidetrace_threshold: AtomicHotThreshold::new(DEFAULT_SIDETRACE_THRESHOLD),
@@ -151,7 +117,7 @@ impl MT {
             tracer: Mutex::new(default_tracer()?),
             compiler: Mutex::new(default_compiler()?),
             compiled_trace_id: AtomicU64::new(0),
-            verbosity,
+            log: Log::new()?,
             stats: Stats::new(),
         }))
     }
@@ -268,7 +234,7 @@ impl MT {
         match self.transition_control_point(loc) {
             TransitionControlPoint::NoAction => (),
             TransitionControlPoint::Execute(ctr) => {
-                self.log(Verbosity::JITEvent, "enter-jit-code");
+                self.log.log(Verbosity::JITEvent, "enter-jit-code");
                 self.stats.trace_executed();
 
                 // Compute the rsp of the control_point frame.
@@ -291,7 +257,7 @@ impl MT {
                 unsafe { exec_trace(ctrlp_vars, frameaddr, rsp, trace_addr) };
             }
             TransitionControlPoint::StartTracing(hl) => {
-                self.log(Verbosity::JITEvent, "start-tracing");
+                self.log.log(Verbosity::JITEvent, "start-tracing");
                 let tracer = {
                     let lk = self.tracer.lock();
                     Arc::clone(&*lk)
@@ -324,13 +290,14 @@ impl MT {
                 match thread_tracer.stop() {
                     Ok(utrace) => {
                         self.stats.timing_state(TimingState::None);
-                        self.log(Verbosity::JITEvent, "stop-tracing");
+                        self.log.log(Verbosity::JITEvent, "stop-tracing");
                         self.queue_compile_job((utrace, promotions.into_boxed_slice()), hl, None);
                     }
                     Err(e) => {
                         self.stats.timing_state(TimingState::None);
                         self.stats.trace_recorded_err();
-                        self.log(Verbosity::Warning, &format!("stop-tracing-aborted: {e}"));
+                        self.log
+                            .log(Verbosity::Warning, &format!("stop-tracing-aborted: {e}"));
                     }
                 }
             }
@@ -355,7 +322,7 @@ impl MT {
                 match thread_tracer.stop() {
                     Ok(utrace) => {
                         self.stats.timing_state(TimingState::None);
-                        self.log(Verbosity::JITEvent, "stop-tracing");
+                        self.log.log(Verbosity::JITEvent, "stop-tracing");
                         self.queue_compile_job(
                             (utrace, promotions.into_boxed_slice()),
                             hl,
@@ -365,7 +332,8 @@ impl MT {
                     Err(e) => {
                         self.stats.timing_state(TimingState::None);
                         self.stats.trace_recorded_err();
-                        self.log(Verbosity::Warning, &format!("stop-tracing-aborted: {e}"));
+                        self.log
+                            .log(Verbosity::Warning, &format!("stop-tracing-aborted: {e}"));
                     }
                 }
             }
@@ -580,7 +548,7 @@ impl MT {
         match self.transition_guard_failure(gidx, parent) {
             TransitionGuardFailure::NoAction => todo!(),
             TransitionGuardFailure::StartSideTracing(hl) => {
-                self.log(Verbosity::JITEvent, "start-side-tracing");
+                self.log.log(Verbosity::JITEvent, "start-side-tracing");
                 let tracer = {
                     let lk = self.tracer.lock();
                     Arc::clone(&*lk)
@@ -625,7 +593,13 @@ impl MT {
             } else {
                 (None, None)
             };
-            match compiler.compile(Arc::clone(&mt), trace_iter, sti, Arc::clone(&hl_arc)) {
+            match compiler.compile(
+                Arc::clone(&mt),
+                trace_iter.0,
+                sti,
+                Arc::clone(&hl_arc),
+                trace_iter.1,
+            ) {
                 Ok(ct) => {
                     if let Some((_, parent_ctr)) = sidetrace {
                         parent_ctr.guard(guardid.unwrap()).set_ctr(ct);
@@ -641,7 +615,7 @@ impl MT {
                     hl_arc.lock().tracecompilation_error(&mt);
                     match e {
                         CompilationError::General(e) | CompilationError::LimitExceeded(e) => {
-                            mt.log(
+                            mt.log.log(
                                 Verbosity::Warning,
                                 &format!("trace-compilation-aborted: {e}"),
                             );
@@ -651,14 +625,15 @@ impl MT {
                             panic!("{e}");
                             #[cfg(not(feature = "ykd"))]
                             {
-                                mt.log(
+                                mt.log.log(
                                     Verbosity::Error,
                                     &format!("trace-compilation-aborted: {e}"),
                                 );
                             }
                         }
                         CompilationError::ResourceExhausted(e) => {
-                            mt.log(Verbosity::Error, &format!("trace-compilation-aborted: {e}"));
+                            mt.log
+                                .log(Verbosity::Error, &format!("trace-compilation-aborted: {e}"));
                         }
                     }
                 }
@@ -679,36 +654,6 @@ impl MT {
 
         self.queue_job(Box::new(do_compile));
     }
-
-    /// Log `msg` with the [Verbosity] level `verbosity`.
-    ///
-    /// # Panics
-    ///
-    /// If `verbosity == Verbosity::None`.
-    pub(crate) fn log(&self, verbosity: Verbosity, msg: &str) {
-        if verbosity <= self.verbosity.1 {
-            let prefix = match verbosity {
-                Verbosity::Disabled => panic!(),
-                Verbosity::Error => "yk-error",
-                Verbosity::Warning => "yk-warning",
-                Verbosity::JITEvent => "yk-jit-event",
-                Verbosity::LocationTransition => "yk-location-transition",
-            };
-            match &self.verbosity.0 {
-                Some(p) => {
-                    let s = format!("{prefix}: {msg}\n");
-                    File::options()
-                        .append(true)
-                        .open(p)
-                        .map(|mut x| x.write(s.as_bytes()))
-                        .ok();
-                }
-                None => {
-                    eprintln!("{prefix}: {msg}");
-                }
-            }
-        }
-    }
 }
 
 impl Drop for MT {
@@ -717,21 +662,34 @@ impl Drop for MT {
     }
 }
 
-/// Execute a trace. Note: this overwrites the current (Rust) function frame.
 #[cfg(target_arch = "x86_64")]
 #[naked]
+#[no_mangle]
 unsafe extern "C" fn exec_trace(
+    // FIXME: We don't need ctrlp_vars and frameaddr here anymore.
     ctrlp_vars: *mut c_void,
     frameaddr: *const c_void,
     rsp: *const c_void,
     trace: *const c_void,
 ) -> ! {
     std::arch::asm!(
-        // Reset RSP to the end of the control point frame (this doesn't include the
-        // return address)
+        // Reset RBP
+        "mov rbp, rsi",
+        // Reset RSP to the end of the control point frame (this includes the registers we pushed
+        // just before the control point)
         "mov rsp, rdx",
+        "sub rsp, 8",  // Return address of control point call
+        "sub rsp, 56", // Registers pushed in naked cp call
+        //// Restore callee-saved registers which were pushed to the stack in __ykrt_control_point.
+        "pop r15",
+        "pop r14",
+        "pop r13",
+        "pop r12",
+        "pop rsi",
+        "pop rbx", // Don't overwrite `rdi` for now until we remove the first two args.
+        "pop rbx",
         // Call the trace function.
-        "call rcx",
+        "jmp rcx",
         "ret",
         options(noreturn)
     )

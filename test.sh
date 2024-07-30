@@ -1,5 +1,9 @@
 #!/bin/bash
+<<<<<<< HEAD
 # Usage: bash test.sh swt && bash ./test.sh hw
+=======
+# Usage: bash test.sh swt
+>>>>>>> switch-nested-guard-test-swt
 
 set -eu
 
