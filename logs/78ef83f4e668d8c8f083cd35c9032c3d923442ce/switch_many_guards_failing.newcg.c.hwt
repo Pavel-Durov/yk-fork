@@ -1,0 +1,2644 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.58s
+     Running unittests src/lib.rs (target/debug/deps/hwtracer-ee129e754ef3e6d5)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 15 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/tests-d06e60b0cfdb4b24)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/dump_ir.rs (target/debug/deps/dump_ir-581c8afa999dd096)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/gdb_c_test.rs (target/debug/deps/gdb_c_test-64e5bbe22ae313c1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running langtest_c.rs (target/debug/deps/c_tests-afe3358ff41b9045)
+Running C tests with opt level -O0...
+
+running 1 testsyk-jit-event: start-tracing
+yk-jit-event: stop-tracing
+--- Begin aot ---
+# IR format version: 0
+# Num funcs: 15
+# Num consts: 21
+# Num global decls: 1
+# Num types: 23
+global_decl @shadowstack_0
+
+func main(%arg0: i32, %arg1: ptr) -> i32 {
+  bb0:
+    %0_0: i32 = arg(0)
+    %0_1: ptr = arg(1)
+    %0_2: ptr = alloca {0: ptr, 64: ptr, 128: ptr, 192: ptr, 256: ptr, 320: ptr}, 1, 8
+    %0_3: ptr = call malloc(1000000i64)
+    *@shadowstack_0 = %0_3
+    %0_5: ptr = alloca ptr, 1, 8
+    %0_6: ptr = alloca {0: i64}, 1, 8
+    %0_7: ptr = ptr_add %0_3, 0
+    %0_8: ptr = ptr_add %0_3, 4
+    %0_9: ptr = ptr_add %0_3, 8
+    br bb1
+  bb1:
+    # switch_many_guards_failing.newcg.c:18: YkMT *mt = yk_mt_new(NULL);
+    %1_0: ptr = call yk_mt_new(0x0)
+    br bb2
+  bb2:
+    *%0_5 = %1_0
+    # switch_many_guards_failing.newcg.c:19: yk_mt_hot_threshold_set(mt, 3);
+    call yk_mt_hot_threshold_set(%1_0, 3i32)
+    # switch_many_guards_failing.newcg.c:20: YkLocation loc = yk_location_new();
+    br bb3
+  bb3:
+    %3_0: i64 = call yk_location_new()
+    br bb4
+  bb4:
+    *%0_6 = %3_0
+    # switch_many_guards_failing.newcg.c:21: int i = 100;
+    *%0_7 = 100i32
+    # switch_many_guards_failing.newcg.c:22: int j = 10;
+    *%0_8 = 10i32
+    # switch_many_guards_failing.newcg.c:24: NOOPT_VAL(j);
+    br bb5
+  bb5:
+    %5_0: i32 = load %0_8
+    # switch_many_guards_failing.newcg.c:25: while (i > 0) {
+    br bb6
+  bb6:
+    br bb7
+  bb7:
+    %7_0: i32 = load %0_7
+    %7_1: i1 = sgt %7_0, 0i32
+    condbr %7_1, bb8, bb22 [safepoint: 1i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %7_1)]
+  bb8:
+    # switch_many_guards_failing.newcg.c:26: yk_mt_control_point(mt, &loc);
+    %8_0: ptr = load %0_5
+    %8_1: ptr = ptr_add %0_2, 0
+    *%8_1 = %0_5
+    %8_3: ptr = ptr_add %0_2, 8
+    *%8_3 = %0_6
+    %8_5: ptr = ptr_add %0_2, 16
+    *%8_5 = %0_7
+    %8_7: ptr = ptr_add %0_2, 24
+    *%8_7 = %0_8
+    %8_9: ptr = ptr_add %0_2, 32
+    *%8_9 = %0_9
+    %8_11: ptr = ptr_add %0_2, 40
+    *%8_11 = %8_0
+    %8_13: ptr = call llvm.frameaddress.p0(0i32)
+    call __ykrt_control_point(%8_0, %0_6, %0_2, %8_13, 2i64) [safepoint: 2i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %8_0)]
+    # switch_many_guards_failing.newcg.c:28: switch (j % 10) {
+    br bb9
+  bb9:
+    %9_0: i32 = load %0_8
+    %9_1: i32 = srem %9_0, 10i32
+    switch %9_1, bb20, [9 -> bb10, 8 -> bb11, 7 -> bb12, 6 -> bb13, 5 -> bb14, 4 -> bb15, 3 -> bb16, 2 -> bb17, 1 -> bb18, 0 -> bb19] [safepoint: 0i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %9_1)]
+  bb10:
+    # switch_many_guards_failing.newcg.c:30: c = 'a';
+    *%0_9 = 97i8
+    # switch_many_guards_failing.newcg.c:31: break;
+    br bb20
+  bb11:
+    # switch_many_guards_failing.newcg.c:33: c = 'b';
+    *%0_9 = 98i8
+    # switch_many_guards_failing.newcg.c:34: break;
+    br bb20
+  bb12:
+    # switch_many_guards_failing.newcg.c:36: c = 'c';
+    *%0_9 = 99i8
+    # switch_many_guards_failing.newcg.c:37: break;
+    br bb20
+  bb13:
+    # switch_many_guards_failing.newcg.c:39: c = 'd';
+    *%0_9 = 100i8
+    # switch_many_guards_failing.newcg.c:40: break;
+    br bb20
+  bb14:
+    # switch_many_guards_failing.newcg.c:42: c = 'e';
+    *%0_9 = 101i8
+    # switch_many_guards_failing.newcg.c:43: break;
+    br bb20
+  bb15:
+    # switch_many_guards_failing.newcg.c:45: c = 'f';
+    *%0_9 = 102i8
+    # switch_many_guards_failing.newcg.c:46: break;
+    br bb20
+  bb16:
+    # switch_many_guards_failing.newcg.c:48: c = 'g';
+    *%0_9 = 103i8
+    # switch_many_guards_failing.newcg.c:49: break;
+    br bb20
+  bb17:
+    # switch_many_guards_failing.newcg.c:51: c = 'h';
+    *%0_9 = 104i8
+    # switch_many_guards_failing.newcg.c:52: break;
+    br bb20
+  bb18:
+    # switch_many_guards_failing.newcg.c:54: c = 'i';
+    *%0_9 = 105i8
+    # switch_many_guards_failing.newcg.c:55: break;
+    br bb20
+  bb19:
+    # switch_many_guards_failing.newcg.c:57: c = 'j';
+    *%0_9 = 106i8
+    # switch_many_guards_failing.newcg.c:58: break;
+    br bb20
+  bb20:
+    # switch_many_guards_failing.newcg.c:60: printf("%c", c);
+    %20_0: i8 = load %0_9
+    %20_1: i32 = sext %20_0, i32
+    %20_2: i32 = call putchar(%20_1)
+    # switch_many_guards_failing.newcg.c:61: i--;
+    br bb21
+  bb21:
+    %21_0: i32 = load %0_7
+    %21_1: i32 = add %21_0, -1i32
+    *%0_7 = %21_1
+    # switch_many_guards_failing.newcg.c:62: j++;
+    %21_3: i32 = load %0_8
+    %21_4: i32 = add %21_3, 1i32
+    *%0_8 = %21_4
+    # switch_many_guards_failing.newcg.c:25: while (i > 0) {
+    br bb7
+  bb22:
+    # switch_many_guards_failing.newcg.c:64: yk_location_drop(loc);
+    %22_0: i64 = load %0_6
+    call yk_location_drop(%22_0)
+    # switch_many_guards_failing.newcg.c:65: yk_mt_drop(mt);
+    br bb23
+  bb23:
+    %23_0: ptr = load %0_5
+    call yk_mt_drop(%23_0)
+    # switch_many_guards_failing.newcg.c:66: printf("\n");
+    br bb24
+  bb24:
+    %24_0: i32 = call putchar(10i32)
+    # switch_many_guards_failing.newcg.c:68: return (EXIT_SUCCESS);
+    br bb25
+  bb25:
+    br bb27
+  bb26:
+    ret 0i32
+  bb27:
+    br bb26
+}
+
+func llvm.dbg.declare(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func yk_mt_new(%arg0: ptr) -> ptr;
+
+func yk_mt_hot_threshold_set(%arg0: ptr, %arg1: i32);
+
+func yk_location_new() -> i64;
+
+func yk_mt_control_point(%arg0: ptr, %arg1: ptr);
+
+func printf(%arg0: ptr, ...) -> i32;
+
+func yk_location_drop(%arg0: i64);
+
+func yk_mt_drop(%arg0: ptr);
+
+func llvm.dbg.value(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func putchar(%arg0: i32) -> i32;
+
+func malloc(%arg0: i64) -> ptr;
+
+func __ykrt_control_point(%arg0: ptr, %arg1: ptr, %arg2: ptr, %arg3: ptr, %arg4: i64);
+
+func llvm.frameaddress.p0(%arg0: i32) -> ptr;
+
+func llvm.experimental.stackmap(%arg0: i64, %arg1: i32, ...);
+
+--- End aot ---
+--- Begin jit-pre-opt ---
+; compiled trace ID #0
+
+func_decl putchar (i32) -> i32
+
+entry:
+    %0: ptr = arg(0)
+    %1: ptr = load_ti 40
+    %2: ptr = load_ti 32
+    %3: ptr = load_ti 24
+    %4: ptr = load_ti 16
+    %5: ptr = load_ti 8
+    %6: ptr = load_ti 0
+    tloop_start:
+    %8: i32 = load %3
+    %9: i32 = srem %8, 10i32
+    %10: i1 = eq %9, 3i32
+    guard true, %10, [%0, %6, %5, %4, %3, %2, %9]
+    *%2 = 103i8
+    %13: i8 = load %2
+    %14: i32 = sext %13, i32
+    %15: i32 = call @putchar(%14)
+    %16: i32 = load %4
+    %17: i32 = add %16, 4294967295i32
+    *%4 = %17
+    %19: i32 = load %3
+    %20: i32 = add %19, 1i32
+    *%3 = %20
+    %22: i32 = load %4
+    %23: i1 = sgt %22, 0i32
+    guard true, %23, [%0, %6, %5, %4, %3, %2, %23]
+    %25: ptr = load %6
+--- End jit-pre-opt ---
+yk-jit-event: enter-jit-code
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: deoptimise
+yk-jit-event: start-side-tracing
+yk-jit-event: stop-tracing
+--- Begin aot ---
+# IR format version: 0
+# Num funcs: 15
+# Num consts: 21
+# Num global decls: 1
+# Num types: 23
+global_decl @shadowstack_0
+
+func main(%arg0: i32, %arg1: ptr) -> i32 {
+  bb0:
+    %0_0: i32 = arg(0)
+    %0_1: ptr = arg(1)
+    %0_2: ptr = alloca {0: ptr, 64: ptr, 128: ptr, 192: ptr, 256: ptr, 320: ptr}, 1, 8
+    %0_3: ptr = call malloc(1000000i64)
+    *@shadowstack_0 = %0_3
+    %0_5: ptr = alloca ptr, 1, 8
+    %0_6: ptr = alloca {0: i64}, 1, 8
+    %0_7: ptr = ptr_add %0_3, 0
+    %0_8: ptr = ptr_add %0_3, 4
+    %0_9: ptr = ptr_add %0_3, 8
+    br bb1
+  bb1:
+    # switch_many_guards_failing.newcg.c:18: YkMT *mt = yk_mt_new(NULL);
+    %1_0: ptr = call yk_mt_new(0x0)
+    br bb2
+  bb2:
+    *%0_5 = %1_0
+    # switch_many_guards_failing.newcg.c:19: yk_mt_hot_threshold_set(mt, 3);
+    call yk_mt_hot_threshold_set(%1_0, 3i32)
+    # switch_many_guards_failing.newcg.c:20: YkLocation loc = yk_location_new();
+    br bb3
+  bb3:
+    %3_0: i64 = call yk_location_new()
+    br bb4
+  bb4:
+    *%0_6 = %3_0
+    # switch_many_guards_failing.newcg.c:21: int i = 100;
+    *%0_7 = 100i32
+    # switch_many_guards_failing.newcg.c:22: int j = 10;
+    *%0_8 = 10i32
+    # switch_many_guards_failing.newcg.c:24: NOOPT_VAL(j);
+    br bb5
+  bb5:
+    %5_0: i32 = load %0_8
+    # switch_many_guards_failing.newcg.c:25: while (i > 0) {
+    br bb6
+  bb6:
+    br bb7
+  bb7:
+    %7_0: i32 = load %0_7
+    %7_1: i1 = sgt %7_0, 0i32
+    condbr %7_1, bb8, bb22 [safepoint: 1i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %7_1)]
+  bb8:
+    # switch_many_guards_failing.newcg.c:26: yk_mt_control_point(mt, &loc);
+    %8_0: ptr = load %0_5
+    %8_1: ptr = ptr_add %0_2, 0
+    *%8_1 = %0_5
+    %8_3: ptr = ptr_add %0_2, 8
+    *%8_3 = %0_6
+    %8_5: ptr = ptr_add %0_2, 16
+    *%8_5 = %0_7
+    %8_7: ptr = ptr_add %0_2, 24
+    *%8_7 = %0_8
+    %8_9: ptr = ptr_add %0_2, 32
+    *%8_9 = %0_9
+    %8_11: ptr = ptr_add %0_2, 40
+    *%8_11 = %8_0
+    %8_13: ptr = call llvm.frameaddress.p0(0i32)
+    call __ykrt_control_point(%8_0, %0_6, %0_2, %8_13, 2i64) [safepoint: 2i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %8_0)]
+    # switch_many_guards_failing.newcg.c:28: switch (j % 10) {
+    br bb9
+  bb9:
+    %9_0: i32 = load %0_8
+    %9_1: i32 = srem %9_0, 10i32
+    switch %9_1, bb20, [9 -> bb10, 8 -> bb11, 7 -> bb12, 6 -> bb13, 5 -> bb14, 4 -> bb15, 3 -> bb16, 2 -> bb17, 1 -> bb18, 0 -> bb19] [safepoint: 0i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %9_1)]
+  bb10:
+    # switch_many_guards_failing.newcg.c:30: c = 'a';
+    *%0_9 = 97i8
+    # switch_many_guards_failing.newcg.c:31: break;
+    br bb20
+  bb11:
+    # switch_many_guards_failing.newcg.c:33: c = 'b';
+    *%0_9 = 98i8
+    # switch_many_guards_failing.newcg.c:34: break;
+    br bb20
+  bb12:
+    # switch_many_guards_failing.newcg.c:36: c = 'c';
+    *%0_9 = 99i8
+    # switch_many_guards_failing.newcg.c:37: break;
+    br bb20
+  bb13:
+    # switch_many_guards_failing.newcg.c:39: c = 'd';
+    *%0_9 = 100i8
+    # switch_many_guards_failing.newcg.c:40: break;
+    br bb20
+  bb14:
+    # switch_many_guards_failing.newcg.c:42: c = 'e';
+    *%0_9 = 101i8
+    # switch_many_guards_failing.newcg.c:43: break;
+    br bb20
+  bb15:
+    # switch_many_guards_failing.newcg.c:45: c = 'f';
+    *%0_9 = 102i8
+    # switch_many_guards_failing.newcg.c:46: break;
+    br bb20
+  bb16:
+    # switch_many_guards_failing.newcg.c:48: c = 'g';
+    *%0_9 = 103i8
+    # switch_many_guards_failing.newcg.c:49: break;
+    br bb20
+  bb17:
+    # switch_many_guards_failing.newcg.c:51: c = 'h';
+    *%0_9 = 104i8
+    # switch_many_guards_failing.newcg.c:52: break;
+    br bb20
+  bb18:
+    # switch_many_guards_failing.newcg.c:54: c = 'i';
+    *%0_9 = 105i8
+    # switch_many_guards_failing.newcg.c:55: break;
+    br bb20
+  bb19:
+    # switch_many_guards_failing.newcg.c:57: c = 'j';
+    *%0_9 = 106i8
+    # switch_many_guards_failing.newcg.c:58: break;
+    br bb20
+  bb20:
+    # switch_many_guards_failing.newcg.c:60: printf("%c", c);
+    %20_0: i8 = load %0_9
+    %20_1: i32 = sext %20_0, i32
+    %20_2: i32 = call putchar(%20_1)
+    # switch_many_guards_failing.newcg.c:61: i--;
+    br bb21
+  bb21:
+    %21_0: i32 = load %0_7
+    %21_1: i32 = add %21_0, -1i32
+    *%0_7 = %21_1
+    # switch_many_guards_failing.newcg.c:62: j++;
+    %21_3: i32 = load %0_8
+    %21_4: i32 = add %21_3, 1i32
+    *%0_8 = %21_4
+    # switch_many_guards_failing.newcg.c:25: while (i > 0) {
+    br bb7
+  bb22:
+    # switch_many_guards_failing.newcg.c:64: yk_location_drop(loc);
+    %22_0: i64 = load %0_6
+    call yk_location_drop(%22_0)
+    # switch_many_guards_failing.newcg.c:65: yk_mt_drop(mt);
+    br bb23
+  bb23:
+    %23_0: ptr = load %0_5
+    call yk_mt_drop(%23_0)
+    # switch_many_guards_failing.newcg.c:66: printf("\n");
+    br bb24
+  bb24:
+    %24_0: i32 = call putchar(10i32)
+    # switch_many_guards_failing.newcg.c:68: return (EXIT_SUCCESS);
+    br bb25
+  bb25:
+    br bb27
+  bb26:
+    ret 0i32
+  bb27:
+    br bb26
+}
+
+func llvm.dbg.declare(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func yk_mt_new(%arg0: ptr) -> ptr;
+
+func yk_mt_hot_threshold_set(%arg0: ptr, %arg1: i32);
+
+func yk_location_new() -> i64;
+
+func yk_mt_control_point(%arg0: ptr, %arg1: ptr);
+
+func printf(%arg0: ptr, ...) -> i32;
+
+func yk_location_drop(%arg0: i64);
+
+func yk_mt_drop(%arg0: ptr);
+
+func llvm.dbg.value(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func putchar(%arg0: i32) -> i32;
+
+func malloc(%arg0: i64) -> ptr;
+
+func __ykrt_control_point(%arg0: ptr, %arg1: ptr, %arg2: ptr, %arg3: ptr, %arg4: i64);
+
+func llvm.frameaddress.p0(%arg0: i32) -> ptr;
+
+func llvm.experimental.stackmap(%arg0: i64, %arg1: i32, ...);
+
+--- End aot ---
+--- Begin jit-pre-opt ---
+; compiled trace ID #1
+
+func_decl putchar (i32) -> i32
+
+entry:
+    %0: ptr = arg(0)
+    %1: ptr = load_ti 0
+    %2: ptr = load_ti 8
+    %3: ptr = load_ti 16
+    %4: ptr = load_ti 24
+    %5: ptr = load_ti 32
+    %6: ptr = load_ti 40
+    %7: i32 = load_ti 48
+    %8: i32 = load %5
+    %9: i32 = srem %8, 10i32
+    %10: i1 = eq %9, 9i32
+    guard true, %10, [%1, %2, %3, %4, %5, %6, %9]
+    *%6 = 97i8
+    %13: i8 = load %6
+    %14: i32 = sext %13, i32
+    %15: i32 = call @putchar(%14)
+    %16: i32 = load %4
+    %17: i32 = add %16, 4294967295i32
+    *%4 = %17
+    %19: i32 = load %5
+    %20: i32 = add %19, 1i32
+    *%5 = %20
+    %22: i32 = load %4
+    %23: i1 = sgt %22, 0i32
+    guard true, %23, [%1, %2, %3, %4, %5, %6, %23]
+    %25: ptr = load %2
+    guard true, 0i1, [%1, %2, %3, %4, %5, %6, %25]
+--- End jit-pre-opt ---
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: start-side-tracing
+yk-jit-event: stop-tracing
+--- Begin aot ---
+# IR format version: 0
+# Num funcs: 15
+# Num consts: 21
+# Num global decls: 1
+# Num types: 23
+global_decl @shadowstack_0
+
+func main(%arg0: i32, %arg1: ptr) -> i32 {
+  bb0:
+    %0_0: i32 = arg(0)
+    %0_1: ptr = arg(1)
+    %0_2: ptr = alloca {0: ptr, 64: ptr, 128: ptr, 192: ptr, 256: ptr, 320: ptr}, 1, 8
+    %0_3: ptr = call malloc(1000000i64)
+    *@shadowstack_0 = %0_3
+    %0_5: ptr = alloca ptr, 1, 8
+    %0_6: ptr = alloca {0: i64}, 1, 8
+    %0_7: ptr = ptr_add %0_3, 0
+    %0_8: ptr = ptr_add %0_3, 4
+    %0_9: ptr = ptr_add %0_3, 8
+    br bb1
+  bb1:
+    # switch_many_guards_failing.newcg.c:18: YkMT *mt = yk_mt_new(NULL);
+    %1_0: ptr = call yk_mt_new(0x0)
+    br bb2
+  bb2:
+    *%0_5 = %1_0
+    # switch_many_guards_failing.newcg.c:19: yk_mt_hot_threshold_set(mt, 3);
+    call yk_mt_hot_threshold_set(%1_0, 3i32)
+    # switch_many_guards_failing.newcg.c:20: YkLocation loc = yk_location_new();
+    br bb3
+  bb3:
+    %3_0: i64 = call yk_location_new()
+    br bb4
+  bb4:
+    *%0_6 = %3_0
+    # switch_many_guards_failing.newcg.c:21: int i = 100;
+    *%0_7 = 100i32
+    # switch_many_guards_failing.newcg.c:22: int j = 10;
+    *%0_8 = 10i32
+    # switch_many_guards_failing.newcg.c:24: NOOPT_VAL(j);
+    br bb5
+  bb5:
+    %5_0: i32 = load %0_8
+    # switch_many_guards_failing.newcg.c:25: while (i > 0) {
+    br bb6
+  bb6:
+    br bb7
+  bb7:
+    %7_0: i32 = load %0_7
+    %7_1: i1 = sgt %7_0, 0i32
+    condbr %7_1, bb8, bb22 [safepoint: 1i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %7_1)]
+  bb8:
+    # switch_many_guards_failing.newcg.c:26: yk_mt_control_point(mt, &loc);
+    %8_0: ptr = load %0_5
+    %8_1: ptr = ptr_add %0_2, 0
+    *%8_1 = %0_5
+    %8_3: ptr = ptr_add %0_2, 8
+    *%8_3 = %0_6
+    %8_5: ptr = ptr_add %0_2, 16
+    *%8_5 = %0_7
+    %8_7: ptr = ptr_add %0_2, 24
+    *%8_7 = %0_8
+    %8_9: ptr = ptr_add %0_2, 32
+    *%8_9 = %0_9
+    %8_11: ptr = ptr_add %0_2, 40
+    *%8_11 = %8_0
+    %8_13: ptr = call llvm.frameaddress.p0(0i32)
+    call __ykrt_control_point(%8_0, %0_6, %0_2, %8_13, 2i64) [safepoint: 2i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %8_0)]
+    # switch_many_guards_failing.newcg.c:28: switch (j % 10) {
+    br bb9
+  bb9:
+    %9_0: i32 = load %0_8
+    %9_1: i32 = srem %9_0, 10i32
+    switch %9_1, bb20, [9 -> bb10, 8 -> bb11, 7 -> bb12, 6 -> bb13, 5 -> bb14, 4 -> bb15, 3 -> bb16, 2 -> bb17, 1 -> bb18, 0 -> bb19] [safepoint: 0i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %9_1)]
+  bb10:
+    # switch_many_guards_failing.newcg.c:30: c = 'a';
+    *%0_9 = 97i8
+    # switch_many_guards_failing.newcg.c:31: break;
+    br bb20
+  bb11:
+    # switch_many_guards_failing.newcg.c:33: c = 'b';
+    *%0_9 = 98i8
+    # switch_many_guards_failing.newcg.c:34: break;
+    br bb20
+  bb12:
+    # switch_many_guards_failing.newcg.c:36: c = 'c';
+    *%0_9 = 99i8
+    # switch_many_guards_failing.newcg.c:37: break;
+    br bb20
+  bb13:
+    # switch_many_guards_failing.newcg.c:39: c = 'd';
+    *%0_9 = 100i8
+    # switch_many_guards_failing.newcg.c:40: break;
+    br bb20
+  bb14:
+    # switch_many_guards_failing.newcg.c:42: c = 'e';
+    *%0_9 = 101i8
+    # switch_many_guards_failing.newcg.c:43: break;
+    br bb20
+  bb15:
+    # switch_many_guards_failing.newcg.c:45: c = 'f';
+    *%0_9 = 102i8
+    # switch_many_guards_failing.newcg.c:46: break;
+    br bb20
+  bb16:
+    # switch_many_guards_failing.newcg.c:48: c = 'g';
+    *%0_9 = 103i8
+    # switch_many_guards_failing.newcg.c:49: break;
+    br bb20
+  bb17:
+    # switch_many_guards_failing.newcg.c:51: c = 'h';
+    *%0_9 = 104i8
+    # switch_many_guards_failing.newcg.c:52: break;
+    br bb20
+  bb18:
+    # switch_many_guards_failing.newcg.c:54: c = 'i';
+    *%0_9 = 105i8
+    # switch_many_guards_failing.newcg.c:55: break;
+    br bb20
+  bb19:
+    # switch_many_guards_failing.newcg.c:57: c = 'j';
+    *%0_9 = 106i8
+    # switch_many_guards_failing.newcg.c:58: break;
+    br bb20
+  bb20:
+    # switch_many_guards_failing.newcg.c:60: printf("%c", c);
+    %20_0: i8 = load %0_9
+    %20_1: i32 = sext %20_0, i32
+    %20_2: i32 = call putchar(%20_1)
+    # switch_many_guards_failing.newcg.c:61: i--;
+    br bb21
+  bb21:
+    %21_0: i32 = load %0_7
+    %21_1: i32 = add %21_0, -1i32
+    *%0_7 = %21_1
+    # switch_many_guards_failing.newcg.c:62: j++;
+    %21_3: i32 = load %0_8
+    %21_4: i32 = add %21_3, 1i32
+    *%0_8 = %21_4
+    # switch_many_guards_failing.newcg.c:25: while (i > 0) {
+    br bb7
+  bb22:
+    # switch_many_guards_failing.newcg.c:64: yk_location_drop(loc);
+    %22_0: i64 = load %0_6
+    call yk_location_drop(%22_0)
+    # switch_many_guards_failing.newcg.c:65: yk_mt_drop(mt);
+    br bb23
+  bb23:
+    %23_0: ptr = load %0_5
+    call yk_mt_drop(%23_0)
+    # switch_many_guards_failing.newcg.c:66: printf("\n");
+    br bb24
+  bb24:
+    %24_0: i32 = call putchar(10i32)
+    # switch_many_guards_failing.newcg.c:68: return (EXIT_SUCCESS);
+    br bb25
+  bb25:
+    br bb27
+  bb26:
+    ret 0i32
+  bb27:
+    br bb26
+}
+
+func llvm.dbg.declare(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func yk_mt_new(%arg0: ptr) -> ptr;
+
+func yk_mt_hot_threshold_set(%arg0: ptr, %arg1: i32);
+
+func yk_location_new() -> i64;
+
+func yk_mt_control_point(%arg0: ptr, %arg1: ptr);
+
+func printf(%arg0: ptr, ...) -> i32;
+
+func yk_location_drop(%arg0: i64);
+
+func yk_mt_drop(%arg0: ptr);
+
+func llvm.dbg.value(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func putchar(%arg0: i32) -> i32;
+
+func malloc(%arg0: i64) -> ptr;
+
+func __ykrt_control_point(%arg0: ptr, %arg1: ptr, %arg2: ptr, %arg3: ptr, %arg4: i64);
+
+func llvm.frameaddress.p0(%arg0: i32) -> ptr;
+
+func llvm.experimental.stackmap(%arg0: i64, %arg1: i32, ...);
+
+--- End aot ---
+--- Begin jit-pre-opt ---
+; compiled trace ID #2
+
+func_decl putchar (i32) -> i32
+
+entry:
+    %0: ptr = arg(0)
+    %1: ptr = load_ti 0
+    %2: ptr = load_ti 8
+    %3: ptr = load_ti 16
+    %4: ptr = load_ti 24
+    %5: ptr = load_ti 32
+    %6: ptr = load_ti 40
+    %7: i32 = load_ti 48
+    %8: i32 = load %5
+    %9: i32 = srem %8, 10i32
+    %10: i1 = eq %9, 6i32
+    guard true, %10, [%1, %2, %3, %4, %5, %6, %9]
+    *%6 = 100i8
+    %13: i8 = load %6
+    %14: i32 = sext %13, i32
+    %15: i32 = call @putchar(%14)
+    %16: i32 = load %4
+    %17: i32 = add %16, 4294967295i32
+    *%4 = %17
+    %19: i32 = load %5
+    %20: i32 = add %19, 1i32
+    *%5 = %20
+    %22: i32 = load %4
+    %23: i1 = sgt %22, 0i32
+    guard true, %23, [%1, %2, %3, %4, %5, %6, %23]
+    %25: ptr = load %2
+    guard true, 0i1, [%1, %2, %3, %4, %5, %6, %25]
+--- End jit-pre-opt ---
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: start-side-tracing
+yk-jit-event: stop-tracing
+--- Begin aot ---
+# IR format version: 0
+# Num funcs: 15
+# Num consts: 21
+# Num global decls: 1
+# Num types: 23
+global_decl @shadowstack_0
+
+func main(%arg0: i32, %arg1: ptr) -> i32 {
+  bb0:
+    %0_0: i32 = arg(0)
+    %0_1: ptr = arg(1)
+    %0_2: ptr = alloca {0: ptr, 64: ptr, 128: ptr, 192: ptr, 256: ptr, 320: ptr}, 1, 8
+    %0_3: ptr = call malloc(1000000i64)
+    *@shadowstack_0 = %0_3
+    %0_5: ptr = alloca ptr, 1, 8
+    %0_6: ptr = alloca {0: i64}, 1, 8
+    %0_7: ptr = ptr_add %0_3, 0
+    %0_8: ptr = ptr_add %0_3, 4
+    %0_9: ptr = ptr_add %0_3, 8
+    br bb1
+  bb1:
+    # switch_many_guards_failing.newcg.c:18: YkMT *mt = yk_mt_new(NULL);
+    %1_0: ptr = call yk_mt_new(0x0)
+    br bb2
+  bb2:
+    *%0_5 = %1_0
+    # switch_many_guards_failing.newcg.c:19: yk_mt_hot_threshold_set(mt, 3);
+    call yk_mt_hot_threshold_set(%1_0, 3i32)
+    # switch_many_guards_failing.newcg.c:20: YkLocation loc = yk_location_new();
+    br bb3
+  bb3:
+    %3_0: i64 = call yk_location_new()
+    br bb4
+  bb4:
+    *%0_6 = %3_0
+    # switch_many_guards_failing.newcg.c:21: int i = 100;
+    *%0_7 = 100i32
+    # switch_many_guards_failing.newcg.c:22: int j = 10;
+    *%0_8 = 10i32
+    # switch_many_guards_failing.newcg.c:24: NOOPT_VAL(j);
+    br bb5
+  bb5:
+    %5_0: i32 = load %0_8
+    # switch_many_guards_failing.newcg.c:25: while (i > 0) {
+    br bb6
+  bb6:
+    br bb7
+  bb7:
+    %7_0: i32 = load %0_7
+    %7_1: i1 = sgt %7_0, 0i32
+    condbr %7_1, bb8, bb22 [safepoint: 1i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %7_1)]
+  bb8:
+    # switch_many_guards_failing.newcg.c:26: yk_mt_control_point(mt, &loc);
+    %8_0: ptr = load %0_5
+    %8_1: ptr = ptr_add %0_2, 0
+    *%8_1 = %0_5
+    %8_3: ptr = ptr_add %0_2, 8
+    *%8_3 = %0_6
+    %8_5: ptr = ptr_add %0_2, 16
+    *%8_5 = %0_7
+    %8_7: ptr = ptr_add %0_2, 24
+    *%8_7 = %0_8
+    %8_9: ptr = ptr_add %0_2, 32
+    *%8_9 = %0_9
+    %8_11: ptr = ptr_add %0_2, 40
+    *%8_11 = %8_0
+    %8_13: ptr = call llvm.frameaddress.p0(0i32)
+    call __ykrt_control_point(%8_0, %0_6, %0_2, %8_13, 2i64) [safepoint: 2i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %8_0)]
+    # switch_many_guards_failing.newcg.c:28: switch (j % 10) {
+    br bb9
+  bb9:
+    %9_0: i32 = load %0_8
+    %9_1: i32 = srem %9_0, 10i32
+    switch %9_1, bb20, [9 -> bb10, 8 -> bb11, 7 -> bb12, 6 -> bb13, 5 -> bb14, 4 -> bb15, 3 -> bb16, 2 -> bb17, 1 -> bb18, 0 -> bb19] [safepoint: 0i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %9_1)]
+  bb10:
+    # switch_many_guards_failing.newcg.c:30: c = 'a';
+    *%0_9 = 97i8
+    # switch_many_guards_failing.newcg.c:31: break;
+    br bb20
+  bb11:
+    # switch_many_guards_failing.newcg.c:33: c = 'b';
+    *%0_9 = 98i8
+    # switch_many_guards_failing.newcg.c:34: break;
+    br bb20
+  bb12:
+    # switch_many_guards_failing.newcg.c:36: c = 'c';
+    *%0_9 = 99i8
+    # switch_many_guards_failing.newcg.c:37: break;
+    br bb20
+  bb13:
+    # switch_many_guards_failing.newcg.c:39: c = 'd';
+    *%0_9 = 100i8
+    # switch_many_guards_failing.newcg.c:40: break;
+    br bb20
+  bb14:
+    # switch_many_guards_failing.newcg.c:42: c = 'e';
+    *%0_9 = 101i8
+    # switch_many_guards_failing.newcg.c:43: break;
+    br bb20
+  bb15:
+    # switch_many_guards_failing.newcg.c:45: c = 'f';
+    *%0_9 = 102i8
+    # switch_many_guards_failing.newcg.c:46: break;
+    br bb20
+  bb16:
+    # switch_many_guards_failing.newcg.c:48: c = 'g';
+    *%0_9 = 103i8
+    # switch_many_guards_failing.newcg.c:49: break;
+    br bb20
+  bb17:
+    # switch_many_guards_failing.newcg.c:51: c = 'h';
+    *%0_9 = 104i8
+    # switch_many_guards_failing.newcg.c:52: break;
+    br bb20
+  bb18:
+    # switch_many_guards_failing.newcg.c:54: c = 'i';
+    *%0_9 = 105i8
+    # switch_many_guards_failing.newcg.c:55: break;
+    br bb20
+  bb19:
+    # switch_many_guards_failing.newcg.c:57: c = 'j';
+    *%0_9 = 106i8
+    # switch_many_guards_failing.newcg.c:58: break;
+    br bb20
+  bb20:
+    # switch_many_guards_failing.newcg.c:60: printf("%c", c);
+    %20_0: i8 = load %0_9
+    %20_1: i32 = sext %20_0, i32
+    %20_2: i32 = call putchar(%20_1)
+    # switch_many_guards_failing.newcg.c:61: i--;
+    br bb21
+  bb21:
+    %21_0: i32 = load %0_7
+    %21_1: i32 = add %21_0, -1i32
+    *%0_7 = %21_1
+    # switch_many_guards_failing.newcg.c:62: j++;
+    %21_3: i32 = load %0_8
+    %21_4: i32 = add %21_3, 1i32
+    *%0_8 = %21_4
+    # switch_many_guards_failing.newcg.c:25: while (i > 0) {
+    br bb7
+  bb22:
+    # switch_many_guards_failing.newcg.c:64: yk_location_drop(loc);
+    %22_0: i64 = load %0_6
+    call yk_location_drop(%22_0)
+    # switch_many_guards_failing.newcg.c:65: yk_mt_drop(mt);
+    br bb23
+  bb23:
+    %23_0: ptr = load %0_5
+    call yk_mt_drop(%23_0)
+    # switch_many_guards_failing.newcg.c:66: printf("\n");
+    br bb24
+  bb24:
+    %24_0: i32 = call putchar(10i32)
+    # switch_many_guards_failing.newcg.c:68: return (EXIT_SUCCESS);
+    br bb25
+  bb25:
+    br bb27
+  bb26:
+    ret 0i32
+  bb27:
+    br bb26
+}
+
+func llvm.dbg.declare(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func yk_mt_new(%arg0: ptr) -> ptr;
+
+func yk_mt_hot_threshold_set(%arg0: ptr, %arg1: i32);
+
+func yk_location_new() -> i64;
+
+func yk_mt_control_point(%arg0: ptr, %arg1: ptr);
+
+func printf(%arg0: ptr, ...) -> i32;
+
+func yk_location_drop(%arg0: i64);
+
+func yk_mt_drop(%arg0: ptr);
+
+func llvm.dbg.value(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func putchar(%arg0: i32) -> i32;
+
+func malloc(%arg0: i64) -> ptr;
+
+func __ykrt_control_point(%arg0: ptr, %arg1: ptr, %arg2: ptr, %arg3: ptr, %arg4: i64);
+
+func llvm.frameaddress.p0(%arg0: i32) -> ptr;
+
+func llvm.experimental.stackmap(%arg0: i64, %arg1: i32, ...);
+
+--- End aot ---
+--- Begin jit-pre-opt ---
+; compiled trace ID #3
+
+func_decl putchar (i32) -> i32
+
+entry:
+    %0: ptr = arg(0)
+    %1: ptr = load_ti 0
+    %2: ptr = load_ti 8
+    %3: ptr = load_ti 16
+    %4: ptr = load_ti 24
+    %5: ptr = load_ti 32
+    %6: ptr = load_ti 40
+    %7: i32 = load_ti 48
+    %8: i32 = load %5
+    %9: i32 = srem %8, 10i32
+    %10: i1 = eq %9, 5i32
+    guard true, %10, [%1, %2, %3, %4, %5, %6, %9]
+    *%6 = 101i8
+    %13: i8 = load %6
+    %14: i32 = sext %13, i32
+    %15: i32 = call @putchar(%14)
+    %16: i32 = load %4
+    %17: i32 = add %16, 4294967295i32
+    *%4 = %17
+    %19: i32 = load %5
+    %20: i32 = add %19, 1i32
+    *%5 = %20
+    %22: i32 = load %4
+    %23: i1 = sgt %22, 0i32
+    guard true, %23, [%1, %2, %3, %4, %5, %6, %23]
+    %25: ptr = load %2
+    guard true, 0i1, [%1, %2, %3, %4, %5, %6, %25]
+--- End jit-pre-opt ---
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: start-side-tracing
+yk-jit-event: stop-tracing
+--- Begin aot ---
+# IR format version: 0
+# Num funcs: 15
+# Num consts: 21
+# Num global decls: 1
+# Num types: 23
+global_decl @shadowstack_0
+
+func main(%arg0: i32, %arg1: ptr) -> i32 {
+  bb0:
+    %0_0: i32 = arg(0)
+    %0_1: ptr = arg(1)
+    %0_2: ptr = alloca {0: ptr, 64: ptr, 128: ptr, 192: ptr, 256: ptr, 320: ptr}, 1, 8
+    %0_3: ptr = call malloc(1000000i64)
+    *@shadowstack_0 = %0_3
+    %0_5: ptr = alloca ptr, 1, 8
+    %0_6: ptr = alloca {0: i64}, 1, 8
+    %0_7: ptr = ptr_add %0_3, 0
+    %0_8: ptr = ptr_add %0_3, 4
+    %0_9: ptr = ptr_add %0_3, 8
+    br bb1
+  bb1:
+    # switch_many_guards_failing.newcg.c:18: YkMT *mt = yk_mt_new(NULL);
+    %1_0: ptr = call yk_mt_new(0x0)
+    br bb2
+  bb2:
+    *%0_5 = %1_0
+    # switch_many_guards_failing.newcg.c:19: yk_mt_hot_threshold_set(mt, 3);
+    call yk_mt_hot_threshold_set(%1_0, 3i32)
+    # switch_many_guards_failing.newcg.c:20: YkLocation loc = yk_location_new();
+    br bb3
+  bb3:
+    %3_0: i64 = call yk_location_new()
+    br bb4
+  bb4:
+    *%0_6 = %3_0
+    # switch_many_guards_failing.newcg.c:21: int i = 100;
+    *%0_7 = 100i32
+    # switch_many_guards_failing.newcg.c:22: int j = 10;
+    *%0_8 = 10i32
+    # switch_many_guards_failing.newcg.c:24: NOOPT_VAL(j);
+    br bb5
+  bb5:
+    %5_0: i32 = load %0_8
+    # switch_many_guards_failing.newcg.c:25: while (i > 0) {
+    br bb6
+  bb6:
+    br bb7
+  bb7:
+    %7_0: i32 = load %0_7
+    %7_1: i1 = sgt %7_0, 0i32
+    condbr %7_1, bb8, bb22 [safepoint: 1i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %7_1)]
+  bb8:
+    # switch_many_guards_failing.newcg.c:26: yk_mt_control_point(mt, &loc);
+    %8_0: ptr = load %0_5
+    %8_1: ptr = ptr_add %0_2, 0
+    *%8_1 = %0_5
+    %8_3: ptr = ptr_add %0_2, 8
+    *%8_3 = %0_6
+    %8_5: ptr = ptr_add %0_2, 16
+    *%8_5 = %0_7
+    %8_7: ptr = ptr_add %0_2, 24
+    *%8_7 = %0_8
+    %8_9: ptr = ptr_add %0_2, 32
+    *%8_9 = %0_9
+    %8_11: ptr = ptr_add %0_2, 40
+    *%8_11 = %8_0
+    %8_13: ptr = call llvm.frameaddress.p0(0i32)
+    call __ykrt_control_point(%8_0, %0_6, %0_2, %8_13, 2i64) [safepoint: 2i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %8_0)]
+    # switch_many_guards_failing.newcg.c:28: switch (j % 10) {
+    br bb9
+  bb9:
+    %9_0: i32 = load %0_8
+    %9_1: i32 = srem %9_0, 10i32
+    switch %9_1, bb20, [9 -> bb10, 8 -> bb11, 7 -> bb12, 6 -> bb13, 5 -> bb14, 4 -> bb15, 3 -> bb16, 2 -> bb17, 1 -> bb18, 0 -> bb19] [safepoint: 0i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %9_1)]
+  bb10:
+    # switch_many_guards_failing.newcg.c:30: c = 'a';
+    *%0_9 = 97i8
+    # switch_many_guards_failing.newcg.c:31: break;
+    br bb20
+  bb11:
+    # switch_many_guards_failing.newcg.c:33: c = 'b';
+    *%0_9 = 98i8
+    # switch_many_guards_failing.newcg.c:34: break;
+    br bb20
+  bb12:
+    # switch_many_guards_failing.newcg.c:36: c = 'c';
+    *%0_9 = 99i8
+    # switch_many_guards_failing.newcg.c:37: break;
+    br bb20
+  bb13:
+    # switch_many_guards_failing.newcg.c:39: c = 'd';
+    *%0_9 = 100i8
+    # switch_many_guards_failing.newcg.c:40: break;
+    br bb20
+  bb14:
+    # switch_many_guards_failing.newcg.c:42: c = 'e';
+    *%0_9 = 101i8
+    # switch_many_guards_failing.newcg.c:43: break;
+    br bb20
+  bb15:
+    # switch_many_guards_failing.newcg.c:45: c = 'f';
+    *%0_9 = 102i8
+    # switch_many_guards_failing.newcg.c:46: break;
+    br bb20
+  bb16:
+    # switch_many_guards_failing.newcg.c:48: c = 'g';
+    *%0_9 = 103i8
+    # switch_many_guards_failing.newcg.c:49: break;
+    br bb20
+  bb17:
+    # switch_many_guards_failing.newcg.c:51: c = 'h';
+    *%0_9 = 104i8
+    # switch_many_guards_failing.newcg.c:52: break;
+    br bb20
+  bb18:
+    # switch_many_guards_failing.newcg.c:54: c = 'i';
+    *%0_9 = 105i8
+    # switch_many_guards_failing.newcg.c:55: break;
+    br bb20
+  bb19:
+    # switch_many_guards_failing.newcg.c:57: c = 'j';
+    *%0_9 = 106i8
+    # switch_many_guards_failing.newcg.c:58: break;
+    br bb20
+  bb20:
+    # switch_many_guards_failing.newcg.c:60: printf("%c", c);
+    %20_0: i8 = load %0_9
+    %20_1: i32 = sext %20_0, i32
+    %20_2: i32 = call putchar(%20_1)
+    # switch_many_guards_failing.newcg.c:61: i--;
+    br bb21
+  bb21:
+    %21_0: i32 = load %0_7
+    %21_1: i32 = add %21_0, -1i32
+    *%0_7 = %21_1
+    # switch_many_guards_failing.newcg.c:62: j++;
+    %21_3: i32 = load %0_8
+    %21_4: i32 = add %21_3, 1i32
+    *%0_8 = %21_4
+    # switch_many_guards_failing.newcg.c:25: while (i > 0) {
+    br bb7
+  bb22:
+    # switch_many_guards_failing.newcg.c:64: yk_location_drop(loc);
+    %22_0: i64 = load %0_6
+    call yk_location_drop(%22_0)
+    # switch_many_guards_failing.newcg.c:65: yk_mt_drop(mt);
+    br bb23
+  bb23:
+    %23_0: ptr = load %0_5
+    call yk_mt_drop(%23_0)
+    # switch_many_guards_failing.newcg.c:66: printf("\n");
+    br bb24
+  bb24:
+    %24_0: i32 = call putchar(10i32)
+    # switch_many_guards_failing.newcg.c:68: return (EXIT_SUCCESS);
+    br bb25
+  bb25:
+    br bb27
+  bb26:
+    ret 0i32
+  bb27:
+    br bb26
+}
+
+func llvm.dbg.declare(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func yk_mt_new(%arg0: ptr) -> ptr;
+
+func yk_mt_hot_threshold_set(%arg0: ptr, %arg1: i32);
+
+func yk_location_new() -> i64;
+
+func yk_mt_control_point(%arg0: ptr, %arg1: ptr);
+
+func printf(%arg0: ptr, ...) -> i32;
+
+func yk_location_drop(%arg0: i64);
+
+func yk_mt_drop(%arg0: ptr);
+
+func llvm.dbg.value(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func putchar(%arg0: i32) -> i32;
+
+func malloc(%arg0: i64) -> ptr;
+
+func __ykrt_control_point(%arg0: ptr, %arg1: ptr, %arg2: ptr, %arg3: ptr, %arg4: i64);
+
+func llvm.frameaddress.p0(%arg0: i32) -> ptr;
+
+func llvm.experimental.stackmap(%arg0: i64, %arg1: i32, ...);
+
+--- End aot ---
+--- Begin jit-pre-opt ---
+; compiled trace ID #4
+
+func_decl putchar (i32) -> i32
+
+entry:
+    %0: ptr = arg(0)
+    %1: ptr = load_ti 0
+    %2: ptr = load_ti 8
+    %3: ptr = load_ti 16
+    %4: ptr = load_ti 24
+    %5: ptr = load_ti 32
+    %6: ptr = load_ti 40
+    %7: i32 = load_ti 48
+    %8: i32 = load %5
+    %9: i32 = srem %8, 10i32
+    %10: i1 = eq %9, 4i32
+    guard true, %10, [%1, %2, %3, %4, %5, %6, %9]
+    *%6 = 102i8
+    %13: i8 = load %6
+    %14: i32 = sext %13, i32
+    %15: i32 = call @putchar(%14)
+    %16: i32 = load %4
+    %17: i32 = add %16, 4294967295i32
+    *%4 = %17
+    %19: i32 = load %5
+    %20: i32 = add %19, 1i32
+    *%5 = %20
+    %22: i32 = load %4
+    %23: i1 = sgt %22, 0i32
+    guard true, %23, [%1, %2, %3, %4, %5, %6, %23]
+    %25: ptr = load %2
+    guard true, 0i1, [%1, %2, %3, %4, %5, %6, %25]
+--- End jit-pre-opt ---
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: start-side-tracing
+yk-jit-event: stop-tracing
+--- Begin aot ---
+# IR format version: 0
+# Num funcs: 15
+# Num consts: 21
+# Num global decls: 1
+# Num types: 23
+global_decl @shadowstack_0
+
+func main(%arg0: i32, %arg1: ptr) -> i32 {
+  bb0:
+    %0_0: i32 = arg(0)
+    %0_1: ptr = arg(1)
+    %0_2: ptr = alloca {0: ptr, 64: ptr, 128: ptr, 192: ptr, 256: ptr, 320: ptr}, 1, 8
+    %0_3: ptr = call malloc(1000000i64)
+    *@shadowstack_0 = %0_3
+    %0_5: ptr = alloca ptr, 1, 8
+    %0_6: ptr = alloca {0: i64}, 1, 8
+    %0_7: ptr = ptr_add %0_3, 0
+    %0_8: ptr = ptr_add %0_3, 4
+    %0_9: ptr = ptr_add %0_3, 8
+    br bb1
+  bb1:
+    # switch_many_guards_failing.newcg.c:18: YkMT *mt = yk_mt_new(NULL);
+    %1_0: ptr = call yk_mt_new(0x0)
+    br bb2
+  bb2:
+    *%0_5 = %1_0
+    # switch_many_guards_failing.newcg.c:19: yk_mt_hot_threshold_set(mt, 3);
+    call yk_mt_hot_threshold_set(%1_0, 3i32)
+    # switch_many_guards_failing.newcg.c:20: YkLocation loc = yk_location_new();
+    br bb3
+  bb3:
+    %3_0: i64 = call yk_location_new()
+    br bb4
+  bb4:
+    *%0_6 = %3_0
+    # switch_many_guards_failing.newcg.c:21: int i = 100;
+    *%0_7 = 100i32
+    # switch_many_guards_failing.newcg.c:22: int j = 10;
+    *%0_8 = 10i32
+    # switch_many_guards_failing.newcg.c:24: NOOPT_VAL(j);
+    br bb5
+  bb5:
+    %5_0: i32 = load %0_8
+    # switch_many_guards_failing.newcg.c:25: while (i > 0) {
+    br bb6
+  bb6:
+    br bb7
+  bb7:
+    %7_0: i32 = load %0_7
+    %7_1: i1 = sgt %7_0, 0i32
+    condbr %7_1, bb8, bb22 [safepoint: 1i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %7_1)]
+  bb8:
+    # switch_many_guards_failing.newcg.c:26: yk_mt_control_point(mt, &loc);
+    %8_0: ptr = load %0_5
+    %8_1: ptr = ptr_add %0_2, 0
+    *%8_1 = %0_5
+    %8_3: ptr = ptr_add %0_2, 8
+    *%8_3 = %0_6
+    %8_5: ptr = ptr_add %0_2, 16
+    *%8_5 = %0_7
+    %8_7: ptr = ptr_add %0_2, 24
+    *%8_7 = %0_8
+    %8_9: ptr = ptr_add %0_2, 32
+    *%8_9 = %0_9
+    %8_11: ptr = ptr_add %0_2, 40
+    *%8_11 = %8_0
+    %8_13: ptr = call llvm.frameaddress.p0(0i32)
+    call __ykrt_control_point(%8_0, %0_6, %0_2, %8_13, 2i64) [safepoint: 2i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %8_0)]
+    # switch_many_guards_failing.newcg.c:28: switch (j % 10) {
+    br bb9
+  bb9:
+    %9_0: i32 = load %0_8
+    %9_1: i32 = srem %9_0, 10i32
+    switch %9_1, bb20, [9 -> bb10, 8 -> bb11, 7 -> bb12, 6 -> bb13, 5 -> bb14, 4 -> bb15, 3 -> bb16, 2 -> bb17, 1 -> bb18, 0 -> bb19] [safepoint: 0i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %9_1)]
+  bb10:
+    # switch_many_guards_failing.newcg.c:30: c = 'a';
+    *%0_9 = 97i8
+    # switch_many_guards_failing.newcg.c:31: break;
+    br bb20
+  bb11:
+    # switch_many_guards_failing.newcg.c:33: c = 'b';
+    *%0_9 = 98i8
+    # switch_many_guards_failing.newcg.c:34: break;
+    br bb20
+  bb12:
+    # switch_many_guards_failing.newcg.c:36: c = 'c';
+    *%0_9 = 99i8
+    # switch_many_guards_failing.newcg.c:37: break;
+    br bb20
+  bb13:
+    # switch_many_guards_failing.newcg.c:39: c = 'd';
+    *%0_9 = 100i8
+    # switch_many_guards_failing.newcg.c:40: break;
+    br bb20
+  bb14:
+    # switch_many_guards_failing.newcg.c:42: c = 'e';
+    *%0_9 = 101i8
+    # switch_many_guards_failing.newcg.c:43: break;
+    br bb20
+  bb15:
+    # switch_many_guards_failing.newcg.c:45: c = 'f';
+    *%0_9 = 102i8
+    # switch_many_guards_failing.newcg.c:46: break;
+    br bb20
+  bb16:
+    # switch_many_guards_failing.newcg.c:48: c = 'g';
+    *%0_9 = 103i8
+    # switch_many_guards_failing.newcg.c:49: break;
+    br bb20
+  bb17:
+    # switch_many_guards_failing.newcg.c:51: c = 'h';
+    *%0_9 = 104i8
+    # switch_many_guards_failing.newcg.c:52: break;
+    br bb20
+  bb18:
+    # switch_many_guards_failing.newcg.c:54: c = 'i';
+    *%0_9 = 105i8
+    # switch_many_guards_failing.newcg.c:55: break;
+    br bb20
+  bb19:
+    # switch_many_guards_failing.newcg.c:57: c = 'j';
+    *%0_9 = 106i8
+    # switch_many_guards_failing.newcg.c:58: break;
+    br bb20
+  bb20:
+    # switch_many_guards_failing.newcg.c:60: printf("%c", c);
+    %20_0: i8 = load %0_9
+    %20_1: i32 = sext %20_0, i32
+    %20_2: i32 = call putchar(%20_1)
+    # switch_many_guards_failing.newcg.c:61: i--;
+    br bb21
+  bb21:
+    %21_0: i32 = load %0_7
+    %21_1: i32 = add %21_0, -1i32
+    *%0_7 = %21_1
+    # switch_many_guards_failing.newcg.c:62: j++;
+    %21_3: i32 = load %0_8
+    %21_4: i32 = add %21_3, 1i32
+    *%0_8 = %21_4
+    # switch_many_guards_failing.newcg.c:25: while (i > 0) {
+    br bb7
+  bb22:
+    # switch_many_guards_failing.newcg.c:64: yk_location_drop(loc);
+    %22_0: i64 = load %0_6
+    call yk_location_drop(%22_0)
+    # switch_many_guards_failing.newcg.c:65: yk_mt_drop(mt);
+    br bb23
+  bb23:
+    %23_0: ptr = load %0_5
+    call yk_mt_drop(%23_0)
+    # switch_many_guards_failing.newcg.c:66: printf("\n");
+    br bb24
+  bb24:
+    %24_0: i32 = call putchar(10i32)
+    # switch_many_guards_failing.newcg.c:68: return (EXIT_SUCCESS);
+    br bb25
+  bb25:
+    br bb27
+  bb26:
+    ret 0i32
+  bb27:
+    br bb26
+}
+
+func llvm.dbg.declare(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func yk_mt_new(%arg0: ptr) -> ptr;
+
+func yk_mt_hot_threshold_set(%arg0: ptr, %arg1: i32);
+
+func yk_location_new() -> i64;
+
+func yk_mt_control_point(%arg0: ptr, %arg1: ptr);
+
+func printf(%arg0: ptr, ...) -> i32;
+
+func yk_location_drop(%arg0: i64);
+
+func yk_mt_drop(%arg0: ptr);
+
+func llvm.dbg.value(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func putchar(%arg0: i32) -> i32;
+
+func malloc(%arg0: i64) -> ptr;
+
+func __ykrt_control_point(%arg0: ptr, %arg1: ptr, %arg2: ptr, %arg3: ptr, %arg4: i64);
+
+func llvm.frameaddress.p0(%arg0: i32) -> ptr;
+
+func llvm.experimental.stackmap(%arg0: i64, %arg1: i32, ...);
+
+--- End aot ---
+--- Begin jit-pre-opt ---
+; compiled trace ID #5
+
+func_decl putchar (i32) -> i32
+
+entry:
+    %0: ptr = arg(0)
+    %1: ptr = load_ti 0
+    %2: ptr = load_ti 8
+    %3: ptr = load_ti 16
+    %4: ptr = load_ti 24
+    %5: ptr = load_ti 32
+    %6: ptr = load_ti 40
+    %7: i32 = load_ti 48
+    %8: i32 = load %5
+    %9: i32 = srem %8, 10i32
+    %10: i1 = eq %9, 1i32
+    guard true, %10, [%1, %2, %3, %4, %5, %6, %9]
+    *%6 = 105i8
+    %13: i8 = load %6
+    %14: i32 = sext %13, i32
+    %15: i32 = call @putchar(%14)
+    %16: i32 = load %4
+    %17: i32 = add %16, 4294967295i32
+    *%4 = %17
+    %19: i32 = load %5
+    %20: i32 = add %19, 1i32
+    *%5 = %20
+    %22: i32 = load %4
+    %23: i1 = sgt %22, 0i32
+    guard true, %23, [%1, %2, %3, %4, %5, %6, %23]
+    %25: ptr = load %2
+    guard true, 0i1, [%1, %2, %3, %4, %5, %6, %25]
+--- End jit-pre-opt ---
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: start-side-tracing
+yk-jit-event: stop-tracing
+--- Begin aot ---
+# IR format version: 0
+# Num funcs: 15
+# Num consts: 21
+# Num global decls: 1
+# Num types: 23
+global_decl @shadowstack_0
+
+func main(%arg0: i32, %arg1: ptr) -> i32 {
+  bb0:
+    %0_0: i32 = arg(0)
+    %0_1: ptr = arg(1)
+    %0_2: ptr = alloca {0: ptr, 64: ptr, 128: ptr, 192: ptr, 256: ptr, 320: ptr}, 1, 8
+    %0_3: ptr = call malloc(1000000i64)
+    *@shadowstack_0 = %0_3
+    %0_5: ptr = alloca ptr, 1, 8
+    %0_6: ptr = alloca {0: i64}, 1, 8
+    %0_7: ptr = ptr_add %0_3, 0
+    %0_8: ptr = ptr_add %0_3, 4
+    %0_9: ptr = ptr_add %0_3, 8
+    br bb1
+  bb1:
+    # switch_many_guards_failing.newcg.c:18: YkMT *mt = yk_mt_new(NULL);
+    %1_0: ptr = call yk_mt_new(0x0)
+    br bb2
+  bb2:
+    *%0_5 = %1_0
+    # switch_many_guards_failing.newcg.c:19: yk_mt_hot_threshold_set(mt, 3);
+    call yk_mt_hot_threshold_set(%1_0, 3i32)
+    # switch_many_guards_failing.newcg.c:20: YkLocation loc = yk_location_new();
+    br bb3
+  bb3:
+    %3_0: i64 = call yk_location_new()
+    br bb4
+  bb4:
+    *%0_6 = %3_0
+    # switch_many_guards_failing.newcg.c:21: int i = 100;
+    *%0_7 = 100i32
+    # switch_many_guards_failing.newcg.c:22: int j = 10;
+    *%0_8 = 10i32
+    # switch_many_guards_failing.newcg.c:24: NOOPT_VAL(j);
+    br bb5
+  bb5:
+    %5_0: i32 = load %0_8
+    # switch_many_guards_failing.newcg.c:25: while (i > 0) {
+    br bb6
+  bb6:
+    br bb7
+  bb7:
+    %7_0: i32 = load %0_7
+    %7_1: i1 = sgt %7_0, 0i32
+    condbr %7_1, bb8, bb22 [safepoint: 1i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %7_1)]
+  bb8:
+    # switch_many_guards_failing.newcg.c:26: yk_mt_control_point(mt, &loc);
+    %8_0: ptr = load %0_5
+    %8_1: ptr = ptr_add %0_2, 0
+    *%8_1 = %0_5
+    %8_3: ptr = ptr_add %0_2, 8
+    *%8_3 = %0_6
+    %8_5: ptr = ptr_add %0_2, 16
+    *%8_5 = %0_7
+    %8_7: ptr = ptr_add %0_2, 24
+    *%8_7 = %0_8
+    %8_9: ptr = ptr_add %0_2, 32
+    *%8_9 = %0_9
+    %8_11: ptr = ptr_add %0_2, 40
+    *%8_11 = %8_0
+    %8_13: ptr = call llvm.frameaddress.p0(0i32)
+    call __ykrt_control_point(%8_0, %0_6, %0_2, %8_13, 2i64) [safepoint: 2i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %8_0)]
+    # switch_many_guards_failing.newcg.c:28: switch (j % 10) {
+    br bb9
+  bb9:
+    %9_0: i32 = load %0_8
+    %9_1: i32 = srem %9_0, 10i32
+    switch %9_1, bb20, [9 -> bb10, 8 -> bb11, 7 -> bb12, 6 -> bb13, 5 -> bb14, 4 -> bb15, 3 -> bb16, 2 -> bb17, 1 -> bb18, 0 -> bb19] [safepoint: 0i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %9_1)]
+  bb10:
+    # switch_many_guards_failing.newcg.c:30: c = 'a';
+    *%0_9 = 97i8
+    # switch_many_guards_failing.newcg.c:31: break;
+    br bb20
+  bb11:
+    # switch_many_guards_failing.newcg.c:33: c = 'b';
+    *%0_9 = 98i8
+    # switch_many_guards_failing.newcg.c:34: break;
+    br bb20
+  bb12:
+    # switch_many_guards_failing.newcg.c:36: c = 'c';
+    *%0_9 = 99i8
+    # switch_many_guards_failing.newcg.c:37: break;
+    br bb20
+  bb13:
+    # switch_many_guards_failing.newcg.c:39: c = 'd';
+    *%0_9 = 100i8
+    # switch_many_guards_failing.newcg.c:40: break;
+    br bb20
+  bb14:
+    # switch_many_guards_failing.newcg.c:42: c = 'e';
+    *%0_9 = 101i8
+    # switch_many_guards_failing.newcg.c:43: break;
+    br bb20
+  bb15:
+    # switch_many_guards_failing.newcg.c:45: c = 'f';
+    *%0_9 = 102i8
+    # switch_many_guards_failing.newcg.c:46: break;
+    br bb20
+  bb16:
+    # switch_many_guards_failing.newcg.c:48: c = 'g';
+    *%0_9 = 103i8
+    # switch_many_guards_failing.newcg.c:49: break;
+    br bb20
+  bb17:
+    # switch_many_guards_failing.newcg.c:51: c = 'h';
+    *%0_9 = 104i8
+    # switch_many_guards_failing.newcg.c:52: break;
+    br bb20
+  bb18:
+    # switch_many_guards_failing.newcg.c:54: c = 'i';
+    *%0_9 = 105i8
+    # switch_many_guards_failing.newcg.c:55: break;
+    br bb20
+  bb19:
+    # switch_many_guards_failing.newcg.c:57: c = 'j';
+    *%0_9 = 106i8
+    # switch_many_guards_failing.newcg.c:58: break;
+    br bb20
+  bb20:
+    # switch_many_guards_failing.newcg.c:60: printf("%c", c);
+    %20_0: i8 = load %0_9
+    %20_1: i32 = sext %20_0, i32
+    %20_2: i32 = call putchar(%20_1)
+    # switch_many_guards_failing.newcg.c:61: i--;
+    br bb21
+  bb21:
+    %21_0: i32 = load %0_7
+    %21_1: i32 = add %21_0, -1i32
+    *%0_7 = %21_1
+    # switch_many_guards_failing.newcg.c:62: j++;
+    %21_3: i32 = load %0_8
+    %21_4: i32 = add %21_3, 1i32
+    *%0_8 = %21_4
+    # switch_many_guards_failing.newcg.c:25: while (i > 0) {
+    br bb7
+  bb22:
+    # switch_many_guards_failing.newcg.c:64: yk_location_drop(loc);
+    %22_0: i64 = load %0_6
+    call yk_location_drop(%22_0)
+    # switch_many_guards_failing.newcg.c:65: yk_mt_drop(mt);
+    br bb23
+  bb23:
+    %23_0: ptr = load %0_5
+    call yk_mt_drop(%23_0)
+    # switch_many_guards_failing.newcg.c:66: printf("\n");
+    br bb24
+  bb24:
+    %24_0: i32 = call putchar(10i32)
+    # switch_many_guards_failing.newcg.c:68: return (EXIT_SUCCESS);
+    br bb25
+  bb25:
+    br bb27
+  bb26:
+    ret 0i32
+  bb27:
+    br bb26
+}
+
+func llvm.dbg.declare(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func yk_mt_new(%arg0: ptr) -> ptr;
+
+func yk_mt_hot_threshold_set(%arg0: ptr, %arg1: i32);
+
+func yk_location_new() -> i64;
+
+func yk_mt_control_point(%arg0: ptr, %arg1: ptr);
+
+func printf(%arg0: ptr, ...) -> i32;
+
+func yk_location_drop(%arg0: i64);
+
+func yk_mt_drop(%arg0: ptr);
+
+func llvm.dbg.value(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func putchar(%arg0: i32) -> i32;
+
+func malloc(%arg0: i64) -> ptr;
+
+func __ykrt_control_point(%arg0: ptr, %arg1: ptr, %arg2: ptr, %arg3: ptr, %arg4: i64);
+
+func llvm.frameaddress.p0(%arg0: i32) -> ptr;
+
+func llvm.experimental.stackmap(%arg0: i64, %arg1: i32, ...);
+
+--- End aot ---
+--- Begin jit-pre-opt ---
+; compiled trace ID #6
+
+func_decl putchar (i32) -> i32
+
+entry:
+    %0: ptr = arg(0)
+    %1: ptr = load_ti 0
+    %2: ptr = load_ti 8
+    %3: ptr = load_ti 16
+    %4: ptr = load_ti 24
+    %5: ptr = load_ti 32
+    %6: ptr = load_ti 40
+    %7: ptr = load_ti 48
+    %8: i32 = load %5
+    %9: i32 = srem %8, 10i32
+    %10: i1 = eq %9, 0i32
+    guard true, %10, [%1, %2, %3, %4, %5, %6, %9]
+    *%6 = 106i8
+    %13: i8 = load %6
+    %14: i32 = sext %13, i32
+    %15: i32 = call @putchar(%14)
+    %16: i32 = load %4
+    %17: i32 = add %16, 4294967295i32
+    *%4 = %17
+    %19: i32 = load %5
+    %20: i32 = add %19, 1i32
+    *%5 = %20
+    %22: i32 = load %4
+    %23: i1 = sgt %22, 0i32
+    guard true, %23, [%1, %2, %3, %4, %5, %6, %23]
+    %25: ptr = load %2
+    guard true, 0i1, [%1, %2, %3, %4, %5, %6, %25]
+--- End jit-pre-opt ---
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: start-side-tracing
+yk-jit-event: stop-tracing
+--- Begin aot ---
+# IR format version: 0
+# Num funcs: 15
+# Num consts: 21
+# Num global decls: 1
+# Num types: 23
+global_decl @shadowstack_0
+
+func main(%arg0: i32, %arg1: ptr) -> i32 {
+  bb0:
+    %0_0: i32 = arg(0)
+    %0_1: ptr = arg(1)
+    %0_2: ptr = alloca {0: ptr, 64: ptr, 128: ptr, 192: ptr, 256: ptr, 320: ptr}, 1, 8
+    %0_3: ptr = call malloc(1000000i64)
+    *@shadowstack_0 = %0_3
+    %0_5: ptr = alloca ptr, 1, 8
+    %0_6: ptr = alloca {0: i64}, 1, 8
+    %0_7: ptr = ptr_add %0_3, 0
+    %0_8: ptr = ptr_add %0_3, 4
+    %0_9: ptr = ptr_add %0_3, 8
+    br bb1
+  bb1:
+    # switch_many_guards_failing.newcg.c:18: YkMT *mt = yk_mt_new(NULL);
+    %1_0: ptr = call yk_mt_new(0x0)
+    br bb2
+  bb2:
+    *%0_5 = %1_0
+    # switch_many_guards_failing.newcg.c:19: yk_mt_hot_threshold_set(mt, 3);
+    call yk_mt_hot_threshold_set(%1_0, 3i32)
+    # switch_many_guards_failing.newcg.c:20: YkLocation loc = yk_location_new();
+    br bb3
+  bb3:
+    %3_0: i64 = call yk_location_new()
+    br bb4
+  bb4:
+    *%0_6 = %3_0
+    # switch_many_guards_failing.newcg.c:21: int i = 100;
+    *%0_7 = 100i32
+    # switch_many_guards_failing.newcg.c:22: int j = 10;
+    *%0_8 = 10i32
+    # switch_many_guards_failing.newcg.c:24: NOOPT_VAL(j);
+    br bb5
+  bb5:
+    %5_0: i32 = load %0_8
+    # switch_many_guards_failing.newcg.c:25: while (i > 0) {
+    br bb6
+  bb6:
+    br bb7
+  bb7:
+    %7_0: i32 = load %0_7
+    %7_1: i1 = sgt %7_0, 0i32
+    condbr %7_1, bb8, bb22 [safepoint: 1i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %7_1)]
+  bb8:
+    # switch_many_guards_failing.newcg.c:26: yk_mt_control_point(mt, &loc);
+    %8_0: ptr = load %0_5
+    %8_1: ptr = ptr_add %0_2, 0
+    *%8_1 = %0_5
+    %8_3: ptr = ptr_add %0_2, 8
+    *%8_3 = %0_6
+    %8_5: ptr = ptr_add %0_2, 16
+    *%8_5 = %0_7
+    %8_7: ptr = ptr_add %0_2, 24
+    *%8_7 = %0_8
+    %8_9: ptr = ptr_add %0_2, 32
+    *%8_9 = %0_9
+    %8_11: ptr = ptr_add %0_2, 40
+    *%8_11 = %8_0
+    %8_13: ptr = call llvm.frameaddress.p0(0i32)
+    call __ykrt_control_point(%8_0, %0_6, %0_2, %8_13, 2i64) [safepoint: 2i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %8_0)]
+    # switch_many_guards_failing.newcg.c:28: switch (j % 10) {
+    br bb9
+  bb9:
+    %9_0: i32 = load %0_8
+    %9_1: i32 = srem %9_0, 10i32
+    switch %9_1, bb20, [9 -> bb10, 8 -> bb11, 7 -> bb12, 6 -> bb13, 5 -> bb14, 4 -> bb15, 3 -> bb16, 2 -> bb17, 1 -> bb18, 0 -> bb19] [safepoint: 0i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %9_1)]
+  bb10:
+    # switch_many_guards_failing.newcg.c:30: c = 'a';
+    *%0_9 = 97i8
+    # switch_many_guards_failing.newcg.c:31: break;
+    br bb20
+  bb11:
+    # switch_many_guards_failing.newcg.c:33: c = 'b';
+    *%0_9 = 98i8
+    # switch_many_guards_failing.newcg.c:34: break;
+    br bb20
+  bb12:
+    # switch_many_guards_failing.newcg.c:36: c = 'c';
+    *%0_9 = 99i8
+    # switch_many_guards_failing.newcg.c:37: break;
+    br bb20
+  bb13:
+    # switch_many_guards_failing.newcg.c:39: c = 'd';
+    *%0_9 = 100i8
+    # switch_many_guards_failing.newcg.c:40: break;
+    br bb20
+  bb14:
+    # switch_many_guards_failing.newcg.c:42: c = 'e';
+    *%0_9 = 101i8
+    # switch_many_guards_failing.newcg.c:43: break;
+    br bb20
+  bb15:
+    # switch_many_guards_failing.newcg.c:45: c = 'f';
+    *%0_9 = 102i8
+    # switch_many_guards_failing.newcg.c:46: break;
+    br bb20
+  bb16:
+    # switch_many_guards_failing.newcg.c:48: c = 'g';
+    *%0_9 = 103i8
+    # switch_many_guards_failing.newcg.c:49: break;
+    br bb20
+  bb17:
+    # switch_many_guards_failing.newcg.c:51: c = 'h';
+    *%0_9 = 104i8
+    # switch_many_guards_failing.newcg.c:52: break;
+    br bb20
+  bb18:
+    # switch_many_guards_failing.newcg.c:54: c = 'i';
+    *%0_9 = 105i8
+    # switch_many_guards_failing.newcg.c:55: break;
+    br bb20
+  bb19:
+    # switch_many_guards_failing.newcg.c:57: c = 'j';
+    *%0_9 = 106i8
+    # switch_many_guards_failing.newcg.c:58: break;
+    br bb20
+  bb20:
+    # switch_many_guards_failing.newcg.c:60: printf("%c", c);
+    %20_0: i8 = load %0_9
+    %20_1: i32 = sext %20_0, i32
+    %20_2: i32 = call putchar(%20_1)
+    # switch_many_guards_failing.newcg.c:61: i--;
+    br bb21
+  bb21:
+    %21_0: i32 = load %0_7
+    %21_1: i32 = add %21_0, -1i32
+    *%0_7 = %21_1
+    # switch_many_guards_failing.newcg.c:62: j++;
+    %21_3: i32 = load %0_8
+    %21_4: i32 = add %21_3, 1i32
+    *%0_8 = %21_4
+    # switch_many_guards_failing.newcg.c:25: while (i > 0) {
+    br bb7
+  bb22:
+    # switch_many_guards_failing.newcg.c:64: yk_location_drop(loc);
+    %22_0: i64 = load %0_6
+    call yk_location_drop(%22_0)
+    # switch_many_guards_failing.newcg.c:65: yk_mt_drop(mt);
+    br bb23
+  bb23:
+    %23_0: ptr = load %0_5
+    call yk_mt_drop(%23_0)
+    # switch_many_guards_failing.newcg.c:66: printf("\n");
+    br bb24
+  bb24:
+    %24_0: i32 = call putchar(10i32)
+    # switch_many_guards_failing.newcg.c:68: return (EXIT_SUCCESS);
+    br bb25
+  bb25:
+    br bb27
+  bb26:
+    ret 0i32
+  bb27:
+    br bb26
+}
+
+func llvm.dbg.declare(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func yk_mt_new(%arg0: ptr) -> ptr;
+
+func yk_mt_hot_threshold_set(%arg0: ptr, %arg1: i32);
+
+func yk_location_new() -> i64;
+
+func yk_mt_control_point(%arg0: ptr, %arg1: ptr);
+
+func printf(%arg0: ptr, ...) -> i32;
+
+func yk_location_drop(%arg0: i64);
+
+func yk_mt_drop(%arg0: ptr);
+
+func llvm.dbg.value(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func putchar(%arg0: i32) -> i32;
+
+func malloc(%arg0: i64) -> ptr;
+
+func __ykrt_control_point(%arg0: ptr, %arg1: ptr, %arg2: ptr, %arg3: ptr, %arg4: i64);
+
+func llvm.frameaddress.p0(%arg0: i32) -> ptr;
+
+func llvm.experimental.stackmap(%arg0: i64, %arg1: i32, ...);
+
+--- End aot ---
+--- Begin jit-pre-opt ---
+; compiled trace ID #7
+
+func_decl putchar (i32) -> i32
+
+entry:
+    %0: ptr = arg(0)
+    %1: ptr = load_ti 0
+    %2: ptr = load_ti 8
+    %3: ptr = load_ti 16
+    %4: ptr = load_ti 24
+    %5: ptr = load_ti 32
+    %6: ptr = load_ti 40
+    %7: ptr = load_ti 48
+    %8: i32 = load %5
+    %9: i32 = srem %8, 10i32
+    %10: i1 = eq %9, 7i32
+    guard true, %10, [%1, %2, %3, %4, %5, %6, %9]
+    *%6 = 99i8
+    %13: i8 = load %6
+    %14: i32 = sext %13, i32
+    %15: i32 = call @putchar(%14)
+    %16: i32 = load %4
+    %17: i32 = add %16, 4294967295i32
+    *%4 = %17
+    %19: i32 = load %5
+    %20: i32 = add %19, 1i32
+    *%5 = %20
+    %22: i32 = load %4
+    %23: i1 = sgt %22, 0i32
+    guard true, %23, [%1, %2, %3, %4, %5, %6, %23]
+    %25: ptr = load %2
+    guard true, 0i1, [%1, %2, %3, %4, %5, %6, %25]
+--- End jit-pre-opt ---
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: start-side-tracing
+yk-jit-event: stop-tracing
+--- Begin aot ---
+# IR format version: 0
+# Num funcs: 15
+# Num consts: 21
+# Num global decls: 1
+# Num types: 23
+global_decl @shadowstack_0
+
+func main(%arg0: i32, %arg1: ptr) -> i32 {
+  bb0:
+    %0_0: i32 = arg(0)
+    %0_1: ptr = arg(1)
+    %0_2: ptr = alloca {0: ptr, 64: ptr, 128: ptr, 192: ptr, 256: ptr, 320: ptr}, 1, 8
+    %0_3: ptr = call malloc(1000000i64)
+    *@shadowstack_0 = %0_3
+    %0_5: ptr = alloca ptr, 1, 8
+    %0_6: ptr = alloca {0: i64}, 1, 8
+    %0_7: ptr = ptr_add %0_3, 0
+    %0_8: ptr = ptr_add %0_3, 4
+    %0_9: ptr = ptr_add %0_3, 8
+    br bb1
+  bb1:
+    # switch_many_guards_failing.newcg.c:18: YkMT *mt = yk_mt_new(NULL);
+    %1_0: ptr = call yk_mt_new(0x0)
+    br bb2
+  bb2:
+    *%0_5 = %1_0
+    # switch_many_guards_failing.newcg.c:19: yk_mt_hot_threshold_set(mt, 3);
+    call yk_mt_hot_threshold_set(%1_0, 3i32)
+    # switch_many_guards_failing.newcg.c:20: YkLocation loc = yk_location_new();
+    br bb3
+  bb3:
+    %3_0: i64 = call yk_location_new()
+    br bb4
+  bb4:
+    *%0_6 = %3_0
+    # switch_many_guards_failing.newcg.c:21: int i = 100;
+    *%0_7 = 100i32
+    # switch_many_guards_failing.newcg.c:22: int j = 10;
+    *%0_8 = 10i32
+    # switch_many_guards_failing.newcg.c:24: NOOPT_VAL(j);
+    br bb5
+  bb5:
+    %5_0: i32 = load %0_8
+    # switch_many_guards_failing.newcg.c:25: while (i > 0) {
+    br bb6
+  bb6:
+    br bb7
+  bb7:
+    %7_0: i32 = load %0_7
+    %7_1: i1 = sgt %7_0, 0i32
+    condbr %7_1, bb8, bb22 [safepoint: 1i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %7_1)]
+  bb8:
+    # switch_many_guards_failing.newcg.c:26: yk_mt_control_point(mt, &loc);
+    %8_0: ptr = load %0_5
+    %8_1: ptr = ptr_add %0_2, 0
+    *%8_1 = %0_5
+    %8_3: ptr = ptr_add %0_2, 8
+    *%8_3 = %0_6
+    %8_5: ptr = ptr_add %0_2, 16
+    *%8_5 = %0_7
+    %8_7: ptr = ptr_add %0_2, 24
+    *%8_7 = %0_8
+    %8_9: ptr = ptr_add %0_2, 32
+    *%8_9 = %0_9
+    %8_11: ptr = ptr_add %0_2, 40
+    *%8_11 = %8_0
+    %8_13: ptr = call llvm.frameaddress.p0(0i32)
+    call __ykrt_control_point(%8_0, %0_6, %0_2, %8_13, 2i64) [safepoint: 2i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %8_0)]
+    # switch_many_guards_failing.newcg.c:28: switch (j % 10) {
+    br bb9
+  bb9:
+    %9_0: i32 = load %0_8
+    %9_1: i32 = srem %9_0, 10i32
+    switch %9_1, bb20, [9 -> bb10, 8 -> bb11, 7 -> bb12, 6 -> bb13, 5 -> bb14, 4 -> bb15, 3 -> bb16, 2 -> bb17, 1 -> bb18, 0 -> bb19] [safepoint: 0i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %9_1)]
+  bb10:
+    # switch_many_guards_failing.newcg.c:30: c = 'a';
+    *%0_9 = 97i8
+    # switch_many_guards_failing.newcg.c:31: break;
+    br bb20
+  bb11:
+    # switch_many_guards_failing.newcg.c:33: c = 'b';
+    *%0_9 = 98i8
+    # switch_many_guards_failing.newcg.c:34: break;
+    br bb20
+  bb12:
+    # switch_many_guards_failing.newcg.c:36: c = 'c';
+    *%0_9 = 99i8
+    # switch_many_guards_failing.newcg.c:37: break;
+    br bb20
+  bb13:
+    # switch_many_guards_failing.newcg.c:39: c = 'd';
+    *%0_9 = 100i8
+    # switch_many_guards_failing.newcg.c:40: break;
+    br bb20
+  bb14:
+    # switch_many_guards_failing.newcg.c:42: c = 'e';
+    *%0_9 = 101i8
+    # switch_many_guards_failing.newcg.c:43: break;
+    br bb20
+  bb15:
+    # switch_many_guards_failing.newcg.c:45: c = 'f';
+    *%0_9 = 102i8
+    # switch_many_guards_failing.newcg.c:46: break;
+    br bb20
+  bb16:
+    # switch_many_guards_failing.newcg.c:48: c = 'g';
+    *%0_9 = 103i8
+    # switch_many_guards_failing.newcg.c:49: break;
+    br bb20
+  bb17:
+    # switch_many_guards_failing.newcg.c:51: c = 'h';
+    *%0_9 = 104i8
+    # switch_many_guards_failing.newcg.c:52: break;
+    br bb20
+  bb18:
+    # switch_many_guards_failing.newcg.c:54: c = 'i';
+    *%0_9 = 105i8
+    # switch_many_guards_failing.newcg.c:55: break;
+    br bb20
+  bb19:
+    # switch_many_guards_failing.newcg.c:57: c = 'j';
+    *%0_9 = 106i8
+    # switch_many_guards_failing.newcg.c:58: break;
+    br bb20
+  bb20:
+    # switch_many_guards_failing.newcg.c:60: printf("%c", c);
+    %20_0: i8 = load %0_9
+    %20_1: i32 = sext %20_0, i32
+    %20_2: i32 = call putchar(%20_1)
+    # switch_many_guards_failing.newcg.c:61: i--;
+    br bb21
+  bb21:
+    %21_0: i32 = load %0_7
+    %21_1: i32 = add %21_0, -1i32
+    *%0_7 = %21_1
+    # switch_many_guards_failing.newcg.c:62: j++;
+    %21_3: i32 = load %0_8
+    %21_4: i32 = add %21_3, 1i32
+    *%0_8 = %21_4
+    # switch_many_guards_failing.newcg.c:25: while (i > 0) {
+    br bb7
+  bb22:
+    # switch_many_guards_failing.newcg.c:64: yk_location_drop(loc);
+    %22_0: i64 = load %0_6
+    call yk_location_drop(%22_0)
+    # switch_many_guards_failing.newcg.c:65: yk_mt_drop(mt);
+    br bb23
+  bb23:
+    %23_0: ptr = load %0_5
+    call yk_mt_drop(%23_0)
+    # switch_many_guards_failing.newcg.c:66: printf("\n");
+    br bb24
+  bb24:
+    %24_0: i32 = call putchar(10i32)
+    # switch_many_guards_failing.newcg.c:68: return (EXIT_SUCCESS);
+    br bb25
+  bb25:
+    br bb27
+  bb26:
+    ret 0i32
+  bb27:
+    br bb26
+}
+
+func llvm.dbg.declare(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func yk_mt_new(%arg0: ptr) -> ptr;
+
+func yk_mt_hot_threshold_set(%arg0: ptr, %arg1: i32);
+
+func yk_location_new() -> i64;
+
+func yk_mt_control_point(%arg0: ptr, %arg1: ptr);
+
+func printf(%arg0: ptr, ...) -> i32;
+
+func yk_location_drop(%arg0: i64);
+
+func yk_mt_drop(%arg0: ptr);
+
+func llvm.dbg.value(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func putchar(%arg0: i32) -> i32;
+
+func malloc(%arg0: i64) -> ptr;
+
+func __ykrt_control_point(%arg0: ptr, %arg1: ptr, %arg2: ptr, %arg3: ptr, %arg4: i64);
+
+func llvm.frameaddress.p0(%arg0: i32) -> ptr;
+
+func llvm.experimental.stackmap(%arg0: i64, %arg1: i32, ...);
+
+--- End aot ---
+--- Begin jit-pre-opt ---
+; compiled trace ID #8
+
+func_decl putchar (i32) -> i32
+
+entry:
+    %0: ptr = arg(0)
+    %1: ptr = load_ti 0
+    %2: ptr = load_ti 8
+    %3: ptr = load_ti 16
+    %4: ptr = load_ti 24
+    %5: ptr = load_ti 32
+    %6: ptr = load_ti 40
+    %7: i32 = load_ti 48
+    %8: i32 = load %5
+    %9: i32 = srem %8, 10i32
+    %10: i1 = eq %9, 2i32
+    guard true, %10, [%1, %2, %3, %4, %5, %6, %9]
+    *%6 = 104i8
+    %13: i8 = load %6
+    %14: i32 = sext %13, i32
+    %15: i32 = call @putchar(%14)
+    %16: i32 = load %4
+    %17: i32 = add %16, 4294967295i32
+    *%4 = %17
+    %19: i32 = load %5
+    %20: i32 = add %19, 1i32
+    *%5 = %20
+    %22: i32 = load %4
+    %23: i1 = sgt %22, 0i32
+    guard true, %23, [%1, %2, %3, %4, %5, %6, %23]
+    %25: ptr = load %2
+    guard true, 0i1, [%1, %2, %3, %4, %5, %6, %25]
+--- End jit-pre-opt ---
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: start-side-tracing
+yk-jit-event: stop-tracing
+--- Begin aot ---
+# IR format version: 0
+# Num funcs: 15
+# Num consts: 21
+# Num global decls: 1
+# Num types: 23
+global_decl @shadowstack_0
+
+func main(%arg0: i32, %arg1: ptr) -> i32 {
+  bb0:
+    %0_0: i32 = arg(0)
+    %0_1: ptr = arg(1)
+    %0_2: ptr = alloca {0: ptr, 64: ptr, 128: ptr, 192: ptr, 256: ptr, 320: ptr}, 1, 8
+    %0_3: ptr = call malloc(1000000i64)
+    *@shadowstack_0 = %0_3
+    %0_5: ptr = alloca ptr, 1, 8
+    %0_6: ptr = alloca {0: i64}, 1, 8
+    %0_7: ptr = ptr_add %0_3, 0
+    %0_8: ptr = ptr_add %0_3, 4
+    %0_9: ptr = ptr_add %0_3, 8
+    br bb1
+  bb1:
+    # switch_many_guards_failing.newcg.c:18: YkMT *mt = yk_mt_new(NULL);
+    %1_0: ptr = call yk_mt_new(0x0)
+    br bb2
+  bb2:
+    *%0_5 = %1_0
+    # switch_many_guards_failing.newcg.c:19: yk_mt_hot_threshold_set(mt, 3);
+    call yk_mt_hot_threshold_set(%1_0, 3i32)
+    # switch_many_guards_failing.newcg.c:20: YkLocation loc = yk_location_new();
+    br bb3
+  bb3:
+    %3_0: i64 = call yk_location_new()
+    br bb4
+  bb4:
+    *%0_6 = %3_0
+    # switch_many_guards_failing.newcg.c:21: int i = 100;
+    *%0_7 = 100i32
+    # switch_many_guards_failing.newcg.c:22: int j = 10;
+    *%0_8 = 10i32
+    # switch_many_guards_failing.newcg.c:24: NOOPT_VAL(j);
+    br bb5
+  bb5:
+    %5_0: i32 = load %0_8
+    # switch_many_guards_failing.newcg.c:25: while (i > 0) {
+    br bb6
+  bb6:
+    br bb7
+  bb7:
+    %7_0: i32 = load %0_7
+    %7_1: i1 = sgt %7_0, 0i32
+    condbr %7_1, bb8, bb22 [safepoint: 1i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %7_1)]
+  bb8:
+    # switch_many_guards_failing.newcg.c:26: yk_mt_control_point(mt, &loc);
+    %8_0: ptr = load %0_5
+    %8_1: ptr = ptr_add %0_2, 0
+    *%8_1 = %0_5
+    %8_3: ptr = ptr_add %0_2, 8
+    *%8_3 = %0_6
+    %8_5: ptr = ptr_add %0_2, 16
+    *%8_5 = %0_7
+    %8_7: ptr = ptr_add %0_2, 24
+    *%8_7 = %0_8
+    %8_9: ptr = ptr_add %0_2, 32
+    *%8_9 = %0_9
+    %8_11: ptr = ptr_add %0_2, 40
+    *%8_11 = %8_0
+    %8_13: ptr = call llvm.frameaddress.p0(0i32)
+    call __ykrt_control_point(%8_0, %0_6, %0_2, %8_13, 2i64) [safepoint: 2i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %8_0)]
+    # switch_many_guards_failing.newcg.c:28: switch (j % 10) {
+    br bb9
+  bb9:
+    %9_0: i32 = load %0_8
+    %9_1: i32 = srem %9_0, 10i32
+    switch %9_1, bb20, [9 -> bb10, 8 -> bb11, 7 -> bb12, 6 -> bb13, 5 -> bb14, 4 -> bb15, 3 -> bb16, 2 -> bb17, 1 -> bb18, 0 -> bb19] [safepoint: 0i64, (%0_2, %0_5, %0_6, %0_7, %0_8, %0_9, %9_1)]
+  bb10:
+    # switch_many_guards_failing.newcg.c:30: c = 'a';
+    *%0_9 = 97i8
+    # switch_many_guards_failing.newcg.c:31: break;
+    br bb20
+  bb11:
+    # switch_many_guards_failing.newcg.c:33: c = 'b';
+    *%0_9 = 98i8
+    # switch_many_guards_failing.newcg.c:34: break;
+    br bb20
+  bb12:
+    # switch_many_guards_failing.newcg.c:36: c = 'c';
+    *%0_9 = 99i8
+    # switch_many_guards_failing.newcg.c:37: break;
+    br bb20
+  bb13:
+    # switch_many_guards_failing.newcg.c:39: c = 'd';
+    *%0_9 = 100i8
+    # switch_many_guards_failing.newcg.c:40: break;
+    br bb20
+  bb14:
+    # switch_many_guards_failing.newcg.c:42: c = 'e';
+    *%0_9 = 101i8
+    # switch_many_guards_failing.newcg.c:43: break;
+    br bb20
+  bb15:
+    # switch_many_guards_failing.newcg.c:45: c = 'f';
+    *%0_9 = 102i8
+    # switch_many_guards_failing.newcg.c:46: break;
+    br bb20
+  bb16:
+    # switch_many_guards_failing.newcg.c:48: c = 'g';
+    *%0_9 = 103i8
+    # switch_many_guards_failing.newcg.c:49: break;
+    br bb20
+  bb17:
+    # switch_many_guards_failing.newcg.c:51: c = 'h';
+    *%0_9 = 104i8
+    # switch_many_guards_failing.newcg.c:52: break;
+    br bb20
+  bb18:
+    # switch_many_guards_failing.newcg.c:54: c = 'i';
+    *%0_9 = 105i8
+    # switch_many_guards_failing.newcg.c:55: break;
+    br bb20
+  bb19:
+    # switch_many_guards_failing.newcg.c:57: c = 'j';
+    *%0_9 = 106i8
+    # switch_many_guards_failing.newcg.c:58: break;
+    br bb20
+  bb20:
+    # switch_many_guards_failing.newcg.c:60: printf("%c", c);
+    %20_0: i8 = load %0_9
+    %20_1: i32 = sext %20_0, i32
+    %20_2: i32 = call putchar(%20_1)
+    # switch_many_guards_failing.newcg.c:61: i--;
+    br bb21
+  bb21:
+    %21_0: i32 = load %0_7
+    %21_1: i32 = add %21_0, -1i32
+    *%0_7 = %21_1
+    # switch_many_guards_failing.newcg.c:62: j++;
+    %21_3: i32 = load %0_8
+    %21_4: i32 = add %21_3, 1i32
+    *%0_8 = %21_4
+    # switch_many_guards_failing.newcg.c:25: while (i > 0) {
+    br bb7
+  bb22:
+    # switch_many_guards_failing.newcg.c:64: yk_location_drop(loc);
+    %22_0: i64 = load %0_6
+    call yk_location_drop(%22_0)
+    # switch_many_guards_failing.newcg.c:65: yk_mt_drop(mt);
+    br bb23
+  bb23:
+    %23_0: ptr = load %0_5
+    call yk_mt_drop(%23_0)
+    # switch_many_guards_failing.newcg.c:66: printf("\n");
+    br bb24
+  bb24:
+    %24_0: i32 = call putchar(10i32)
+    # switch_many_guards_failing.newcg.c:68: return (EXIT_SUCCESS);
+    br bb25
+  bb25:
+    br bb27
+  bb26:
+    ret 0i32
+  bb27:
+    br bb26
+}
+
+func llvm.dbg.declare(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func yk_mt_new(%arg0: ptr) -> ptr;
+
+func yk_mt_hot_threshold_set(%arg0: ptr, %arg1: i32);
+
+func yk_location_new() -> i64;
+
+func yk_mt_control_point(%arg0: ptr, %arg1: ptr);
+
+func printf(%arg0: ptr, ...) -> i32;
+
+func yk_location_drop(%arg0: i64);
+
+func yk_mt_drop(%arg0: ptr);
+
+func llvm.dbg.value(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func putchar(%arg0: i32) -> i32;
+
+func malloc(%arg0: i64) -> ptr;
+
+func __ykrt_control_point(%arg0: ptr, %arg1: ptr, %arg2: ptr, %arg3: ptr, %arg4: i64);
+
+func llvm.frameaddress.p0(%arg0: i32) -> ptr;
+
+func llvm.experimental.stackmap(%arg0: i64, %arg1: i32, ...);
+
+--- End aot ---
+--- Begin jit-pre-opt ---
+; compiled trace ID #9
+
+func_decl putchar (i32) -> i32
+
+entry:
+    %0: ptr = arg(0)
+    %1: ptr = load_ti 0
+    %2: ptr = load_ti 8
+    %3: ptr = load_ti 16
+    %4: ptr = load_ti 24
+    %5: ptr = load_ti 32
+    %6: ptr = load_ti 40
+    %7: ptr = load_ti 48
+    %8: i32 = load %5
+    %9: i32 = srem %8, 10i32
+    %10: i1 = eq %9, 5i32
+    guard true, %10, [%1, %2, %3, %4, %5, %6, %9]
+    *%6 = 101i8
+    %13: i8 = load %6
+    %14: i32 = sext %13, i32
+    %15: i32 = call @putchar(%14)
+    %16: i32 = load %4
+    %17: i32 = add %16, 4294967295i32
+    *%4 = %17
+    %19: i32 = load %5
+    %20: i32 = add %19, 1i32
+    *%5 = %20
+    %22: i32 = load %4
+    %23: i1 = sgt %22, 0i32
+    guard true, %23, [%1, %2, %3, %4, %5, %6, %23]
+    %25: ptr = load %2
+    guard true, 0i1, [%1, %2, %3, %4, %5, %6, %25]
+--- End jit-pre-opt ---
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+yk-jit-event: enter-jit-code
+yk-jit-event: execute-side-trace
+yk-jit-event: deoptimise
+jihgfedcbajihgfedcbajihgfedcbajihgfedcbajihgfedcbajihgfedcbajihgfedcbajihgfedcbajihgfedcbajihgfedcba
+
+test lang_tests::switch_many_guards_failing.newcg.c ... [0m[32mok[0m
+
+test result: [0m[32mok[0m. 1 passed; 0 failed; 0 ignored; 0 measured; 52 filtered out
+
+     Running langtest_ir_lowering.rs (target/debug/deps/ir_lowering_tests-481f92c06ef8614e)
+Running IR lowering tests...
+
+running 0 tests
+
+test result: [0m[32mok[0m. 0 passed; 0 failed; 0 ignored; 0 measured; 15 filtered out
+
+     Running unittests src/main.rs (target/debug/deps/xtask-3c37d1ab81196a92)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/ykaddr-d1c6d3be7ce6d20d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/ykbuild-ef866be891cd5609)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/ykcapi-ab49a43db501bbc8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/ykrt-f26ff41f31919f07)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 130 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/yksmp-ddb4178b5982491b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/yktracec-465a818b1aac4776)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

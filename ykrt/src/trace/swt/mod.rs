@@ -19,26 +19,20 @@ struct TracingBBlock {
     function_index: usize,
     block_index: usize,
 }
+#[cfg(jitc_yk)]
+use crate::compile::jitc_yk::AOT_MOD;
 
 /// Mapping of function indexes to function names.
 #[cfg(jitc_llvm)]
 static FUNC_NAMES: LazyLock<HashMap<usize, CString>> = LazyLock::new(|| {
-    let mut fnames = HashMap::new();
-    let mut functions: *mut IRFunctionNameIndex = std::ptr::null_mut();
-    let bc_section = crate::compile::jitc_llvm::llvmbc_section();
-    let mut functions_len: usize = 0;
-    let bs = &BitcodeSection {
-        data: bc_section.as_ptr(),
-        len: u64::try_from(bc_section.len()).unwrap(),
-    };
-    unsafe { get_function_names(bs, &mut functions, &mut functions_len) };
-    for entry in unsafe { std::slice::from_raw_parts(functions, functions_len) } {
-        fnames.insert(
-            entry.index,
-            unsafe { std::ffi::CStr::from_ptr(entry.name) }.to_owned(),
-        );
-    }
-    fnames
+    crate::compile::jitc_yk::AOT_MOD
+        .funcs()
+        .iter_enumerated()
+        .map(|(funcidx, func)| {
+            // unwrap cannot fail assuming that all symbols are UTF-8.
+            (usize::from(funcidx), CString::new(func.name()).unwrap())
+        })
+        .collect::<HashMap<_, _>>()
 });
 
 /// Mapping of function indices to function names.
@@ -87,23 +81,6 @@ pub extern "C" fn yk_trace_basicblock(function_index: usize, block_index: usize)
     });
 }
 
-#[cfg(jitc_llvm)]
-extern "C" {
-    fn get_function_names(
-        section: *const BitcodeSection,
-        result: *mut *mut IRFunctionNameIndex,
-        len: *mut usize,
-    );
-}
-
-#[cfg(jitc_llvm)]
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct IRFunctionNameIndex {
-    pub index: usize,
-    pub name: *const libc::c_char,
-}
-
 pub(crate) struct SWTracer {}
 
 impl SWTracer {
@@ -146,6 +123,7 @@ impl SWTraceIterator {
         }
     }
 }
+
 
 impl Iterator for SWTraceIterator {
     type Item = Result<TraceAction, AOTTraceIteratorError>;

@@ -2,9 +2,11 @@
 //!
 //! This takes in an (AOT IR, execution trace) pair and constructs a JIT IR trace from it.
 
-use super::aot_ir::{self, BBlockId, BinOp, FuncIdx, Module};
+use super::aot_ir::{self, BBlockId, BinOp, BBlockIdx, FuncIdx, Module};
+
 use super::codegen::reg_alloc::{Register, VarLocation};
-use super::jit_ir::{self, Const};
+use super::{jit_ir::{self, Const}, AOT_MOD};
+
 use super::YkSideTraceInfo;
 use crate::aotsmp::AOT_STACKMAPS;
 use crate::compile::CompilationError;
@@ -257,6 +259,7 @@ impl TraceBuilder {
 
         // Decide how to translate each AOT instruction.
         for (iidx, inst) in blk.insts.iter().enumerate() {
+            // println!("bb{:?}: {:?}", bid.bbidx(), inst);
             match inst {
                 aot_ir::Inst::Br { .. } => Ok(()),
                 aot_ir::Inst::Load {
@@ -761,10 +764,15 @@ impl TraceBuilder {
         args: &[aot_ir::Operand],
         nextinst: &'static aot_ir::Inst,
     ) -> Result<(), CompilationError> {
+        let func = AOT_MOD.func(*callee);
+        if func.name() == "yk_trace_basicblock"{
+            return Ok(());
+        }
         // Ignore special functions that we neither want to inline nor copy.
         if inst.is_debug_call(self.aot_mod) {
             return Ok(());
         }
+        
 
         // Convert AOT args to JIT args.
         let mut jit_args = Vec::new();
@@ -822,7 +830,9 @@ impl TraceBuilder {
                     // when this happens.
                     todo!()
                 }
-                _ => panic!(),
+                _ => {
+                    panic!()
+                }
             }
 
             let jit_func_decl_idx = self.handle_func(*callee)?;
