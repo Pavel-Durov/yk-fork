@@ -949,6 +949,12 @@ pub(crate) enum Inst {
         pred: FloatPredicate,
         rhs: Operand,
     },
+    #[deku(id = "19")]
+    Promote {
+        tyidx: TyIdx,
+        val: Operand,
+        safepoint: DeoptSafepoint,
+    },
     #[deku(id = "255")]
     Unimplemented {
         tyidx: TyIdx,
@@ -1040,6 +1046,7 @@ impl Inst {
             }
             Self::Nop => None,
             Self::FCmp { tyidx, .. } => Some(m.type_(*tyidx)),
+            Self::Promote { tyidx, .. } => Some(m.type_(*tyidx)),
         }
     }
 
@@ -1326,6 +1333,14 @@ impl fmt::Display for DisplayableInst<'_> {
             Inst::Nop => write!(f, "nop"),
             Inst::FCmp { lhs, pred, rhs, .. } => {
                 write!(f, "{pred} {}, {}", lhs.display(self.m), rhs.display(self.m))
+            }
+            Inst::Promote { val, safepoint, .. } => {
+                write!(
+                    f,
+                    "promote {} {}",
+                    val.display(self.m),
+                    safepoint.display(self.m)
+                )
             }
         }
     }
@@ -1683,33 +1698,6 @@ pub(crate) struct StructTy {
 }
 
 impl StructTy {
-    /// Returns the type index of the specified field index.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the index is out of bounds.
-    pub(crate) fn field_tyidx(&self, idx: usize) -> TyIdx {
-        self.field_tyidxs[idx]
-    }
-
-    /// Returns the byte offset of the specified field index.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the field is not byte-aligned or the index is out of bounds.
-    pub(crate) fn field_byte_off(&self, idx: usize) -> usize {
-        let bit_off = self.field_bit_offs[idx];
-        if bit_off % 8 != 0 {
-            todo!();
-        }
-        bit_off / 8
-    }
-
-    /// Returns the number of fields in the struct.
-    pub(crate) fn num_fields(&self) -> usize {
-        self.field_tyidxs.len()
-    }
-
     pub(crate) fn display<'a>(&'a self, m: &'a Module) -> DisplayableStructTy<'a> {
         DisplayableStructTy {
             struct_type: self,
