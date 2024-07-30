@@ -4,8 +4,11 @@
 
 use super::aot_ir::{self, BBlockId, BinOp, FuncIdx, Module};
 use super::codegen::reg_alloc::{Register, VarLocation};
-use super::jit_ir::{self, Const};
 use super::YkSideTraceInfo;
+use super::{
+    jit_ir::{self, Const},
+    AOT_MOD,
+};
 use crate::aotsmp::AOT_STACKMAPS;
 use crate::compile::CompilationError;
 use crate::trace::{AOTTraceIterator, AOTTraceIteratorError, TraceAction};
@@ -763,6 +766,9 @@ impl TraceBuilder {
     ) -> Result<(), CompilationError> {
         // Ignore special functions that we neither want to inline nor copy.
         if inst.is_debug_call(self.aot_mod) {
+            return Ok(());
+        }
+        if AOT_MOD.func(*callee).name() == "yk_trace_basicblock" {
             return Ok(());
         }
 
