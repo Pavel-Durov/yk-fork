@@ -2,7 +2,33 @@
 
 set -eu
 
-TRACERS="hwt swt"
+# FIXME: Reenable swt once jitc_llvm is fully removed.
+TRACERS="hwt"
+
+# Build yklua and run the test suite.
+#
+# Before calling this:
+#  - `yk-config` must be in PATH.
+#  - YK_BUILD_TYPE must be set.
+test_yklua() {
+    if [ ! -e "yklua" ]; then
+        git clone https://github.com/ykjit/yklua
+    fi
+    cd yklua
+    make clean
+    make -j $(nproc)
+    cd tests
+    YKD_SERIALISE_COMPILATION=1 ../src/lua -e"_U=true" all.lua
+    ../src/lua -e"_U=true" all.lua
+    cd ../..
+}
+
+# Check that the ykllvm commit in the submodule is from the main branch.
+# Due to the way github works, this may not be the case!
+cd ykllvm
+git log --pretty=format:%H -n 100 --no-show-signature origin/main | \
+    grep $(git rev-parse HEAD)
+cd ..
 
 # Install rustup.
 CARGO_HOME="$(pwd)/.cargo"
@@ -84,7 +110,7 @@ cargo install cargo-diff-tools
 if [ "$CI_RUNNER" = buildbot ] ; then
     # When running under buildbot, we need to `git fetch` data from the remote if we want
     # cargo-clippy-def to work later.
-    git fetch origin master:refs/remotes/origin/master
+    git fetch --no-recurse-submodules origin master:refs/remotes/origin/master
 fi
 for tracer in ${TRACERS}; do
     export YKB_TRACER="${tracer}"
@@ -115,15 +141,17 @@ export YKB_TRACER=hwt
 echo "===> Running hwt tests"
 for _ in $(seq 10); do
     RUST_TEST_SHUFFLE=1 cargo test
-    YKD_NEW_CODEGEN=1 RUST_TEST_SHUFFLE=1 cargo test
 done
+
+# test yklua/hwt in debug mode.
+PATH=$(pwd)/bin:${PATH} YK_BUILD_TYPE=debug YKB_TRACER=hwt test_yklua
+
 for tracer in ${TRACERS}; do
     if [ "$tracer" = "hwt" ]; then
         continue
     fi
     echo "===> Running ${tracer} tests"
     RUST_TEST_SHUFFLE=1 cargo test
-    YKD_NEW_CODEGEN=1 RUST_TEST_SHUFFLE=1 cargo test
 done
 
 # Test with LLVM sanitisers
@@ -182,7 +210,11 @@ for tracer in $TRACERS; do
     export YKB_TRACER="${tracer}"
     echo "===> Running ${tracer} tests"
     RUST_TEST_SHUFFLE=1 cargo test --release
-    YKD_NEW_CODEGEN=1 RUST_TEST_SHUFFLE=1 cargo test --release
+
+    # test yklua/hwt in release mode.
+    if [ "${tracer}" = "hwt" ]; then
+        PATH=$(pwd)/bin:${PATH} YK_BUILD_TYPE=release YKB_TRACER=hwt test_yklua
+    fi
 done
 
 # We want to check that the benchmarks build and run correctly, but want to

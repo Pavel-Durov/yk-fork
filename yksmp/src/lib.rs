@@ -2,7 +2,7 @@
 //! others we will need to either make this parser more dynamic or create a new one for each
 //! architecture.
 #[cfg(not(target_arch = "x86_64"))]
-compile_error!("The stackmap parser currently only supports x86_64.");
+compile_error!("The stackmap parser currently only supports x64.");
 
 use std::collections::HashMap;
 use std::error;
@@ -31,7 +31,7 @@ impl Record {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Location {
     Register(u16, u16, i32, u16),
     Direct(u16, i32, u16),

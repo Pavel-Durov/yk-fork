@@ -1,5 +1,20 @@
 # Debugging
 
+## Trace optimisation
+
+Trace optimisation can make it difficult to understand why a yk interpreter has
+behaved in the way it does. It is worth trying to run your code with the
+optimiser turned off/down. You can do this with the `YKD_OPT` environment
+variable, which takes the following values:
+
+  * 1, 2, 3: increasing levels of optimisation. [Currently these all have the
+    same effect, but in the future this might change.]
+  * 0: turn the optimiser off.
+
+**NOTE**: Currently the trace optimiser is not enabled by default. This will
+change in the near future.
+
+
 ## Debugging JITted code
 
 Often you will find the need to inspect JITted code with a debugger. If the
@@ -40,3 +55,28 @@ bin/gdb_c_test --help
 
 For help on using GDB, see the [GDB
 documentation](https://sourceware.org/gdb/documentation/).
+
+### GDB plugin
+
+Yk comes with a GDB plugin that allows the debugger to show higher-level
+information in the source view window.
+
+The plugin is built by default and put in `target/yk_gdb_plugin.so`.
+
+To use it, put this line in `~/.gdbinit`:
+```
+jit-reader-load /path/to/yk/target/yk_gdb_plugin.so
+```
+
+Then when you run GDB, you should see:
+```
+Yk JIT support loaded.
+```
+
+When you are inside JITted code, the source view will show higher-level
+debugging information. You can show the assembler and source views on one GDB
+screen using the "split" layout. Type:
+
+```
+la spl
+```

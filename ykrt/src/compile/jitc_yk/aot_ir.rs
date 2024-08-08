@@ -1,42 +1,42 @@
-//! Yk's AOT IR deserialiser.
+//! The AOT Intermediate Representation (IR).
 //!
-//! This module contains the data structures for the AOT IR and a parser to read it from its
-//! serialised format.
+//! This is the IR created by ykllvm: this module contains both the IR itself and a deserialiser
+//! from ykllvm's output into the IR itself. The IR can feel a little odd at first because we store
+//! indexes into vectors rather than use direct references.
 //!
-//! The AOT IR accurately reflects the structure and semantics of the AOT binary. As such, it must
-//! not be mutated after the fact.
+//! The IR uses two general terminological conventions:
+//!   * A "definition" is something for which the IR contains complete knowledge.
+//!   * A "declaration" is something compiled externally for which we only know the minimal
+//!     external structure (e.g. a function signature), with the body being present elsewhere in
+//!     the binary.
 //!
-//! The IR is index-centric, meaning that when one data structure refers to another, it is by a
-//! numeric index into a backing vector (and not via a Rust reference). We chose to do it like this
-//! because a) references can't easily be serialised and deserialised; and b) we didn't want to do
-//! another pass over the IR to convert to another version of the data structures that uses
-//! references.
+//! Because using the IR can often involve getting hold of data nested several layers deep, we also
+//! use a number of abbreviations/conventions to keep the length of source down to something
+//! manageable (in alphabetical order):
 //!
-//! Each kind of index has a distinct Rust type so that it cannot be accidentally used in place of
-//! an unrelated index. This is enforced by `TiVec`.
+//!  * `Const` and `const_`: a "constant"
+//!  * `decl`: a "declaration" (e.g. a "function declaration" is a reference to an existing
+//!    function somewhere else in the address space)
+//!  * `m`: the name conventionally given to the shared [Module] instance (i.e. `m: Module`)
+//!  * `Idx`: "index"
+//!  * `Inst`: "instruction"
+//!  * `Ty`: "type"
 //!
-//! At a high level, the AOT IR contains:
-//!  - Functions (which contain basic blocks, which contain individual instructions).
-//!  - Global variable declarations.
-//!  - Function definitions/declarations.
-//!  - Constant values.
-//!  - Types, for use by all of the above.
-//!
-//! Throughout we use the term "definition" to mean something for which we have total IR knowledge
-//! of, whereas a "declaration" is something compiled externally that we typically only know the
-//! symbol name, address and type of.
-//!
-//! Elements of the IR can be converted to human-readable forms by calling `to_string()` on them.
-//! This is used for testing, but can also be used for debugging.
+//! Textual IR can be generated in the same way as in the JIT IR (i.e. using `std::fmt::Display`
+//! and/or `display()`). The same naming conventions are used in the textual AOT IR as in the
+//! textual JIT IR. See the docstring for the [super::jit_ir] module.
 
 use byteorder::{NativeEndian, ReadBytesExt};
 use deku::prelude::*;
 use std::{
+    collections::HashMap,
     error::Error,
     ffi::CString,
     fmt::{self, Display},
     fs,
-    path::PathBuf,
+    io::{BufRead, BufReader, Seek, SeekFrom},
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
 use typed_index_collections::TiVec;
 
@@ -49,9 +49,240 @@ const FORMAT_VERSION: u32 = 0;
 const CONTROL_POINT_NAME: &str = "__ykrt_control_point";
 const LLVM_DEBUG_CALL_NAME: &str = "llvm.dbg.value";
 
-/// The argument index of the trace inputs (live variables) struct at call-sites to the control
-/// point call.
-const CTRL_POINT_ARGIDX_INPUTS: usize = 2;
+/// A struct identifying a line in a source file.
+#[derive(Debug)]
+#[deku_derive(DekuRead)]
+struct LineInfoLoc {
+    /// The path to the containing source file.
+    ///
+    /// The file existed at AOT compile time and there is no guarantee that it still exists now.
+    pathidx: PathIdx,
+    /// The line number in the source file.
+    line_num: usize,
+}
+
+/// A "raw" line info record as initially seen by the deserialiser.
+#[derive(Debug)]
+#[deku_derive(DekuRead)]
+struct RawLineInfoRec {
+    /// The instruction record is for.
+    inst_id: InstID,
+    /// The location in the source file.
+    line: LineInfoLoc,
+}
+
+/// An AOT IR module.
+///
+/// This is the top-level container for the AOT IR.
+///
+/// A module is platform dependent, as type sizes and alignment are baked-in.
+#[deku_derive(DekuRead)]
+#[derive(Debug, Default)]
+pub(crate) struct Module {
+    #[deku(assert = "*magic == MAGIC", temp)]
+    magic: u32,
+    #[deku(assert = "*version == FORMAT_VERSION")]
+    version: u32,
+    /// The bit-size of what LLVM calls "the pointer indexing type", for address space zero.
+    ///
+    /// This is the signed integer LLVM uses for computing GEP offsets in the default pointer
+    /// address space. This is needed because in certain cases we are required to sign-extend or
+    /// truncate to this width.
+    ptr_off_bitsize: u8,
+    #[deku(temp)]
+    num_funcs: usize,
+    #[deku(count = "num_funcs", map = "map_to_tivec")]
+    funcs: TiVec<FuncIdx, Func>,
+    #[deku(temp)]
+    num_consts: usize,
+    #[deku(count = "num_consts", map = "map_to_tivec")]
+    consts: TiVec<ConstIdx, Const>,
+    #[deku(temp)]
+    num_global_decls: usize,
+    #[deku(count = "num_global_decls", map = "map_to_tivec")]
+    global_decls: TiVec<GlobalDeclIdx, GlobalDecl>,
+    #[deku(temp)]
+    num_types: usize,
+    #[deku(count = "num_types", map = "map_to_tivec")]
+    types: TiVec<TyIdx, Ty>,
+    #[deku(temp)]
+    num_paths: usize,
+    #[deku(count = "num_paths", map = "map_to_tivec_of_pathbuf")]
+    paths: TiVec<PathIdx, PathBuf>,
+    #[deku(temp)]
+    num_lineinfos: usize,
+    #[deku(count = "num_lineinfos", map = "map_to_lineinfo")]
+    line_infos: HashMap<InstID, LineInfoLoc>,
+    #[deku(skip)]
+    source_files: Arc<Mutex<HashMap<PathBuf, Option<BufReader<fs::File>>>>>,
+}
+
+impl Module {
+    /// Find a function by its name.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no function exists with that name.
+    pub(crate) fn funcidx(&self, find_func: &str) -> FuncIdx {
+        // OPT: create a cache in the Module.
+        self.funcs
+            .iter()
+            .enumerate()
+            .find(|(_, f)| f.name == find_func)
+            .map(|(f_idx, _)| FuncIdx(f_idx))
+            .unwrap()
+    }
+
+    pub(crate) fn ptr_off_bitsize(&self) -> u8 {
+        self.ptr_off_bitsize
+    }
+
+    /// Return the AOT instruction for the given instruction id.
+    pub(crate) fn inst(&self, instid: &InstID) -> &Inst {
+        let f = self.func(instid.funcidx);
+        let b = f.bblock(instid.bbidx);
+        &b.insts[instid.iidx]
+    }
+
+    /// Return the block uniquely identified (in this module) by the specified [BBlockId].
+    pub(crate) fn bblock(&self, bid: &BBlockId) -> &BBlock {
+        self.funcs[bid.funcidx].bblock(bid.bbidx)
+    }
+
+    pub(crate) fn const_type(&self, c: &Const) -> &Ty {
+        &self.types[c.tyidx()]
+    }
+
+    /// Lookup a constant by its index.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the index is out of bounds.
+    pub(crate) fn const_(&self, ci: ConstIdx) -> &Const {
+        &self.consts[ci]
+    }
+
+    /// Lookup a type by its index.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the index is out of bounds.
+    pub(crate) fn type_(&self, idx: TyIdx) -> &Ty {
+        &self.types[idx]
+    }
+
+    /// Lookup a function by its index.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the index is out of bounds.
+    pub(crate) fn func(&self, idx: FuncIdx) -> &Func {
+        &self.funcs[idx]
+    }
+
+    #[cfg(tracer_swt)]
+    pub(crate) fn funcs(&self) -> &TiVec<FuncIdx, Func> {
+        &self.funcs
+    }
+
+    /// Lookup a global variable declaration by its index.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the index is out of bounds.
+    pub(crate) fn global_decl(&self, idx: GlobalDeclIdx) -> &GlobalDecl {
+        &self.global_decls[idx]
+    }
+
+    /// Return the number of global variable declarations.
+    pub(crate) fn global_decls_len(&self) -> usize {
+        self.global_decls.len()
+    }
+
+    /// Lookup a path by its index.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the index is out of bounds.
+    fn path(&self, pathidx: PathIdx) -> &Path {
+        &self.paths[pathidx]
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn dump(&self) {
+        eprintln!("{}", self);
+    }
+
+    /// If possible, retrieve the source code line described by `path` and `line_num`.
+    ///
+    /// Returns the empty string on failure.
+    fn source_line(&self, path: &Path, line_num: usize) -> String {
+        if let Ok(mut files) = self.source_files.lock() {
+            // Open the source source file if it isn't already open.
+            //
+            // If we fail to open the source file, we just record `None` so that we don't try to
+            // open it again later.
+            //
+            // Not using the entry API here to avoid unnecessary clones of `path`.
+            if !files.contains_key(path) {
+                let val = fs::File::open(path).ok().map(BufReader::new);
+                files.insert(path.to_owned(), val);
+            }
+            // lookup cannot fail due to insertion above.
+            let mut f = files.get_mut(path).unwrap().as_mut();
+            if let Some(ref mut f) = f {
+                if f.seek(SeekFrom::Start(0)).is_ok() {
+                    if let Some(Ok(line)) = f.lines().nth(line_num - 1) {
+                        // success
+                        return line.trim().to_string();
+                    }
+                }
+            }
+        }
+        // failure
+        "".into()
+    }
+}
+
+impl std::fmt::Display for Module {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("# IR format version: {}\n", self.version))?;
+        f.write_fmt(format_args!("# Num funcs: {}\n", self.funcs.len()))?;
+        f.write_fmt(format_args!("# Num consts: {}\n", self.consts.len()))?;
+        f.write_fmt(format_args!(
+            "# Num global decls: {}\n",
+            self.global_decls.len()
+        ))?;
+        f.write_fmt(format_args!("# Num types: {}\n", self.types.len()))?;
+
+        if !self.global_decls.is_empty() {
+            for gd in &self.global_decls {
+                writeln!(f, "{}", gd)?;
+            }
+        }
+
+        for (funcidx, func) in self.funcs.iter_enumerated() {
+            write!(f, "\n{}", func.display(self, Some(funcidx)))?;
+        }
+        Ok(())
+    }
+}
+
+/// Deserialise an AOT module from the slice `data`.
+pub(crate) fn deserialise_module(data: &[u8]) -> Result<Module, Box<dyn Error>> {
+    let ((_, _), modu) = Module::from_bytes((data, 0))?;
+    Ok(modu)
+}
+
+/// Deserialise and print IR from an on-disk file.
+///
+/// Used for support tooling (in turn used by tests too).
+pub fn print_from_file(path: &PathBuf) -> Result<(), Box<dyn Error>> {
+    let data = fs::read(path)?;
+    let ir = deserialise_module(&data)?;
+    println!("{}", ir);
+    Ok(())
+}
 
 // Generate common methods for index types.
 macro_rules! index {
@@ -86,8 +317,8 @@ index!(FuncIdx);
 /// An index into [Module::types].
 #[deku_derive(DekuRead)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct TypeIdx(usize);
-index!(TypeIdx);
+pub(crate) struct TyIdx(usize);
+index!(TyIdx);
 
 /// An index into [Func::bblocks].
 #[deku_derive(DekuRead)]
@@ -95,11 +326,11 @@ index!(TypeIdx);
 pub(crate) struct BBlockIdx(usize);
 index!(BBlockIdx);
 
-/// An index into [BBlock::instrs].
+/// An index into [BBlock::insts].
 #[deku_derive(DekuRead)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub(crate) struct InstrIdx(usize);
-index!(InstrIdx);
+pub(crate) struct InstIdx(usize);
+index!(InstIdx);
 
 /// An index into [Module::consts].
 #[deku_derive(DekuRead)]
@@ -116,7 +347,13 @@ index!(ConstIdx);
 pub(crate) struct GlobalDeclIdx(usize);
 index!(GlobalDeclIdx);
 
-/// An index into [FuncType::arg_ty_idxs].
+/// An index into [Module::paths].
+#[deku_derive(DekuRead)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct PathIdx(usize);
+index!(PathIdx);
+
+/// An index into [FuncTy::arg_tyidxs].
 /// ^ FIXME: no it's not! But it should be!
 #[deku_derive(DekuRead)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -135,11 +372,38 @@ fn map_to_string(v: Vec<u8>) -> Result<String, DekuError> {
     Err(DekuError::Parse("Couldn't map string".to_owned()))
 }
 
+/// Convert the bytes of a null-terminated string into a PathBuf.
+fn map_to_pathbuf(v: Vec<u8>) -> Result<PathBuf, DekuError> {
+    Ok(PathBuf::from(map_to_string(v)?))
+}
+
 /// Helper function for deku `map` attribute. It is necessary to write all the types out in full to
 /// avoid type inference errors, so it's easier to have a single helper function rather than inline
 /// this into each `map` attribute.
 fn map_to_tivec<I, T>(v: Vec<T>) -> Result<TiVec<I, T>, DekuError> {
     Ok(TiVec::from(v))
+}
+
+#[deku_derive(DekuRead)]
+#[derive(Debug)]
+struct RawPath {
+    #[deku(until = "|v: &u8| *v == 0", map = "map_to_pathbuf")]
+    path: PathBuf,
+}
+
+fn map_to_tivec_of_pathbuf(v: Vec<RawPath>) -> Result<TiVec<PathIdx, PathBuf>, DekuError> {
+    let mut paths = TiVec::new();
+    for path in v {
+        paths.push(path.path);
+    }
+    Ok(paths)
+}
+
+/// Maps a flat vector of line-level debug info records into hashmap for easy lookups.
+fn map_to_lineinfo(v: Vec<RawLineInfoRec>) -> Result<HashMap<InstID, LineInfoLoc>, DekuError> {
+    Ok(v.into_iter()
+        .map(|r| (r.inst_id, r.line))
+        .collect::<HashMap<_, _>>())
 }
 
 /// A binary operator.
@@ -169,26 +433,46 @@ pub(crate) enum BinOp {
 
 impl Display for BinOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", format!("{self:?}").to_lowercase())
+        let s = match self {
+            Self::Add => "add",
+            Self::Sub => "sub",
+            Self::Mul => "mul",
+            Self::Or => "or",
+            Self::And => "and",
+            Self::Xor => "xor",
+            Self::Shl => "shl",
+            Self::AShr => "ashr",
+            Self::FAdd => "fadd",
+            Self::FDiv => "fdiv",
+            Self::FMul => "fmul",
+            Self::FRem => "frem",
+            Self::FSub => "fsub",
+            Self::LShr => "lshr",
+            Self::SDiv => "sdiv",
+            Self::SRem => "srem",
+            Self::UDiv => "udiv",
+            Self::URem => "urem",
+        };
+        write!(f, "{}", s)
     }
 }
 
 /// Uniquely identifies an instruction within a [Module].
 #[deku_derive(DekuRead)]
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
-pub(crate) struct InstructionID {
+pub(crate) struct InstID {
     /// The index of the parent function.
-    func_idx: FuncIdx,
-    bb_idx: BBlockIdx,
-    inst_idx: InstrIdx,
+    funcidx: FuncIdx,
+    bbidx: BBlockIdx,
+    iidx: InstIdx,
 }
 
-impl InstructionID {
-    pub(crate) fn new(func_idx: FuncIdx, bb_idx: BBlockIdx, inst_idx: InstrIdx) -> Self {
+impl InstID {
+    pub(crate) fn new(funcidx: FuncIdx, bbidx: BBlockIdx, iidx: InstIdx) -> Self {
         Self {
-            func_idx,
-            bb_idx,
-            inst_idx,
+            funcidx,
+            bbidx,
+            iidx,
         }
     }
 }
@@ -196,25 +480,25 @@ impl InstructionID {
 /// Uniquely identifies a basic block within a [Module].
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct BBlockId {
-    func_idx: FuncIdx,
-    bb_idx: BBlockIdx,
+    funcidx: FuncIdx,
+    bbidx: BBlockIdx,
 }
 
 impl BBlockId {
-    pub(crate) fn new(func_idx: FuncIdx, bb_idx: BBlockIdx) -> Self {
-        Self { func_idx, bb_idx }
+    pub(crate) fn new(funcidx: FuncIdx, bbidx: BBlockIdx) -> Self {
+        Self { funcidx, bbidx }
     }
 
-    pub(crate) fn func_idx(&self) -> FuncIdx {
-        self.func_idx
+    pub(crate) fn funcidx(&self) -> FuncIdx {
+        self.funcidx
     }
 
-    pub(crate) fn bb_idx(&self) -> BBlockIdx {
-        self.bb_idx
+    pub(crate) fn bbidx(&self) -> BBlockIdx {
+        self.bbidx
     }
 
     pub(crate) fn is_entry(&self) -> bool {
-        self.bb_idx == BBlockIdx(0)
+        self.bbidx == BBlockIdx(0)
     }
 }
 
@@ -233,16 +517,104 @@ pub(crate) enum Predicate {
     SignedGreaterEqual,
     SignedLess,
     SignedLessEqual,
-    // FIXME: add floating-point-specific predicates.
 }
 
 impl Display for Predicate {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
+        // Following LLVM's precedent, use short predicate names for formatting.
+        match self {
+            Self::Equal => write!(f, "eq"),
+            Self::NotEqual => write!(f, "ne"),
+            Self::UnsignedGreater => write!(f, "ugt"),
+            Self::UnsignedGreaterEqual => write!(f, "uge"),
+            Self::UnsignedLess => write!(f, "ult"),
+            Self::UnsignedLessEqual => write!(f, "ule"),
+            Self::SignedGreater => write!(f, "sgt"),
+            Self::SignedGreaterEqual => write!(f, "sge"),
+            Self::SignedLess => write!(f, "slt"),
+            Self::SignedLessEqual => write!(f, "sle"),
+        }
     }
 }
 
-/// The operations that a [Instruction::Cast] can perform.
+/// Predicates for use in numeric comparisons.
+#[deku_derive(DekuRead)]
+#[derive(Debug, Eq, PartialEq, Clone, Copy)]
+#[deku(type = "u8")]
+pub(crate) enum FloatPredicate {
+    // FIXME: eventually remove False/True (always false/always true) predicates. LLVM has them,
+    // but we can lower these to constants in our IR.
+    False = 0,
+    OrderedEqual,
+    OrderedGreater,
+    OrderedGreaterEqual,
+    OrderedLess,
+    OrderedLessEqual,
+    OrderedNotEqual,
+    Ordered,
+    Unordered,
+    UnorderedEqual,
+    UnorderedGreater,
+    UnorderedGreaterEqual,
+    UnorderedLess,
+    UnorderedLessEqual,
+    UnorderedNotEqual,
+    True,
+}
+
+impl FloatPredicate {
+    /// Returns whether the operation is ordered (where possible).
+    pub(crate) fn is_ordered(&self) -> Option<bool> {
+        match self {
+            Self::False => None,
+            Self::OrderedEqual => Some(true),
+            Self::OrderedGreater => Some(true),
+            Self::OrderedGreaterEqual => Some(true),
+            Self::OrderedLess => Some(true),
+            Self::OrderedLessEqual => Some(true),
+            Self::OrderedNotEqual => Some(true),
+            Self::Ordered => Some(true),
+            Self::Unordered => Some(false),
+            Self::UnorderedEqual => Some(false),
+            Self::UnorderedGreater => Some(false),
+            Self::UnorderedGreaterEqual => Some(false),
+            Self::UnorderedLess => Some(false),
+            Self::UnorderedLessEqual => Some(false),
+            Self::UnorderedNotEqual => Some(false),
+            Self::True => None,
+        }
+    }
+}
+impl Display for FloatPredicate {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // The `f_` prefix ensures there is no ambiguity with integer predicates.
+        //
+        // For example "ule" could mean "unsigned less or equal" (for integers) or "unordered less
+        // or equal" (for floats). Without prefixing the float version comparison instructions
+        // using those would both stringify as: `%res: ty = ule %op1, %op2`.
+        let s = match self {
+            Self::False => "f_false",
+            Self::OrderedEqual => "f_oeq",
+            Self::OrderedGreater => "f_ogt",
+            Self::OrderedGreaterEqual => "f_oge",
+            Self::OrderedLess => "f_olt",
+            Self::OrderedLessEqual => "f_ole",
+            Self::OrderedNotEqual => "f_one",
+            Self::Ordered => "f_ord",
+            Self::Unordered => "f_uno",
+            Self::UnorderedEqual => "f_ueq",
+            Self::UnorderedGreater => "f_ugt",
+            Self::UnorderedGreaterEqual => "f_uge",
+            Self::UnorderedLess => "f_ult",
+            Self::UnorderedLessEqual => "f_ule",
+            Self::UnorderedNotEqual => "f_une",
+            Self::True => "f_true",
+        };
+        write!(f, "{}", s)
+    }
+}
+
+/// The operations that a [Inst::Cast] can perform.
 ///
 /// FIXME: There are many other operations that we can add here on-demand. See the inheritance
 /// hierarchy here: https://llvm.org/doxygen/classllvm_1_1CastInst.html
@@ -250,30 +622,41 @@ impl Display for Predicate {
 #[derive(Debug, Clone, Copy)]
 #[deku(type = "u8")]
 pub(crate) enum CastKind {
-    SignExtend = 0,
+    SExt = 0,
+    ZeroExtend = 1,
+    Trunc = 2,
+    SIToFP = 3,
+    FPExt = 4,
+    FPToSI = 5,
 }
 
 impl Display for CastKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self:?}")
+        let s = match self {
+            Self::SExt => "sext",
+            Self::ZeroExtend => "zext",
+            Self::Trunc => "trunc",
+            Self::SIToFP => "si_to_fp",
+            Self::FPExt => "fp_ext",
+            Self::FPToSI => "fp_to_si",
+        };
+        write!(f, "{}", s)
     }
 }
 
 #[deku_derive(DekuRead)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Hash)]
 #[deku(type = "u8")]
 pub(crate) enum Operand {
     #[deku(id = "0")]
-    Constant(ConstIdx),
+    Const(ConstIdx),
     // FIXME: rename this to `Local` for consistency with ykllvm's serialiser.
     #[deku(id = "1")]
-    LocalVariable(InstructionID),
+    LocalVariable(InstID),
     #[deku(id = "2")]
     Global(GlobalDeclIdx),
     #[deku(id = "3")]
     Func(FuncIdx),
-    #[deku(id = "4")]
-    Arg { func_idx: FuncIdx, arg_idx: ArgIdx },
 }
 
 impl Operand {
@@ -282,34 +665,32 @@ impl Operand {
     /// Panics for other kinds of operand.
     ///
     /// OPT: This is expensive.
-    pub(crate) fn to_instr<'a>(&self, aotmod: &'a Module) -> &'a Instruction {
+    pub(crate) fn to_inst<'a>(&self, aotmod: &'a Module) -> &'a Inst {
         let Self::LocalVariable(iid) = self else {
             panic!()
         };
-        &aotmod.funcs[iid.func_idx].bblocks[iid.bb_idx].instrs[iid.inst_idx]
+        &aotmod.funcs[iid.funcidx].bblocks[iid.bbidx].insts[iid.iidx]
     }
 
-    /// Returns the [Type] of the operand.
-    pub(crate) fn type_<'a>(&self, m: &'a Module) -> &'a Type {
+    /// Returns the [Ty] of the operand.
+    pub(crate) fn type_<'a>(&self, m: &'a Module) -> &'a Ty {
         match self {
             Self::LocalVariable(_) => {
                 // The `unwrap` can't fail for a `LocalVariable`.
-                self.to_instr(m).def_type(m).unwrap()
+                self.to_inst(m).def_type(m).unwrap()
             }
-            Self::Constant(cidx) => m.type_(m.const_(*cidx).type_idx()),
-            Self::Arg { func_idx, arg_idx } => {
-                let Type::Func(ft) = m.type_(m.func(*func_idx).type_idx) else {
-                    panic!()
-                };
-                m.type_(ft.arg_ty_idxs()[usize::from(*arg_idx)])
+            Self::Const(cidx) => m.type_(m.const_(*cidx).tyidx()),
+            Self::Global(_) => {
+                // As is the case for LLVM IR, globals are always pointer-typed in Yk AOT IR.
+                &Ty::Ptr
             }
-            _ => todo!(),
+            Self::Func(funcidx) => m.type_(m.func(*funcidx).tyidx()),
         }
     }
 
-    /// Return the `InstructionID` of a local variable operand. Panics if called on other kinds of
+    /// Return the `InstID` of a local variable operand. Panics if called on other kinds of
     /// operands.
-    pub(crate) fn to_instr_id(&self) -> InstructionID {
+    pub(crate) fn to_inst_id(&self) -> InstID {
         let Self::LocalVariable(iid) = self else {
             panic!()
         };
@@ -329,20 +710,14 @@ pub(crate) struct DisplayableOperand<'a> {
 impl fmt::Display for DisplayableOperand<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.operand {
-            Operand::Constant(const_idx) => {
-                write!(f, "{}", self.m.consts[*const_idx].display(self.m))
+            Operand::Const(cidx) => {
+                write!(f, "{}", self.m.consts[*cidx].display(self.m))
             }
             Operand::LocalVariable(iid) => {
-                write!(
-                    f,
-                    "${}_{}",
-                    usize::from(iid.bb_idx),
-                    usize::from(iid.inst_idx)
-                )
+                write!(f, "%{}_{}", usize::from(iid.bbidx), usize::from(iid.iidx))
             }
             Operand::Global(gidx) => write!(f, "@{}", self.m.global_decls[*gidx].name()),
             Operand::Func(fidx) => write!(f, "{}", self.m.funcs[*fidx].name()),
-            Operand::Arg { arg_idx, .. } => write!(f, "$arg{}", usize::from(*arg_idx)),
         }
     }
 }
@@ -391,28 +766,40 @@ impl fmt::Display for DisplayableDeoptSafepoint<'_> {
 /// An instruction is conceptually an [Opcode] and a list of [Operand]s. The semantics of the
 /// instruction, and the meaning of the operands, are determined by the opcode.
 ///
-/// Instructions that compute a value define a new local variable in the parent [Func]. In such a
+/// Insts that compute a value define a new local variable in the parent [Func]. In such a
 /// case the newly defined variable can be referenced in the operands of later instructions by the
-/// [InstructionID] of the [Instruction] that defined the variable.
+/// [InstID] of the [Inst] that defined the variable.
 ///
 /// In other words, an instruction and the variable it defines are both identified by the same
-/// [InstructionID].
+/// [InstID].
 ///
 /// The type of the variable defined by an instruction (if any) can be determined by
-/// [Instruction::def_type()].
+/// [Inst::def_type()].
 #[deku_derive(DekuRead)]
-#[derive(Debug, strum_macros::Display)]
+#[derive(Debug)]
 #[repr(u8)]
 #[deku(type = "u8")]
-pub(crate) enum Instruction {
+pub(crate) enum Inst {
     #[deku(id = "0")]
     Nop,
     #[deku(id = "1")]
-    Load { ptr: Operand, type_idx: TypeIdx },
+    Load {
+        ptr: Operand,
+        tyidx: TyIdx,
+        volatile: bool,
+    },
     #[deku(id = "2")]
-    Store { val: Operand, ptr: Operand },
+    Store {
+        val: Operand,
+        tgt: Operand,
+        volatile: bool,
+    },
     #[deku(id = "3")]
-    Alloca { type_idx: TypeIdx, count: usize },
+    Alloca {
+        tyidx: TyIdx,
+        count: usize,
+        align: u64,
+    },
     #[deku(id = "4")]
     Call {
         callee: FuncIdx,
@@ -439,7 +826,7 @@ pub(crate) enum Instruction {
     },
     #[deku(id = "7")]
     ICmp {
-        type_idx: TypeIdx,
+        tyidx: TyIdx,
         lhs: Operand,
         pred: Predicate,
         rhs: Operand,
@@ -469,7 +856,7 @@ pub(crate) enum Instruction {
         //
         // FIXME: the type will always be `ptr`, so this field could be elided if we provide a way
         // for us to find the pointer type index quickly.
-        type_idx: TypeIdx,
+        tyidx: TyIdx,
         /// The pointer to offset from.
         ptr: Operand,
         /// The constant offset (in bytes).
@@ -506,7 +893,7 @@ pub(crate) enum Instruction {
         /// The value to be operated upon.
         val: Operand,
         /// The resulting type of the operation.
-        dest_type_idx: TypeIdx,
+        dest_tyidx: TyIdx,
     },
     #[deku(id = "13")]
     Switch {
@@ -514,6 +901,11 @@ pub(crate) enum Instruction {
         default_dest: BBlockIdx,
         #[deku(temp)]
         num_cases: usize,
+        /// The values for each switch block. FIXME: These are currently cast by ykllvm to a `u64`
+        /// no matter what the original type was: in other words, these should be interpreted as
+        /// bit patterns consuming 64-bits, not integer types of `u64`. Currently ykllvm prevents
+        /// types bigger than 64 bits being serialised, but the original integer type may require
+        /// fewer than 64-bits.
         #[deku(count = "num_cases")]
         case_values: Vec<u64>,
         #[deku(count = "num_cases")]
@@ -531,18 +923,43 @@ pub(crate) enum Instruction {
     },
     #[deku(id = "15")]
     IndirectCall {
-        fty_idx: TypeIdx,
+        ftyidx: TyIdx,
         callop: Operand,
         #[deku(temp)]
         num_args: u32,
         #[deku(count = "num_args")]
         args: Vec<Operand>,
     },
+    #[deku(id = "16")]
+    Select {
+        cond: Operand,
+        trueval: Operand,
+        falseval: Operand,
+    },
+    #[deku(id = "17")]
+    LoadArg { arg_idx: usize, ty_idx: TyIdx },
+    #[deku(id = "18")]
+    FCmp {
+        tyidx: TyIdx,
+        lhs: Operand,
+        pred: FloatPredicate,
+        rhs: Operand,
+    },
+    #[deku(id = "19")]
+    Promote {
+        tyidx: TyIdx,
+        val: Operand,
+        safepoint: DeoptSafepoint,
+    },
     #[deku(id = "255")]
-    Unimplemented(#[deku(until = "|v: &u8| *v == 0", map = "map_to_string")] String),
+    Unimplemented {
+        tyidx: TyIdx,
+        #[deku(until = "|v: &u8| *v == 0", map = "map_to_string")]
+        llvm_inst_str: String,
+    },
 }
 
-impl Instruction {
+impl Inst {
     /// Find the name of a local variable.
     ///
     /// This is used when stringifying the instruction.
@@ -550,10 +967,10 @@ impl Instruction {
     /// FIXME: This is very slow and could be optimised.
     fn local_name(&self, m: &Module) -> String {
         for f in m.funcs.iter() {
-            for (bb_idx, bb) in f.bblocks.iter().enumerate() {
-                for (inst_idx, instr) in bb.instrs.iter().enumerate() {
-                    if std::ptr::addr_eq(instr, self) {
-                        return format!("${}_{}", bb_idx, inst_idx);
+            for (bbidx, bb) in f.bblocks.iter().enumerate() {
+                for (iidx, inst) in bb.insts.iter().enumerate() {
+                    if std::ptr::addr_eq(inst, self) {
+                        return format!("%{}_{}", bbidx, iidx);
                     }
                 }
             }
@@ -561,18 +978,18 @@ impl Instruction {
         panic!(); // malformed IR.
     }
 
-    /// Returns the [Type] of the local variable defined by this instruction or `None` if this
+    /// Returns the [Ty] of the local variable defined by this instruction or `None` if this
     /// instruction does not define a new local variable.
-    pub(crate) fn def_type<'a>(&self, m: &'a Module) -> Option<&'a Type> {
+    pub(crate) fn def_type<'a>(&self, m: &'a Module) -> Option<&'a Ty> {
         match self {
-            Self::Alloca { .. } => Some(&Type::Ptr),
+            Self::Alloca { .. } => Some(&Ty::Ptr),
             Self::BinaryOp { lhs, .. } => Some(lhs.type_(m)),
             Self::Br { .. } => None,
             Self::Call { callee, .. } => {
                 // The type of the newly-defined local is the return type of the callee.
-                if let Type::Func(ft) = m.type_(m.func(*callee).type_idx) {
+                if let Ty::Func(ft) = m.type_(m.func(*callee).tyidx) {
                     let ty = m.type_(ft.ret_ty);
-                    if ty != &Type::Void {
+                    if ty != &Ty::Void {
                         Some(ty)
                     } else {
                         None
@@ -583,26 +1000,26 @@ impl Instruction {
             }
             Self::CondBr { .. } => None,
             Self::InsertValue { agg, .. } => Some(agg.type_(m)),
-            Self::ICmp { type_idx, .. } => Some(m.type_(*type_idx)),
-            Self::Load { type_idx, .. } => Some(m.type_(*type_idx)),
-            Self::PtrAdd { type_idx, .. } => Some(m.type_(*type_idx)),
+            Self::ICmp { tyidx, .. } => Some(m.type_(*tyidx)),
+            Self::Load { tyidx, .. } => Some(m.type_(*tyidx)),
+            Self::PtrAdd { tyidx, .. } => Some(m.type_(*tyidx)),
             Self::Ret { .. } => {
                 // Subtle: although `Ret` might make a value, that's not a local value in the
                 // parent function.
                 None
             }
             Self::Store { .. } => None,
-            Self::Cast { dest_type_idx, .. } => Some(m.type_(*dest_type_idx)),
+            Self::Cast { dest_tyidx, .. } => Some(m.type_(*dest_tyidx)),
             Self::Switch { .. } => None,
             Self::Phi { incoming_vals, .. } => {
                 // Indexing cannot crash: correct PHI nodes have at least one incoming value.
                 Some(incoming_vals[0].type_(m))
             }
-            Self::IndirectCall { fty_idx, .. } => {
+            Self::IndirectCall { ftyidx, .. } => {
                 // The type of the newly-defined local is the return type of the callee.
-                if let Type::Func(ft) = m.type_(*fty_idx) {
+                if let Ty::Func(ft) = m.type_(*ftyidx) {
                     let ty = m.type_(ft.ret_ty);
-                    if ty != &Type::Void {
+                    if ty != &Ty::Void {
                         Some(ty)
                     } else {
                         None
@@ -611,37 +1028,40 @@ impl Instruction {
                     panic!(); // IR malformed.
                 }
             }
-            Self::Unimplemented(_) => None,
-            Self::Nop => None,
-        }
-    }
-
-    pub(crate) fn is_mappable_call(&self, aot_mod: &Module) -> bool {
-        match self {
-            Self::Call { callee, .. } => !aot_mod.func(*callee).is_declaration(),
-            _ => false,
-        }
-    }
-
-    /// If `self` is a call to the control point, then return the live variables struct argument
-    /// being passed to it. Otherwise return None.
-    pub(crate) fn control_point_call_trace_inputs(&self, aot_mod: &Module) -> Option<&Operand> {
-        match self {
-            Self::Call { callee, args, .. } => {
-                if aot_mod.func(*callee).name == CONTROL_POINT_NAME {
-                    let arg = &args[CTRL_POINT_ARGIDX_INPUTS];
-                    // It should be a pointer (to a struct, but we can't check that).
-                    debug_assert!(matches!(arg.type_(aot_mod), &Type::Ptr));
-                    Some(arg)
+            Self::Select {
+                cond: _, trueval, ..
+            } => Some(trueval.type_(m)),
+            Self::LoadArg { arg_idx: _, ty_idx } => Some(m.type_(*ty_idx)),
+            Self::Unimplemented { tyidx, .. } => {
+                let ty = m.type_(*tyidx);
+                if ty != &Ty::Void {
+                    Some(ty)
                 } else {
                     None
                 }
             }
-            _ => None,
+            Self::Nop => None,
+            Self::FCmp { tyidx, .. } => Some(m.type_(*tyidx)),
+            Self::Promote { tyidx, .. } => Some(m.type_(*tyidx)),
         }
     }
 
-    pub(crate) fn safepoint(&self) -> Option<&DeoptSafepoint> {
+    pub(crate) fn is_mappable_call(&self, m: &Module) -> bool {
+        match self {
+            Self::Call { callee, .. } => !m.func(*callee).is_declaration(),
+            _ => false,
+        }
+    }
+
+    /// Returns whether `self` is a call to the control point.
+    pub(crate) fn is_control_point(&self, m: &Module) -> bool {
+        match self {
+            Self::Call { callee, .. } => m.func(*callee).name == CONTROL_POINT_NAME,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn safepoint(&'static self) -> Option<&'static DeoptSafepoint> {
         match self {
             Self::Call { safepoint, .. } => safepoint.as_ref(),
             Self::CondBr { ref safepoint, .. } => Some(safepoint),
@@ -649,34 +1069,55 @@ impl Instruction {
         }
     }
 
-    pub(crate) fn is_debug_call(&self, aot_mod: &Module) -> bool {
+    pub(crate) fn is_debug_call(&self, m: &Module) -> bool {
         match self {
-            Self::Call { callee, .. } => aot_mod.func(*callee).name == LLVM_DEBUG_CALL_NAME,
+            Self::Call { callee, .. } => m.func(*callee).name == LLVM_DEBUG_CALL_NAME,
             _ => false,
         }
     }
 
-    /// Determine if two instructions in the (immutable) AOT IR are the same based on pointer
-    /// identity.
-    pub(crate) fn ptr_eq(&self, other: &Self) -> bool {
-        std::ptr::eq(self, other)
-    }
-
-    pub(crate) fn display<'a>(&'a self, m: &'a Module) -> DisplayableInstruction<'a> {
-        DisplayableInstruction {
+    pub(crate) fn display<'a>(
+        &'a self,
+        m: &'a Module,
+        instid: Option<InstID>,
+    ) -> DisplayableInst<'a> {
+        DisplayableInst {
             instruction: self,
+            instid,
             m,
         }
     }
 }
 
-pub(crate) struct DisplayableInstruction<'a> {
-    instruction: &'a Instruction,
+pub(crate) struct DisplayableInst<'a> {
+    instruction: &'a Inst,
+    /// The ID of the instruction.
+    ///
+    /// Required to find line-level debugging info for the instruction.
+    instid: Option<InstID>,
     m: &'a Module,
 }
 
-impl fmt::Display for DisplayableInstruction<'_> {
+impl fmt::Display for DisplayableInst<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // If we have source-level line info for the instruction, print a comment line containing
+        // the source line.
+        if let Some(instid) = &self.instid {
+            if let Some(li) = self.m.line_infos.get(instid) {
+                let path = self.m.path(li.pathidx);
+                // Absolute path: unwrap cannot fail.
+                let basename = path.file_name().unwrap();
+                // We assume the filename is expressible in UTF-8.
+                let src = self.m.source_line(path, li.line_num);
+                write!(
+                    f,
+                    "# {}:{}: {}\n    ",
+                    basename.to_str().unwrap(),
+                    li.line_num,
+                    src
+                )?;
+            }
+        }
         if let Some(t) = self.instruction.def_type(self.m) {
             // If the instruction defines a local, we will format the instruction like it's an
             // assignment. Here we print the left-hand side.
@@ -689,22 +1130,27 @@ impl fmt::Display for DisplayableInstruction<'_> {
         }
 
         match self.instruction {
-            Instruction::Alloca { type_idx, count } => write!(
+            Inst::Alloca {
+                tyidx,
+                count,
+                align,
+            } => write!(
                 f,
-                "alloca {}, {}",
-                self.m.type_(*type_idx).display(self.m),
-                count
+                "alloca {}, {}, {}",
+                self.m.type_(*tyidx).display(self.m),
+                count,
+                align
             ),
-            Instruction::BinaryOp { lhs, binop, rhs } => {
+            Inst::BinaryOp { lhs, binop, rhs } => {
                 write!(
                     f,
-                    "{}, {binop}, {}",
+                    "{binop} {}, {}",
                     lhs.display(self.m),
                     rhs.display(self.m)
                 )
             }
-            Instruction::Br { succ } => write!(f, "br bb{}", usize::from(*succ)),
-            Instruction::Call {
+            Inst::Br { succ } => write!(f, "br bb{}", usize::from(*succ)),
+            Inst::Call {
                 callee,
                 args,
                 safepoint,
@@ -725,7 +1171,7 @@ impl fmt::Display for DisplayableInstruction<'_> {
                     safepoint_s
                 )
             }
-            Instruction::CondBr {
+            Inst::CondBr {
                 cond,
                 true_bb,
                 false_bb,
@@ -738,14 +1184,18 @@ impl fmt::Display for DisplayableInstruction<'_> {
                 usize::from(*false_bb),
                 safepoint.display(self.m)
             ),
-            Instruction::ICmp { lhs, pred, rhs, .. } => write!(
-                f,
-                "icmp {}, {pred}, {}",
-                lhs.display(self.m),
-                rhs.display(self.m)
-            ),
-            Instruction::Load { ptr, .. } => write!(f, "load {}", ptr.display(self.m)),
-            Instruction::PtrAdd {
+            Inst::ICmp { lhs, pred, rhs, .. } => {
+                write!(f, "{pred} {}, {}", lhs.display(self.m), rhs.display(self.m))
+            }
+            Inst::Load {
+                ptr,
+                tyidx: _,
+                volatile,
+            } => {
+                let vol = if *volatile { ", volatile" } else { "" };
+                write!(f, "load {}{}", ptr.display(self.m), vol)
+            }
+            Inst::PtrAdd {
                 ptr,
                 const_off,
                 dyn_elem_counts,
@@ -753,7 +1203,7 @@ impl fmt::Display for DisplayableInstruction<'_> {
                 ..
             } => {
                 if dyn_elem_counts.is_empty() {
-                    write!(f, "PtrAdd {}, {}", ptr.display(self.m), const_off)
+                    write!(f, "ptr_add {}, {}", ptr.display(self.m), const_off)
                 } else {
                     let dyns = dyn_elem_counts
                         .iter()
@@ -762,37 +1212,44 @@ impl fmt::Display for DisplayableInstruction<'_> {
                         .collect::<Vec<_>>();
                     write!(
                         f,
-                        "PtrAdd {}, {} + {}",
+                        "ptr_add {}, {} + {}",
                         ptr.display(self.m),
                         const_off,
                         dyns.join(" + ")
                     )
                 }
             }
-            Instruction::Ret { val } => match val {
+            Inst::Ret { val } => match val {
                 None => write!(f, "ret"),
                 Some(v) => write!(f, "ret {}", v.display(self.m)),
             },
-            Instruction::Store { ptr, val } => {
-                write!(f, "store {}, {}", val.display(self.m), ptr.display(self.m))
+            Inst::Store { tgt, val, volatile } => {
+                let vol = if *volatile { ", volatile" } else { "" };
+                write!(
+                    f,
+                    "*{} = {}{}",
+                    tgt.display(self.m),
+                    val.display(self.m),
+                    vol
+                )
             }
-            Instruction::InsertValue { agg, elem } => write!(
+            Inst::InsertValue { agg, elem } => write!(
                 f,
-                "insertvalue {}, {}",
+                "insert_val {}, {}",
                 agg.display(self.m),
                 elem.display(self.m)
             ),
-            Instruction::Cast {
+            Inst::Cast {
                 cast_kind,
                 val,
-                dest_type_idx,
+                dest_tyidx,
             } => write!(
                 f,
                 "{cast_kind} {}, {}",
                 val.display(self.m),
-                self.m.types[*dest_type_idx].display(self.m)
+                self.m.types[*dest_tyidx].display(self.m)
             ),
-            Instruction::Switch {
+            Inst::Switch {
                 test_val,
                 default_dest,
                 case_values,
@@ -813,7 +1270,7 @@ impl fmt::Display for DisplayableInstruction<'_> {
                     safepoint.display(self.m)
                 )
             }
-            Instruction::Phi {
+            Inst::Phi {
                 incoming_vals,
                 incoming_bbs,
             } => {
@@ -824,8 +1281,8 @@ impl fmt::Display for DisplayableInstruction<'_> {
                     .collect::<Vec<_>>();
                 write!(f, "phi {}", args.join(", "))
             }
-            Instruction::IndirectCall {
-                fty_idx: _,
+            Inst::IndirectCall {
+                ftyidx: _,
                 callop,
                 args,
             } => {
@@ -834,44 +1291,87 @@ impl fmt::Display for DisplayableInstruction<'_> {
                     .map(|a| a.display(self.m).to_string())
                     .collect::<Vec<_>>()
                     .join(", ");
-                write!(f, "call {}({})", callop.display(self.m), args_s)
+                write!(f, "icall {}({})", callop.display(self.m), args_s)
             }
-            Instruction::Unimplemented(s) => write!(f, "unimplemented <<{}>>", s),
-            Instruction::Nop => write!(f, "nop"),
+            Inst::Select {
+                cond,
+                trueval,
+                falseval,
+            } => {
+                write!(
+                    f,
+                    "select {}, {}, {}",
+                    cond.display(self.m),
+                    trueval.display(self.m),
+                    falseval.display(self.m)
+                )
+            }
+            Inst::LoadArg { arg_idx, ty_idx: _ } => write!(f, "arg({})", arg_idx,),
+            Inst::Unimplemented { llvm_inst_str, .. } => {
+                write!(f, "unimplemented <<{}>>", llvm_inst_str)
+            }
+            Inst::Nop => write!(f, "nop"),
+            Inst::FCmp { lhs, pred, rhs, .. } => {
+                write!(f, "{pred} {}, {}", lhs.display(self.m), rhs.display(self.m))
+            }
+            Inst::Promote { val, safepoint, .. } => {
+                write!(
+                    f,
+                    "promote {} {}",
+                    val.display(self.m),
+                    safepoint.display(self.m)
+                )
+            }
         }
     }
 }
 
-/// A basic block containing IR [Instruction]s.
+/// A basic block containing IR [Inst]s.
 #[deku_derive(DekuRead)]
 #[derive(Debug)]
 pub(crate) struct BBlock {
     #[deku(temp)]
-    num_instrs: usize,
-    #[deku(count = "num_instrs", map = "map_to_tivec")]
-    pub(crate) instrs: TiVec<InstrIdx, Instruction>,
+    num_insts: usize,
+    #[deku(count = "num_insts", map = "map_to_tivec")]
+    pub(crate) insts: TiVec<InstIdx, Inst>,
 }
 
 impl BBlock {
     // Returns true if this block is terminated by a return, false otherwise.
     pub fn is_return(&self) -> bool {
-        matches!(self.instrs.last().unwrap(), Instruction::Ret { .. })
+        matches!(self.insts.last().unwrap(), Inst::Ret { .. })
     }
 
-    pub(crate) fn display<'a>(&'a self, m: &'a Module) -> DisplayableBBlock<'a> {
-        DisplayableBBlock { bblock: self, m }
+    pub(crate) fn display<'a>(
+        &'a self,
+        m: &'a Module,
+        bbid: Option<BBlockId>,
+    ) -> DisplayableBBlock<'a> {
+        DisplayableBBlock {
+            bblock: self,
+            m,
+            bbid,
+        }
     }
 }
 
 pub(crate) struct DisplayableBBlock<'a> {
     bblock: &'a BBlock,
+    /// The ID of the basic block.
+    ///
+    /// Required to find line-level debugging info for the instructions in the block.
+    bbid: Option<BBlockId>,
     m: &'a Module,
 }
 
 impl fmt::Display for DisplayableBBlock<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for x in &self.bblock.instrs {
-            writeln!(f, "    {}", x.display(self.m))?;
+        for (instidx, inst) in self.bblock.insts.iter_enumerated() {
+            let instid = self
+                .bbid
+                .as_ref()
+                .map(|bbid| InstID::new(bbid.funcidx, bbid.bbidx, instidx));
+            writeln!(f, "    {}", inst.display(self.m, instid))?;
         }
         Ok(())
     }
@@ -893,7 +1393,7 @@ impl fmt::Display for DisplayableBBlock<'_> {
 pub(crate) struct Func {
     #[deku(until = "|v: &u8| *v == 0", map = "map_to_string")]
     name: String,
-    type_idx: TypeIdx,
+    tyidx: TyIdx,
     outline: bool,
     #[deku(temp)]
     num_bblocks: usize,
@@ -915,8 +1415,8 @@ impl Func {
     /// # Panics
     ///
     /// Panics if the index is out of range.
-    pub(crate) fn bblock(&self, bb_idx: BBlockIdx) -> &BBlock {
-        &self.bblocks[bb_idx]
+    pub(crate) fn bblock(&self, bbidx: BBlockIdx) -> &BBlock {
+        &self.bblocks[bbidx]
     }
 
     /// Return the name of the function.
@@ -925,32 +1425,44 @@ impl Func {
     }
 
     /// Return the type index of the function.
-    pub(crate) fn type_idx(&self) -> TypeIdx {
-        self.type_idx
+    pub(crate) fn tyidx(&self) -> TyIdx {
+        self.tyidx
     }
 
-    pub(crate) fn display<'a>(&'a self, m: &'a Module) -> DisplayableFunc<'a> {
-        DisplayableFunc { func_: self, m }
+    pub(crate) fn display<'a>(
+        &'a self,
+        m: &'a Module,
+        funcidx: Option<FuncIdx>,
+    ) -> DisplayableFunc<'a> {
+        DisplayableFunc {
+            func_: self,
+            m,
+            funcidx,
+        }
     }
 }
 
 pub(crate) struct DisplayableFunc<'a> {
     func_: &'a Func,
+    /// The index of the function in the module.
+    ///
+    /// Required to locate line-level debugging info for the instructions in the function.
+    funcidx: Option<FuncIdx>,
     m: &'a Module,
 }
 
 impl fmt::Display for DisplayableFunc<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ty = &self.m.types[self.func_.type_idx];
-        if let Type::Func(fty) = ty {
+        let ty = &self.m.types[self.func_.tyidx];
+        if let Ty::Func(fty) = ty {
             write!(
                 f,
                 "func {}({}",
                 self.func_.name,
-                fty.arg_ty_idxs
+                fty.arg_tyidxs
                     .iter()
                     .enumerate()
-                    .map(|(i, t)| format!("$arg{}: {}", i, self.m.types[*t].display(self.m)))
+                    .map(|(i, t)| format!("%arg{}: {}", i, self.m.types[*t].display(self.m)))
                     .collect::<Vec<_>>()
                     .join(", ")
             )?;
@@ -959,7 +1471,7 @@ impl fmt::Display for DisplayableFunc<'_> {
             }
             write!(f, ")")?;
             let ret_ty = &self.m.types[fty.ret_ty];
-            if ret_ty != &Type::Void {
+            if ret_ty != &Ty::Void {
                 write!(f, " -> {}", ret_ty.display(self.m))?;
             }
             if self.func_.is_declaration() {
@@ -967,8 +1479,14 @@ impl fmt::Display for DisplayableFunc<'_> {
                 writeln!(f, ";")
             } else {
                 writeln!(f, " {{")?;
-                for (i, b) in self.func_.bblocks.iter().enumerate() {
-                    write!(f, "  bb{}:\n{}", i, b.display(self.m))?;
+                for (bbidx, b) in self.func_.bblocks.iter_enumerated() {
+                    let bbid = self.funcidx.map(|funcidx| BBlockId::new(funcidx, bbidx));
+                    write!(
+                        f,
+                        "  bb{}:\n{}",
+                        usize::from(bbidx),
+                        b.display(self.m, bbid)
+                    )?;
                 }
                 writeln!(f, "}}")
             }
@@ -1011,11 +1529,11 @@ pub(crate) fn const_int_bytes_to_string(num_bits: u32, bytes: &[u8]) -> String {
 ///      upon the integer.
 #[deku_derive(DekuRead)]
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct IntegerType {
-    num_bits: u32,
+pub(crate) struct IntegerTy {
+    pub(crate) num_bits: u32,
 }
 
-impl IntegerType {
+impl IntegerTy {
     /// Create a new integer type with the specified number of bits.
     #[cfg(test)]
     pub(crate) fn new(num_bits: u32) -> Self {
@@ -1044,12 +1562,12 @@ impl IntegerType {
     }
 
     /// Format a constant integer value that is of the type described by `self`.
-    fn const_to_string(&self, c: &Constant) -> String {
+    fn const_to_string(&self, c: &ConstVal) -> String {
         const_int_bytes_to_string(self.num_bits, c.bytes())
     }
 }
 
-impl Display for IntegerType {
+impl Display for IntegerTy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "i{}", self.num_bits)
     }
@@ -1057,34 +1575,34 @@ impl Display for IntegerType {
 
 #[deku_derive(DekuRead)]
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct FuncType {
+pub(crate) struct FuncTy {
     /// The number of formal arguments the function takes.
     #[deku(temp)]
     num_args: usize,
-    /// Type indices for the function's formal arguments.
+    /// Ty indices for the function's formal arguments.
     #[deku(count = "num_args")]
-    arg_ty_idxs: Vec<TypeIdx>,
-    /// Type index of the function's return type.
-    ret_ty: TypeIdx,
+    arg_tyidxs: Vec<TyIdx>,
+    /// Ty index of the function's return type.
+    ret_ty: TyIdx,
     /// Is the function vararg?
     is_vararg: bool,
 }
 
-impl FuncType {
+impl FuncTy {
     #[cfg(test)]
-    fn new(arg_ty_idxs: Vec<TypeIdx>, ret_ty_idx: TypeIdx, is_vararg: bool) -> Self {
+    fn new(arg_tyidxs: Vec<TyIdx>, ret_tyidx: TyIdx, is_vararg: bool) -> Self {
         Self {
-            arg_ty_idxs,
-            ret_ty: ret_ty_idx,
+            arg_tyidxs,
+            ret_ty: ret_tyidx,
             is_vararg,
         }
     }
 
-    pub(crate) fn arg_ty_idxs(&self) -> &[TypeIdx] {
-        &self.arg_ty_idxs
+    pub(crate) fn arg_tyidxs(&self) -> &[TyIdx] {
+        &self.arg_tyidxs
     }
 
-    pub(crate) fn ret_ty(&self) -> TypeIdx {
+    pub(crate) fn ret_ty(&self) -> TyIdx {
         self.ret_ty
     }
 
@@ -1092,21 +1610,21 @@ impl FuncType {
         self.is_vararg
     }
 
-    pub(crate) fn display<'a>(&'a self, m: &'a Module) -> DisplayableFuncType<'a> {
-        DisplayableFuncType { func_type: self, m }
+    pub(crate) fn display<'a>(&'a self, m: &'a Module) -> DisplayableFuncTy<'a> {
+        DisplayableFuncTy { func_type: self, m }
     }
 }
 
-pub(crate) struct DisplayableFuncType<'a> {
-    func_type: &'a FuncType,
+pub(crate) struct DisplayableFuncTy<'a> {
+    func_type: &'a FuncTy,
     m: &'a Module,
 }
 
-impl fmt::Display for DisplayableFuncType<'_> {
+impl fmt::Display for DisplayableFuncTy<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut args = self
             .func_type
-            .arg_ty_idxs
+            .arg_tyidxs
             .iter()
             .map(|t| self.m.types[*t].display(self.m).to_string())
             .collect::<Vec<_>>();
@@ -1115,75 +1633,71 @@ impl fmt::Display for DisplayableFuncType<'_> {
         }
         write!(f, "func({})", args.join(", "))?;
         let rty = self.m.type_(self.func_type.ret_ty);
-        if rty != &Type::Void {
+        if rty != &Ty::Void {
             write!(f, " -> {}", rty.display(self.m))?
         }
         Ok(())
     }
 }
 
+/// Floating point types.
+#[deku_derive(DekuRead)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[deku(type = "u8")]
+pub(crate) enum FloatTy {
+    // 32-bit floating point.
+    #[deku(id = "0")]
+    Float,
+    // 64-bit floating point.
+    #[deku(id = "1")]
+    Double,
+}
+
+impl Display for FloatTy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Self::Float => "float",
+            Self::Double => "double",
+        };
+        write!(f, "{}", s)
+    }
+}
+
 #[deku_derive(DekuRead)]
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct StructType {
+pub(crate) struct StructTy {
     /// The number of fields the struct has.
     #[deku(temp)]
     num_fields: usize,
     /// The types of the fields.
     #[deku(count = "num_fields")]
-    field_ty_idxs: Vec<TypeIdx>,
+    field_tyidxs: Vec<TyIdx>,
     /// The bit offsets of the fields (taking into account any required padding for alignment).
     #[deku(count = "num_fields")]
     field_bit_offs: Vec<usize>,
 }
 
-impl StructType {
-    /// Returns the type index of the specified field index.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the index is out of bounds.
-    pub(crate) fn field_type_idx(&self, idx: usize) -> TypeIdx {
-        self.field_ty_idxs[idx]
-    }
-
-    /// Returns the byte offset of the specified field index.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the field is not byte-aligned or the index is out of bounds.
-    pub(crate) fn field_byte_off(&self, idx: usize) -> usize {
-        let bit_off = self.field_bit_offs[idx];
-        if bit_off % 8 != 0 {
-            todo!();
-        }
-        bit_off / 8
-    }
-
-    /// Returns the number of fields in the struct.
-    pub(crate) fn num_fields(&self) -> usize {
-        self.field_ty_idxs.len()
-    }
-
-    pub(crate) fn display<'a>(&'a self, m: &'a Module) -> DisplayableStructType<'a> {
-        DisplayableStructType {
+impl StructTy {
+    pub(crate) fn display<'a>(&'a self, m: &'a Module) -> DisplayableStructTy<'a> {
+        DisplayableStructTy {
             struct_type: self,
             m,
         }
     }
 }
 
-pub(crate) struct DisplayableStructType<'a> {
-    struct_type: &'a StructType,
+pub(crate) struct DisplayableStructTy<'a> {
+    struct_type: &'a StructTy,
     m: &'a Module,
 }
 
-impl Display for DisplayableStructType<'_> {
+impl Display for DisplayableStructTy<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{{{}}}",
             self.struct_type
-                .field_ty_idxs
+                .field_tyidxs
                 .iter()
                 .enumerate()
                 .map(|(i, ti)| format!(
@@ -1202,107 +1716,184 @@ const TYKIND_INTEGER: u8 = 1;
 const TYKIND_PTR: u8 = 2;
 const TYKIND_FUNC: u8 = 3;
 const TYKIND_STRUCT: u8 = 4;
+const TYKIND_FLOAT: u8 = 5;
 const TYKIND_UNIMPLEMENTED: u8 = 255;
 
 /// A type.
 #[deku_derive(DekuRead)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[deku(type = "u8")]
-pub(crate) enum Type {
+pub(crate) enum Ty {
     #[deku(id = "TYKIND_VOID")]
     Void,
     #[deku(id = "TYKIND_INTEGER")]
-    Integer(IntegerType),
+    Integer(IntegerTy),
     #[deku(id = "TYKIND_PTR")]
     Ptr,
     #[deku(id = "TYKIND_FUNC")]
-    Func(FuncType),
+    Func(FuncTy),
     #[deku(id = "TYKIND_STRUCT")]
-    Struct(StructType),
+    Struct(StructTy),
+    #[deku(id = "TYKIND_FLOAT")]
+    Float(FloatTy),
     #[deku(id = "TYKIND_UNIMPLEMENTED")]
     Unimplemented(#[deku(until = "|v: &u8| *v == 0", map = "map_to_string")] String),
 }
 
-impl Type {
-    fn const_to_string(&self, c: &Constant) -> String {
+impl Ty {
+    fn const_to_string(&self, c: &ConstVal) -> String {
         match self {
             Self::Void => "void".to_owned(),
             Self::Integer(it) => it.const_to_string(c),
             Self::Ptr => {
-                // FIXME: write a stringifier for constant pointers.
-                "const_ptr".to_owned()
+                let ptr_size = std::mem::size_of::<usize>();
+                debug_assert_eq!(c.bytes().len(), ptr_size);
+                // unwrap is safe: constant is malformed if there are too few bytes for a chunk.
+                let pval = usize::from_ne_bytes(*c.bytes().first_chunk().unwrap());
+                format!("{:#x}", pval)
             }
             Self::Func(_) => unreachable!(), // No such thing as a constant function in our IR.
             Self::Struct(_) => {
                 // FIXME: write a stringifier for constant structs.
                 "const_struct".to_owned()
             }
+            Self::Float(ft) => {
+                // Note that floats are stored at rest as a doubles for now.
+                // unwrap safe: constant malformed if there are too few bytes for a chunk.
+                let dval = f64::from_ne_bytes(*c.bytes().first_chunk().unwrap());
+                match ft {
+                    FloatTy::Float => format!("{}float", dval as f32),
+                    FloatTy::Double => format!("{}double", dval),
+                }
+            }
             Self::Unimplemented(s) => format!("?cst<{}>", s),
         }
     }
 
-    pub(crate) fn display<'a>(&'a self, m: &'a Module) -> DisplayableType<'a> {
-        DisplayableType { type_: self, m }
+    pub(crate) fn display<'a>(&'a self, m: &'a Module) -> DisplayableTy<'a> {
+        DisplayableTy { type_: self, m }
     }
 }
 
 #[derive(Debug)]
-pub(crate) struct DisplayableType<'a> {
-    type_: &'a Type,
+pub(crate) struct DisplayableTy<'a> {
+    type_: &'a Ty,
     m: &'a Module,
 }
 
-impl fmt::Display for DisplayableType<'_> {
+impl fmt::Display for DisplayableTy<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.type_ {
-            Type::Void => write!(f, "void"),
-            Type::Integer(x) => write!(f, "{}", x),
-            Type::Ptr => write!(f, "ptr"),
-            Type::Func(ft) => write!(f, "{}", ft.display(self.m)),
-            Type::Struct(st) => write!(f, "{}", st.display(self.m)),
-            Type::Unimplemented(s) => write!(f, "?ty<{}>", s),
+            Ty::Void => write!(f, "void"),
+            Ty::Integer(x) => write!(f, "{}", x),
+            Ty::Ptr => write!(f, "ptr"),
+            Ty::Func(ft) => write!(f, "{}", ft.display(self.m)),
+            Ty::Struct(st) => write!(f, "{}", st.display(self.m)),
+            Ty::Float(ft) => write!(f, "{}", ft),
+            Ty::Unimplemented(s) => write!(f, "?ty<{}>", s),
         }
     }
 }
 
-/// A constant.
+/// A (potentially implemented) constant.
+///
+/// Constants not handled by the ykllvm serialiser become `Const::Unimplemented`.
 #[deku_derive(DekuRead)]
 #[derive(Debug)]
-pub(crate) struct Constant {
-    type_idx: TypeIdx,
+#[deku(type = "u8")]
+pub(crate) enum Const {
+    #[deku(id = "0")]
+    Val(ConstVal),
+    #[deku(id = "1")]
+    Unimplemented {
+        tyidx: TyIdx,
+        #[deku(until = "|v: &u8| *v == 0", map = "map_to_string")]
+        llvm_const_str: String,
+    },
+}
+
+impl Const {
+    pub(crate) fn display<'a>(&'a self, m: &'a Module) -> DisplayableConst<'a> {
+        DisplayableConst { constant: self, m }
+    }
+
+    /// Returns a `ConstVal` iff `self` is `Cosnt::Val`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `self` is `Cosnt::Unimplemented`. The panic message indicates the problematic
+    /// constant that requires implementation in the ykllvm serialiser.
+    pub(crate) fn unwrap_val(&self) -> &ConstVal {
+        match self {
+            Const::Val(v) => v,
+            Const::Unimplemented { llvm_const_str, .. } => {
+                panic!("unimplemented const: {}", llvm_const_str)
+            }
+        }
+    }
+
+    pub(crate) fn tyidx(&self) -> TyIdx {
+        match self {
+            Self::Val(cv) => cv.tyidx(),
+            Self::Unimplemented { tyidx, .. } => *tyidx,
+        }
+    }
+}
+
+pub(crate) struct DisplayableConst<'a> {
+    constant: &'a Const,
+    m: &'a Module,
+}
+
+impl Display for DisplayableConst<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.constant {
+            Const::Val(cv) => write!(f, "{}", cv.display(self.m)),
+            Const::Unimplemented { llvm_const_str, .. } => {
+                write!(f, "unimplemented <<{}>>", llvm_const_str)
+            }
+        }
+    }
+}
+
+/// A constant value.
+#[deku_derive(DekuRead)]
+#[derive(Debug)]
+pub(crate) struct ConstVal {
+    tyidx: TyIdx,
     #[deku(temp)]
     num_bytes: usize,
     #[deku(count = "num_bytes")]
     bytes: Vec<u8>,
 }
 
-impl Constant {
+impl ConstVal {
     /// Return a byte slice of the constant's value.
     pub(crate) fn bytes(&self) -> &[u8] {
         &self.bytes
     }
 
     /// Return the type index of the constant.
-    pub(crate) fn type_idx(&self) -> TypeIdx {
-        self.type_idx
+    pub(crate) fn tyidx(&self) -> TyIdx {
+        self.tyidx
     }
 
-    pub(crate) fn display<'a>(&'a self, m: &'a Module) -> DisplayableConstant<'a> {
-        DisplayableConstant { constant: self, m }
+    pub(crate) fn display<'a>(&'a self, m: &'a Module) -> DisplayableConstVal<'a> {
+        DisplayableConstVal { cv: self, m }
     }
 }
 
-pub(crate) struct DisplayableConstant<'a> {
-    constant: &'a Constant,
+pub(crate) struct DisplayableConstVal<'a> {
     m: &'a Module,
+    cv: &'a ConstVal,
 }
 
-impl Display for DisplayableConstant<'_> {
+impl Display for DisplayableConstVal<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{}",
-            self.m.types[self.constant.type_idx].const_to_string(self.constant)
+            self.m.types[self.cv.tyidx].const_to_string(self.cv)
         )
     }
 }
@@ -1321,7 +1912,8 @@ pub(crate) struct GlobalDecl {
 
 impl Display for GlobalDecl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "GlobalDecl({}, tls={})", self.name, self.is_threadlocal)
+        let tl = if self.is_threadlocal { " tls" } else { "" };
+        write!(f, "global_decl{} @{}", tl, self.name,)
     }
 }
 
@@ -1333,156 +1925,6 @@ impl GlobalDecl {
     pub(crate) fn name(&self) -> &str {
         &self.name
     }
-}
-
-/// An AOT IR module.
-///
-/// This is the top-level container for the AOT IR.
-///
-/// A module is platform dependent, as type sizes and alignment are baked-in.
-#[deku_derive(DekuRead)]
-#[derive(Debug, Default)]
-pub(crate) struct Module {
-    #[deku(assert = "*magic == MAGIC", temp)]
-    magic: u32,
-    #[deku(assert = "*version == FORMAT_VERSION")]
-    version: u32,
-    /// The bit-size of what LLVM calls "the pointer indexing type", for address space zero.
-    ///
-    /// This is the signed integer LLVM uses for computing GEP offsets in the default pointer
-    /// address space. This is needed because in certain cases we are required to sign-extend or
-    /// truncate to this width.
-    ptr_off_bitsize: u8,
-    #[deku(temp)]
-    num_funcs: usize,
-    #[deku(count = "num_funcs", map = "map_to_tivec")]
-    funcs: TiVec<FuncIdx, Func>,
-    #[deku(temp)]
-    num_consts: usize,
-    #[deku(count = "num_consts", map = "map_to_tivec")]
-    consts: TiVec<ConstIdx, Constant>,
-    #[deku(temp)]
-    num_global_decls: usize,
-    #[deku(count = "num_global_decls", map = "map_to_tivec")]
-    global_decls: TiVec<GlobalDeclIdx, GlobalDecl>,
-    #[deku(temp)]
-    num_types: usize,
-    #[deku(count = "num_types", map = "map_to_tivec")]
-    types: TiVec<TypeIdx, Type>,
-}
-
-impl Module {
-    /// Find a function by its name.
-    ///
-    /// # Panics
-    ///
-    /// Panics if no function exists with that name.
-    pub(crate) fn func_idx(&self, find_func: &str) -> FuncIdx {
-        // OPT: create a cache in the Module.
-        self.funcs
-            .iter()
-            .enumerate()
-            .find(|(_, f)| f.name == find_func)
-            .map(|(f_idx, _)| FuncIdx(f_idx))
-            .unwrap()
-    }
-
-    pub(crate) fn ptr_off_bitsize(&self) -> u8 {
-        self.ptr_off_bitsize
-    }
-
-    /// Return the block uniquely identified (in this module) by the specified [BBlockId].
-    pub(crate) fn bblock(&self, bid: &BBlockId) -> &BBlock {
-        self.funcs[bid.func_idx].bblock(bid.bb_idx)
-    }
-
-    pub(crate) fn constant(&self, co: &ConstIdx) -> &Constant {
-        &self.consts[*co]
-    }
-
-    pub(crate) fn const_type(&self, c: &Constant) -> &Type {
-        &self.types[c.type_idx]
-    }
-
-    /// Lookup a constant by its index.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the index is out of bounds.
-    pub(crate) fn const_(&self, ci: ConstIdx) -> &Constant {
-        &self.consts[ci]
-    }
-
-    /// Lookup a type by its index.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the index is out of bounds.
-    pub(crate) fn type_(&self, idx: TypeIdx) -> &Type {
-        &self.types[idx]
-    }
-
-    /// Lookup a function by its index.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the index is out of bounds.
-    pub(crate) fn func(&self, idx: FuncIdx) -> &Func {
-        &self.funcs[idx]
-    }
-
-    /// Lookup a global variable declaration by its index.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the index is out of bounds.
-    pub(crate) fn global_decl(&self, idx: GlobalDeclIdx) -> &GlobalDecl {
-        &self.global_decls[idx]
-    }
-
-    /// Return the number of global variable declarations.
-    pub(crate) fn global_decls_len(&self) -> usize {
-        self.global_decls.len()
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn dump(&self) {
-        eprintln!("{}", self);
-    }
-}
-
-impl std::fmt::Display for Module {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("# IR format version: {}\n", self.version))?;
-        f.write_fmt(format_args!("# Num funcs: {}\n", self.funcs.len()))?;
-        f.write_fmt(format_args!("# Num consts: {}\n", self.consts.len()))?;
-        f.write_fmt(format_args!(
-            "# Num global decls: {}\n",
-            self.global_decls.len()
-        ))?;
-        f.write_fmt(format_args!("# Num types: {}\n", self.types.len()))?;
-
-        for func in &self.funcs {
-            write!(f, "\n{}", func.display(self))?;
-        }
-        Ok(())
-    }
-}
-
-/// Deserialise an AOT module from the slice `data`.
-pub(crate) fn deserialise_module(data: &[u8]) -> Result<Module, Box<dyn Error>> {
-    let ((_, _), modu) = Module::from_bytes((data, 0))?;
-    Ok(modu)
-}
-
-/// Deserialise and print IR from an on-disk file.
-///
-/// Used for support tooling (in turn used by tests too).
-pub fn print_from_file(path: &PathBuf) -> Result<(), Box<dyn Error>> {
-    let data = fs::read(path)?;
-    let ir = deserialise_module(&data)?;
-    println!("{}", ir);
-    Ok(())
 }
 
 #[cfg(test)]
@@ -1519,9 +1961,9 @@ mod tests {
             let bytes = ToBytes::to_ne_bytes(&num).as_ref().to_vec();
 
             // Construct an IR constant and check it stringifies ok.
-            let it = IntegerType { num_bits };
-            let c = Constant {
-                type_idx: TypeIdx::new(0),
+            let it = IntegerTy { num_bits };
+            let c = ConstVal {
+                tyidx: TyIdx::new(0),
                 bytes,
             };
             assert_eq!(it.const_to_string(&c), expect);
@@ -1555,37 +1997,87 @@ mod tests {
     }
 
     #[test]
+    fn stringify_const_ptr() {
+        let mut m = Module::default();
+        m.types.push(Ty::Ptr);
+        let ptr_tyidx = TyIdx(0);
+        // Build a constant pointer with higher valued bytes towards the most-significant byte.
+        // Careful now: big endian stores the most significant byte first!
+        let rng = 0u8..(mem::size_of::<usize>() as u8);
+        #[cfg(target_endian = "little")]
+        let bytes = rng.clone().collect::<Vec<u8>>();
+        #[cfg(target_endian = "big")]
+        let bytes = rng.clone().rev().collect::<Vec<u8>>();
+
+        let cp = ConstVal {
+            tyidx: ptr_tyidx,
+            bytes,
+        };
+
+        let expect_bytes = rng.rev().map(|i| format!("{:02x}", i)).collect::<String>();
+        let expect_usize = usize::from_str_radix(&expect_bytes, 16).unwrap();
+        assert_eq!(
+            format!("{}", cp.display(&m)),
+            format!("{:#x}", expect_usize)
+        );
+    }
+
+    #[test]
+    fn stringify_const_ptr2() {
+        let mut m = Module::default();
+        m.types.push(Ty::Ptr);
+        let ptr_tyidx = TyIdx(0);
+        let ptr_val = stringify_const_ptr2 as *const u8 as usize;
+        let cp = ConstVal {
+            tyidx: ptr_tyidx,
+            bytes: ptr_val.to_ne_bytes().to_vec(),
+        };
+        assert_eq!(format!("{}", cp.display(&m)), format!("{:#x}", ptr_val));
+    }
+
+    #[test]
+    fn stringify_unimplemented_consts() {
+        let mut m = Module::default();
+        m.types.push(Ty::Integer(IntegerTy::new(8)));
+        let c = Const::Unimplemented {
+            tyidx: TyIdx::new(0),
+            llvm_const_str: "someoperand".into(),
+        };
+        assert_eq!(c.display(&m).to_string(), "unimplemented <<someoperand>>");
+    }
+
+    #[test]
     fn integer_type_sizes() {
         for i in 1..8 {
-            assert_eq!(IntegerType::new(i).byte_size(), 1);
+            assert_eq!(IntegerTy::new(i).byte_size(), 1);
         }
         for i in 9..16 {
-            assert_eq!(IntegerType::new(i).byte_size(), 2);
+            assert_eq!(IntegerTy::new(i).byte_size(), 2);
         }
-        assert_eq!(IntegerType::new(127).byte_size(), 16);
-        assert_eq!(IntegerType::new(128).byte_size(), 16);
-        assert_eq!(IntegerType::new(129).byte_size(), 17);
+        assert_eq!(IntegerTy::new(127).byte_size(), 16);
+        assert_eq!(IntegerTy::new(128).byte_size(), 16);
+        assert_eq!(IntegerTy::new(129).byte_size(), 17);
     }
 
     #[test]
     fn stringify_func_types() {
         let mut m = Module::default();
 
-        let i8_tyidx = TypeIdx::new(m.types.len());
-        m.types.push(Type::Integer(IntegerType { num_bits: 8 }));
-        let void_tyidx = TypeIdx::new(m.types.len());
-        m.types.push(Type::Void);
+        let i8_tyidx = TyIdx::new(m.types.len());
+        m.types.push(Ty::Integer(IntegerTy { num_bits: 8 }));
+        let void_tyidx = TyIdx::new(m.types.len());
+        m.types.push(Ty::Void);
 
-        let fty = Type::Func(FuncType::new(vec![i8_tyidx], i8_tyidx, false));
+        let fty = Ty::Func(FuncTy::new(vec![i8_tyidx], i8_tyidx, false));
         assert_eq!(fty.display(&m).to_string(), "func(i8) -> i8");
 
-        let fty = Type::Func(FuncType::new(vec![i8_tyidx], i8_tyidx, true));
+        let fty = Ty::Func(FuncTy::new(vec![i8_tyidx], i8_tyidx, true));
         assert_eq!(fty.display(&m).to_string(), "func(i8, ...) -> i8");
 
-        let fty = Type::Func(FuncType::new(vec![], i8_tyidx, false));
+        let fty = Ty::Func(FuncTy::new(vec![], i8_tyidx, false));
         assert_eq!(fty.display(&m).to_string(), "func() -> i8");
 
-        let fty = Type::Func(FuncType::new(vec![], void_tyidx, false));
+        let fty = Ty::Func(FuncTy::new(vec![], void_tyidx, false));
         assert_eq!(fty.display(&m).to_string(), "func()");
     }
 }

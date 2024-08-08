@@ -1,5 +1,3 @@
-#![feature(lazy_cell)]
-
 mod hwtracer_ykpt;
 
 use std::{
@@ -98,7 +96,7 @@ impl<'a> ExtraLinkage<'a> {
             panic!();
         }
         let mut ret = PathBuf::from(tempdir);
-        ret.push(&self.output_file.replace(TEMPDIR_SUBST, tempdir_s));
+        ret.push(self.output_file.replace(TEMPDIR_SUBST, tempdir_s));
         ret
     }
 }

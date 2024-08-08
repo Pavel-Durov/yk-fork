@@ -1,22 +1,11 @@
-use crate::{
-    location::HotLocation,
-    mt::{SideTraceInfo, MT},
-    trace::AOTTraceIterator,
-};
+use crate::{location::HotLocation, mt::MT, trace::AOTTraceIterator};
 use libc::c_void;
 use parking_lot::Mutex;
 use std::{
-    env,
     error::Error,
     fmt,
-    sync::{
-        atomic::{AtomicU32, Ordering},
-        Arc, Weak,
-    },
+    sync::{atomic::AtomicU32, Arc, Weak},
 };
-
-#[cfg(jitc_llvm)]
-pub(crate) mod jitc_llvm;
 
 #[cfg(jitc_yk)]
 pub mod jitc_yk;
@@ -38,32 +27,33 @@ pub(crate) enum CompilationError {
     ResourceExhausted(Box<dyn Error>),
 }
 
+impl fmt::Display for CompilationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CompilationError::General(s) => write!(f, "General error: {s}"),
+            CompilationError::InternalError(s) => write!(f, "Internal error: {s}"),
+            CompilationError::LimitExceeded(s) => write!(f, "Limit exceeded: {s}"),
+            CompilationError::ResourceExhausted(e) => write!(f, "Resource exhausted: {e:}"),
+        }
+    }
+}
+
 /// The trait that every JIT compiler backend must implement.
 pub(crate) trait Compiler: Send + Sync {
     /// Compile a mapped trace into machine code.
     fn compile(
         &self,
         mt: Arc<MT>,
-        aottrace_iter: (Box<dyn AOTTraceIterator>, Box<[usize]>),
-        sti: Option<SideTraceInfo>,
+        aottrace_iter: Box<dyn AOTTraceIterator>,
+        sti: Option<Arc<dyn SideTraceInfo>>,
         hl: Arc<Mutex<HotLocation>>,
+        promotions: Box<[usize]>,
     ) -> Result<Arc<dyn CompiledTrace>, CompilationError>;
 }
 
 pub(crate) fn default_compiler() -> Result<Arc<dyn Compiler>, Box<dyn Error>> {
     #[cfg(jitc_yk)]
-    // Transitionary env var to turn on the new code generator.
-    //
-    // This will be removed once the transition away from LLVM as a trace compiler is complete.
-    if let Ok(v) = env::var("YKD_NEW_CODEGEN") {
-        if v == "1" {
-            return Ok(jitc_yk::JITCYk::new()?);
-        }
-    }
-    #[cfg(jitc_llvm)]
-    {
-        return Ok(jitc_llvm::JITCLLVM::new());
-    }
+    return Ok(jitc_yk::JITCYk::new()?);
 
     #[allow(unreachable_code)]
     {
@@ -74,26 +64,30 @@ pub(crate) fn default_compiler() -> Result<Arc<dyn Compiler>, Box<dyn Error>> {
 /// Responsible for tracking how often a guard in a `CompiledTrace` fails. A hotness counter is
 /// incremented each time the matching guard failure in a `CompiledTrace` is triggered. Also stores
 /// the side-trace once its compiled.
+#[derive(Debug)]
 pub(crate) struct Guard {
     /// How often has this guard failed?
+    #[allow(dead_code)]
     failed: AtomicU32,
     ct: Mutex<Option<Arc<dyn CompiledTrace>>>,
 }
 
 impl Guard {
-    /// Increments the guard failure counter. Returns `true` if the guard has failed often enough
-    /// to be worth side-tracing.
-    pub fn inc_failed(&self, mt: &Arc<MT>) -> bool {
-        self.failed.fetch_add(1, Ordering::Relaxed) + 1 >= mt.sidetrace_threshold()
+    /// This guard has failed (i.e. evaluated to true/false when false/true was expected). Returns
+    /// `true` if this guard has failed often enough to be worth side-tracing.
+    pub fn inc_failed(&self, _mt: &Arc<MT>) -> bool {
+        // FIXME: for now we forcibly disable side-tracing, as it's broken.
+        //self.failed.fetch_add(1, Ordering::Relaxed) + 1 >= mt.sidetrace_threshold()
+        false
     }
 
     /// Stores a compiled side-trace inside this guard.
-    pub fn setct(&self, ct: Arc<dyn CompiledTrace>) {
+    pub fn set_ctr(&self, ct: Arc<dyn CompiledTrace>) {
         let _ = self.ct.lock().insert(ct);
     }
 
-    /// Retrieves the stored side-trace or None, if no side-trace has been compiled yet.
-    pub fn getct(&self) -> Option<Arc<dyn CompiledTrace>> {
+    /// Return the compiled side-trace or None if no side-trace has been compiled.
+    pub fn ctr(&self) -> Option<Arc<dyn CompiledTrace>> {
         self.ct.lock().as_ref().map(Arc::clone)
     }
 }
@@ -103,15 +97,10 @@ pub(crate) trait CompiledTrace: fmt::Debug + Send + Sync {
     /// upcasting in Rust is incomplete.
     fn as_any(self: Arc<Self>) -> Arc<dyn std::any::Any + Send + Sync + 'static>;
 
-    fn mt(&self) -> &Arc<MT>;
+    fn sidetraceinfo(&self, gidx: GuardIdx) -> Arc<dyn SideTraceInfo>;
 
     /// Return a reference to the guard `id`.
-    fn guard(&self, id: GuardId) -> &Guard;
-
-    /// Is the guard `id` the last guard in this `CompiledTrace`?
-    fn is_last_guard(&self, id: GuardId) -> bool;
-
-    fn aotvals(&self) -> *const c_void;
+    fn guard(&self, gidx: GuardIdx) -> &Guard;
 
     fn entry(&self) -> *const c_void;
 
@@ -121,19 +110,113 @@ pub(crate) trait CompiledTrace: fmt::Debug + Send + Sync {
     fn hl(&self) -> &Weak<Mutex<HotLocation>>;
 
     /// Disassemble the JITted code into a string, for testing and deubgging.
-    #[cfg(any(debug_assertions, test))]
     fn disassemble(&self) -> Result<String, Box<dyn Error>>;
 }
 
-#[derive(Clone, Copy, Debug)]
-#[allow(dead_code)]
-pub(crate) struct GuardId(pub(crate) usize);
+/// Stores information required for compiling a side-trace. Passed down from a (parent) trace
+/// during deoptimisation.
+pub(crate) trait SideTraceInfo {
+    /// Upcast this [SideTraceInfo] to `Any`. This method is a hack that's only needed since trait
+    /// upcasting in Rust is incomplete.
+    fn as_any(self: Arc<Self>) -> Arc<dyn std::any::Any + Send + Sync + 'static>;
+}
 
-impl GuardId {
-    #[cfg(test)]
-    /// Only when testing, create a `GuardId` with an illegal value: trying to use this `GuardId`
-    /// will either cause an error or lead to undefined behaviour.
-    pub(crate) fn illegal() -> Self {
-        GuardId(usize::max_value())
+/// Identify a [Guard] within a trace.
+///
+/// This is guaranteed to be an index into an array that is freely convertible to/from [usize].
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct GuardIdx(usize);
+
+impl From<usize> for GuardIdx {
+    fn from(v: usize) -> Self {
+        Self(v)
     }
 }
+
+impl From<GuardIdx> for usize {
+    fn from(v: GuardIdx) -> Self {
+        v.0
+    }
+}
+
+#[cfg(test)]
+mod compiled_trace_testing {
+    use super::*;
+
+    /// A [CompiledTrace] implementation suitable only for testing: when any of its methods are
+    /// called it will `panic`.
+    #[derive(Debug)]
+    pub(crate) struct CompiledTraceTesting;
+
+    impl CompiledTraceTesting {
+        pub(crate) fn new() -> Self {
+            Self
+        }
+    }
+
+    impl CompiledTrace for CompiledTraceTesting {
+        fn as_any(self: Arc<Self>) -> Arc<dyn std::any::Any + Send + Sync + 'static> {
+            panic!();
+        }
+
+        fn sidetraceinfo(&self, _gidx: GuardIdx) -> Arc<dyn SideTraceInfo> {
+            panic!();
+        }
+
+        fn guard(&self, _gidx: GuardIdx) -> &Guard {
+            panic!();
+        }
+
+        fn entry(&self) -> *const c_void {
+            panic!();
+        }
+
+        fn hl(&self) -> &Weak<Mutex<HotLocation>> {
+            panic!();
+        }
+
+        fn disassemble(&self) -> Result<String, Box<dyn Error>> {
+            panic!();
+        }
+    }
+
+    /// A [CompiledTrace] implementation suitable only for testing. The `hl` method will return a
+    /// [HotLocation] but all other methods will `panic` if called.
+    #[derive(Debug)]
+    pub(crate) struct CompiledTraceTestingWithHl(Weak<Mutex<HotLocation>>);
+
+    impl CompiledTraceTestingWithHl {
+        pub(crate) fn new(hl: Weak<Mutex<HotLocation>>) -> Self {
+            Self(hl)
+        }
+    }
+
+    impl CompiledTrace for CompiledTraceTestingWithHl {
+        fn as_any(self: Arc<Self>) -> Arc<dyn std::any::Any + Send + Sync + 'static> {
+            panic!();
+        }
+
+        fn sidetraceinfo(&self, _gidx: GuardIdx) -> Arc<dyn SideTraceInfo> {
+            panic!();
+        }
+
+        fn guard(&self, _gidx: GuardIdx) -> &Guard {
+            panic!();
+        }
+
+        fn entry(&self) -> *const c_void {
+            panic!();
+        }
+
+        fn hl(&self) -> &Weak<Mutex<HotLocation>> {
+            &self.0
+        }
+
+        fn disassemble(&self) -> Result<String, Box<dyn Error>> {
+            panic!();
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) use compiled_trace_testing::*;

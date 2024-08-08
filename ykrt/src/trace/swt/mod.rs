@@ -3,10 +3,7 @@
 use super::{
     AOTTraceIterator, AOTTraceIteratorError, TraceAction, TraceRecorder, TraceRecorderError, Tracer,
 };
-use crate::{
-    compile::jitc_llvm::frame::BitcodeSection,
-    mt::{MTThread, DEFAULT_TRACE_TOO_LONG},
-};
+use crate::mt::{MTThread, DEFAULT_TRACE_TOO_LONG};
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -24,24 +21,25 @@ struct TracingBBlock {
     block_index: usize,
 }
 
-// Mapping of function indexes to function names.
+/// Mapping of function indices to function names.
+///
+/// FIXME: We shouldn't be reaching into codegen-backend-specific stuff here. There should probably
+/// be some kind of generic codegen interface that offers this information up.
+///
+/// FIXME: We also probably don't need a whole hashmap caching owned copies of all of the function
+/// names. Looking at the sole use-site of `FUNC_NAMES`, I reckon that (once the LLVM backend has
+/// been deleted) it would be sufficient to expose a thin wrapper around `Module::func_()` and use
+/// that for querying function names from indices.
+#[cfg(jitc_yk)]
 static FUNC_NAMES: LazyLock<HashMap<usize, CString>> = LazyLock::new(|| {
-    let mut fnames = HashMap::new();
-    let mut functions: *mut IRFunctionNameIndex = std::ptr::null_mut();
-    let bc_section = crate::compile::jitc_llvm::llvmbc_section();
-    let mut functions_len: usize = 0;
-    let bs = &BitcodeSection {
-        data: bc_section.as_ptr(),
-        len: u64::try_from(bc_section.len()).unwrap(),
-    };
-    unsafe { get_function_names(bs, &mut functions, &mut functions_len) };
-    for entry in unsafe { std::slice::from_raw_parts(functions, functions_len) } {
-        fnames.insert(
-            entry.index,
-            unsafe { std::ffi::CStr::from_ptr(entry.name) }.to_owned(),
-        );
-    }
-    fnames
+    crate::compile::jitc_yk::AOT_MOD
+        .funcs()
+        .iter_enumerated()
+        .map(|(funcidx, func)| {
+            // unwrap cannot fail assuming that all symbols are UTF-8.
+            (usize::from(funcidx), CString::new(func.name()).unwrap())
+        })
+        .collect::<HashMap<_, _>>()
 });
 
 thread_local! {
@@ -67,21 +65,6 @@ pub extern "C" fn yk_trace_basicblock(function_index: usize, block_index: usize)
             })
         }
     });
-}
-
-extern "C" {
-    fn get_function_names(
-        section: *const BitcodeSection,
-        result: *mut *mut IRFunctionNameIndex,
-        len: *mut usize,
-    );
-}
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct IRFunctionNameIndex {
-    pub index: usize,
-    pub name: *const libc::c_char,
 }
 
 pub(crate) struct SWTracer {}

@@ -3,7 +3,6 @@
 use std::{
     env,
     path::{Path, PathBuf},
-    process::Command,
 };
 
 pub mod completion_wrapper;
@@ -49,19 +48,4 @@ pub fn ykllvm_bin(bin_name: &str) -> PathBuf {
         return p;
     }
     panic!("ykllvm binary {} not found", p.to_str().unwrap_or(bin_name))
-}
-
-/// Call from a build script to ensure that the LLVM libraries are in the loader path.
-///
-/// This is preferred to adding an rpath, as we wouldn't want to distribute binaries with
-/// system-local rpaths inside.
-pub fn apply_llvm_ld_library_path() {
-    let lib_dir = Command::new(ykllvm_bin("llvm-config"))
-        .arg("--link-shared")
-        .arg("--libdir")
-        .output()
-        .unwrap()
-        .stdout;
-    let lib_dir = std::str::from_utf8(&lib_dir).unwrap();
-    println!("cargo:rustc-env=LD_LIBRARY_PATH={}", lib_dir);
 }
