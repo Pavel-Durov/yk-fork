@@ -1,3 +1,4 @@
+// ignore-if: test "$YKB_TRACER" = "swt"
 // Run-time:
 //   env-var: YKD_LOG_IR=-:aot,jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
@@ -60,6 +61,6 @@ int main(int argc, char **argv) {
     i--;
   }
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }

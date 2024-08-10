@@ -1,10 +1,10 @@
 // Run-time:
 //   env-var: YKD_LOG_IR=-:jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YK_LOG=4
 //   stderr:
 //     ...
-//     jitstate: execute-side-trace
+//     yk-jit-event: execute-side-trace
 //     ...
 //     500
 //   stdout:
@@ -53,6 +53,6 @@ int main(int argc, char **argv) {
   printf("exit");
   NOOPT_VAL(res);
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }

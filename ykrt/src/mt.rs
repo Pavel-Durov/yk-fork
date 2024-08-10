@@ -10,10 +10,10 @@ use std::{
     ffi::c_void,
     marker::PhantomData,
     sync::{
-        atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, AtomicUsize, Ordering},
         Arc,
     },
-    thread,
+    thread::{self, JoinHandle},
 };
 
 #[cfg(tracer_swt)]
@@ -65,9 +65,18 @@ thread_local! {
     static THREAD_MTTHREAD: MTThread = MTThread::new();
 }
 
-/// A meta-tracer. Note that this is conceptually a "front-end" to the actual meta-tracer akin to
-/// an `Rc`: this struct can be freely `clone()`d without duplicating the underlying meta-tracer.
+/// A meta-tracer. This is always passed around stored in an [Arc].
+///
+/// When you are finished with this meta-tracer, it is best to explicitly call [MT::shutdown] to
+/// perform shutdown tasks (though the correctness of the system is not impacted if you do not call
+/// this function).
 pub struct MT {
+    /// Have we been requested to shutdown this meta-tracer? In a sense this is merely advisory:
+    /// since [MT] is contained within an [Arc], if we're able to read this value, then the
+    /// meta-tracer is still working and it may go on doing so for an arbitrary period of time.
+    /// However, it means that some "shutdown" activities, such as printing statistics and checking
+    /// for failed compilation threads, have already occurred, and should not be repeated.
+    shutdown: AtomicBool,
     hot_threshold: AtomicHotThreshold,
     sidetrace_threshold: AtomicHotThreshold,
     trace_failure_threshold: AtomicTraceCompilationErrorThreshold,
@@ -75,9 +84,11 @@ pub struct MT {
     job_queue: Arc<(Condvar, Mutex<VecDeque<Box<dyn FnOnce() + Send>>>)>,
     /// The hard cap on the number of worker threads.
     max_worker_threads: AtomicUsize,
-    /// How many worker threads are currently running. Note that this may temporarily be `>`
-    /// [`max_worker_threads`].
-    active_worker_threads: AtomicUsize,
+    /// [JoinHandle]s to each worker thread so that when an [MT] value is dropped, we can try
+    /// joining each worker thread and see if it caused an error or not. If it did,  we can
+    /// percolate the error upwards, making it more likely that the main thread exits with an
+    /// error. In other words, this [Vec] makes it harder for errors to be missed.
+    active_worker_threads: Mutex<Vec<JoinHandle<()>>>,
     /// The [Tracer] that should be used for creating future traces. Note that this might not be
     /// the same as the tracer(s) used to create past traces.
     tracer: Mutex<Arc<dyn Tracer>>,
@@ -110,6 +121,7 @@ impl MT {
             Err(_) => DEFAULT_HOT_THRESHOLD,
         };
         Ok(Arc::new(Self {
+            shutdown: AtomicBool::new(false),
             hot_threshold: AtomicHotThreshold::new(hot_threshold),
             sidetrace_threshold: AtomicHotThreshold::new(DEFAULT_SIDETRACE_THRESHOLD),
             trace_failure_threshold: AtomicTraceCompilationErrorThreshold::new(
@@ -117,13 +129,40 @@ impl MT {
             ),
             job_queue: Arc::new((Condvar::new(), Mutex::new(VecDeque::new()))),
             max_worker_threads: AtomicUsize::new(cmp::max(1, num_cpus::get() - 1)),
-            active_worker_threads: AtomicUsize::new(0),
+            active_worker_threads: Mutex::new(Vec::new()),
             tracer: Mutex::new(default_tracer()?),
             compiler: Mutex::new(default_compiler()?),
             compiled_trace_id: AtomicU64::new(0),
             log: Log::new()?,
             stats: Stats::new(),
         }))
+    }
+
+    /// Put this meta-tracer into shutdown mode, panicking if any problems are discovered. This
+    /// will perform actions such as printing summary statistics and checking whether any worker
+    /// threads have caused an error. The best place to do this is likely to be on the main thread,
+    /// though this is not mandatory.
+    ///
+    /// Note: this method does not stop all of the meta-tracer's activities. For example, -- but
+    /// not only! -- other threads will continue compiling and executing traces.
+    ///
+    /// Only the first call of this method performs meaningful actions: any subsequent calls will
+    /// note the previous shutdown and immediately return.
+    pub fn shutdown(&self) {
+        if !self.shutdown.swap(true, Ordering::Relaxed) {
+            self.stats.timing_state(TimingState::None);
+            self.stats.output();
+            let mut lk = self.active_worker_threads.lock();
+            for hdl in lk.drain(..) {
+                if hdl.is_finished() {
+                    if let Err(e) = hdl.join() {
+                        // Despite the name `resume_unwind` will abort if the unwind strategy in
+                        // Rust is set to `abort`.
+                        std::panic::resume_unwind(e);
+                    }
+                }
+            }
+        }
     }
 
     /// Return this `MT` instance's current hot threshold. Notice that this value can be changed by
@@ -184,33 +223,20 @@ impl MT {
 
     /// Queue `job` to be run on a worker thread.
     fn queue_job(self: &Arc<Self>, job: Box<dyn FnOnce() + Send>) {
-        // We have a very simple model of worker threads. Each time a job is queued, we spin up a
-        // new worker thread iff we aren't already running the maximum number of worker threads.
-        // Once started, a worker thread never dies, waiting endlessly for work.
-
+        // Push the job onto the queue.
         let (cv, mtx) = &*self.job_queue;
         mtx.lock().push_back(job);
         cv.notify_one();
 
-        let max_jobs = self.max_worker_threads.load(Ordering::Relaxed);
-        if self.active_worker_threads.load(Ordering::Relaxed) < max_jobs {
-            // At the point of the `load` on the previous line, we weren't running the maximum
-            // number of worker threads. There is now a possible race condition where multiple
-            // threads calling `queue_job` could try creating multiple worker threads and push us
-            // over the maximum worker thread limit.
-            if self.active_worker_threads.fetch_add(1, Ordering::Relaxed) > max_jobs {
-                // Another thread(s) is also spinning up another worker thread and they won the
-                // race.
-                self.active_worker_threads.fetch_sub(1, Ordering::Relaxed);
-                return;
-            }
+        // Do we have enough active worker threads? If not, spin another up.
 
-            self.stats.timing_state(TimingState::None);
+        let mut lk = self.active_worker_threads.lock();
+        if lk.len() < self.max_worker_threads.load(Ordering::Relaxed) {
             // We only keep a weak reference alive to `self`, as otherwise an active compiler job
             // causes `self` to never be dropped.
             let mt = Arc::downgrade(self);
             let jq = Arc::clone(&self.job_queue);
-            thread::spawn(move || {
+            let hdl = thread::spawn(move || {
                 let (cv, mtx) = &*jq;
                 let mut lock = mtx.lock();
                 // If the strong count for `mt` is 0 then it has been dropped and there is no
@@ -224,7 +250,96 @@ impl MT {
                     }
                 }
             });
+            lk.push(hdl);
         }
+    }
+
+    /// Add a compilation job for to the global work queue:
+    ///   * `utrace` is the trace to be compiled.
+    ///   * `hl_arc` is the [HotLocation] this compilation job is related to.
+    ///   * `sidetrace`, if not `None`, specifies that this is a side-trace compilation job.
+    ///     The `Arc<dyn CompiledTrace>` is the parent [CompiledTrace] for the side-trace. Because
+    ///     side-traces can nest, this may or may not be the same [CompiledTrace] as contained
+    ///     in the `hl_arc`.
+    fn queue_compile_job(
+        self: &Arc<Self>,
+        trace_iter: (Box<dyn AOTTraceIterator>, Box<[usize]>),
+        hl_arc: Arc<Mutex<HotLocation>>,
+        sidetrace: Option<(GuardIdx, Arc<dyn CompiledTrace>)>,
+    ) {
+        self.stats.trace_recorded_ok();
+        let mt = Arc::clone(self);
+        let do_compile = move || {
+            let compiler = {
+                let lk = mt.compiler.lock();
+                Arc::clone(&*lk)
+            };
+            mt.stats.timing_state(TimingState::Compiling);
+            let (sti, guardid) = if let Some((guardid, ctr)) = &sidetrace {
+                (Some(ctr.sidetraceinfo(*guardid)), Some(*guardid))
+            } else {
+                (None, None)
+            };
+            match compiler.compile(
+                Arc::clone(&mt),
+                trace_iter.0,
+                sti,
+                Arc::clone(&hl_arc),
+                trace_iter.1,
+            ) {
+                Ok(ct) => {
+                    if let Some((_, parent_ctr)) = sidetrace {
+                        parent_ctr.guard(guardid.unwrap()).set_ctr(ct);
+                    } else {
+                        let mut hl = hl_arc.lock();
+                        debug_assert_matches!(hl.kind, HotLocationKind::Compiling);
+                        hl.kind = HotLocationKind::Compiled(ct);
+                    }
+                    mt.stats.trace_compiled_ok();
+                }
+                Err(e) => {
+                    mt.stats.trace_compiled_err();
+                    hl_arc.lock().tracecompilation_error(&mt);
+                    match e {
+                        CompilationError::General(e) | CompilationError::LimitExceeded(e) => {
+                            mt.log.log(
+                                Verbosity::Warning,
+                                &format!("trace-compilation-aborted: {e}"),
+                            );
+                        }
+                        CompilationError::InternalError(e) => {
+                            #[cfg(feature = "ykd")]
+                            panic!("{e}");
+                            #[cfg(not(feature = "ykd"))]
+                            {
+                                mt.log.log(
+                                    Verbosity::Error,
+                                    &format!("trace-compilation-aborted: {e}"),
+                                );
+                            }
+                        }
+                        CompilationError::ResourceExhausted(e) => {
+                            mt.log
+                                .log(Verbosity::Error, &format!("trace-compilation-aborted: {e}"));
+                        }
+                    }
+                }
+            }
+
+            mt.stats.timing_state(TimingState::None);
+        };
+
+        #[cfg(feature = "yk_testing")]
+        if let Ok(true) = env::var("YKD_SERIALISE_COMPILATION").map(|x| x.as_str() == "1") {
+            // To ensure that we properly test that compilation can occur in another thread, we
+            // spin up a new thread for each compilation. This is only acceptable because a)
+            // `SERIALISE_COMPILATION` is an internal yk testing feature b) when we use it we're
+            // checking correctness, not performance.
+            thread::spawn(do_compile).join().unwrap();
+            return;
+        }
+
+        self.queue_job(Box::new(do_compile));
     }
 
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -582,100 +697,6 @@ impl MT {
                 }
             }
         }
-    }
-
-    /// Add a compilation job for to the global work queue:
-    ///   * `utrace` is the trace to be compiled.
-    ///   * `hl_arc` is the [HotLocation] this compilation job is related to.
-    ///   * `sidetrace`, if not `None`, specifies that this is a side-trace compilation job.
-    ///     The `Arc<dyn CompiledTrace>` is the parent [CompiledTrace] for the side-trace. Because
-    ///     side-traces can nest, this may or may not be the same [CompiledTrace] as contained
-    ///     in the `hl_arc`.
-    fn queue_compile_job(
-        self: &Arc<Self>,
-        trace_iter: (Box<dyn AOTTraceIterator>, Box<[usize]>),
-        hl_arc: Arc<Mutex<HotLocation>>,
-        sidetrace: Option<(GuardIdx, Arc<dyn CompiledTrace>)>,
-    ) {
-        self.stats.trace_recorded_ok();
-        let mt = Arc::clone(self);
-        let do_compile = move || {
-            let compiler = {
-                let lk = mt.compiler.lock();
-                Arc::clone(&*lk)
-            };
-            mt.stats.timing_state(TimingState::Compiling);
-            let (sti, guardid) = if let Some((guardid, ctr)) = &sidetrace {
-                (Some(ctr.sidetraceinfo(*guardid)), Some(*guardid))
-            } else {
-                (None, None)
-            };
-            match compiler.compile(
-                Arc::clone(&mt),
-                trace_iter.0,
-                sti,
-                Arc::clone(&hl_arc),
-                trace_iter.1,
-            ) {
-                Ok(ct) => {
-                    if let Some((_, parent_ctr)) = sidetrace {
-                        parent_ctr.guard(guardid.unwrap()).set_ctr(ct);
-                    } else {
-                        let mut hl = hl_arc.lock();
-                        debug_assert_matches!(hl.kind, HotLocationKind::Compiling);
-                        hl.kind = HotLocationKind::Compiled(ct);
-                    }
-                    mt.stats.trace_compiled_ok();
-                }
-                Err(e) => {
-                    mt.stats.trace_compiled_err();
-                    hl_arc.lock().tracecompilation_error(&mt);
-                    match e {
-                        CompilationError::General(e) | CompilationError::LimitExceeded(e) => {
-                            mt.log.log(
-                                Verbosity::Warning,
-                                &format!("trace-compilation-aborted: {e}"),
-                            );
-                        }
-                        CompilationError::InternalError(e) => {
-                            #[cfg(feature = "ykd")]
-                            panic!("{e}");
-                            #[cfg(not(feature = "ykd"))]
-                            {
-                                mt.log.log(
-                                    Verbosity::Error,
-                                    &format!("trace-compilation-aborted: {e}"),
-                                );
-                            }
-                        }
-                        CompilationError::ResourceExhausted(e) => {
-                            mt.log
-                                .log(Verbosity::Error, &format!("trace-compilation-aborted: {e}"));
-                        }
-                    }
-                }
-            }
-
-            mt.stats.timing_state(TimingState::None);
-        };
-
-        #[cfg(feature = "yk_testing")]
-        if let Ok(true) = env::var("YKD_SERIALISE_COMPILATION").map(|x| x.as_str() == "1") {
-            // To ensure that we properly test that compilation can occur in another thread, we
-            // spin up a new thread for each compilation. This is only acceptable because a)
-            // `SERIALISE_COMPILATION` is an internal yk testing feature b) when we use it we're
-            // checking correctness, not performance.
-            thread::spawn(do_compile).join().unwrap();
-            return;
-        }
-
-        self.queue_job(Box::new(do_compile));
-    }
-}
-
-impl Drop for MT {
-    fn drop(&mut self) {
-        self.stats.timing_state(TimingState::None);
     }
 }
 

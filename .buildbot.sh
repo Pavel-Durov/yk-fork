@@ -2,8 +2,7 @@
 
 set -eu
 
-# FIXME: Reenable swt once jitc_llvm is fully removed.
-TRACERS="hwt"
+TRACERS="hwt swt"
 
 # Build yklua and run the test suite.
 #
@@ -38,7 +37,7 @@ export RUSTUP_HOME
 export RUSTUP_INIT_SKIP_PATH_CHECK="yes"
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > rustup.sh
 sh rustup.sh --default-host x86_64-unknown-linux-gnu \
-    --default-toolchain nightly \
+    --default-toolchain nightly-2024-08-05 \
     --no-modify-path \
     --profile default \
     -y

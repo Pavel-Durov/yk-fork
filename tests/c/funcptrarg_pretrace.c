@@ -1,7 +1,7 @@
 // Run-time:
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   env-var: YKD_LOG_IR=-:jit-pre-opt
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YK_LOG=4
 //   stderr:
 //     ...
 //     --- Begin jit-pre-opt ---
@@ -40,7 +40,7 @@ int bar(size_t (*func)(const char *)) {
   }
 
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return pre;
 }
 

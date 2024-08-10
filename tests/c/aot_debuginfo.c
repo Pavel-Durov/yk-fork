@@ -33,9 +33,9 @@
 //     ...
 //     call yk_location_drop(%{{_}})
 //     ...
-//     # aot_debuginfo.c:{{_}}: yk_mt_drop(mt);
+//     # aot_debuginfo.c:{{_}}: yk_mt_shutdown(mt);
 //     ...
-//     call yk_mt_drop(%{{_}})
+//     call yk_mt_shutdown(%{{_}})
 //     ...
 //     # aot_debuginfo.c:{{_}}: return (EXIT_SUCCESS);
 //     ...
@@ -61,6 +61,6 @@ int main(int argc, char **argv) {
   }
 
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }

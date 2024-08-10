@@ -2,10 +2,12 @@
 // Run-time:
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   env-var: YKD_OPT=1
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YK_LOG=4
 //   env-var: YKD_LOG_IR=-:aot,jit-pre-opt
 //   stderr:
+//     yk-jit-event: start-tracing
 //     y=100
+//     yk-jit-event: stop-tracing
 //     --- Begin aot ---
 //     ...
 //     %{{_}}: i64 = promote %{{_}} [safepoint: 0i64, (%{{0_0}}, %{{0_1}})]
@@ -19,9 +21,11 @@
 //     ...
 //     --- End jit-pre-opt ---
 //     y=200
+//     yk-jit-event: enter-jit-code
 //     y=300
 //     y=400
 //     y=500
+//     yk-jit-event: deoptimise
 
 // Check that promotion works in traces.
 
@@ -55,6 +59,6 @@ int main(int argc, char **argv) {
 
   NOOPT_VAL(y);
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }
