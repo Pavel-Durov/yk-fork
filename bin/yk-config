@@ -162,6 +162,7 @@ handle_arg() {
             # Use software-tracer pass
             if [ "${YKB_TRACER}" = "swt" ]; then
                 OUTPUT="${OUTPUT} -Wl,--mllvm=--yk-basicblock-tracer"
+                OUTPUT="${OUTPUT} -Wl,--mllvm=--yk-module-clone"
             fi
             # Add known yk-friendly optimisations.
             #
