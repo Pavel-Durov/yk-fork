@@ -206,7 +206,7 @@ impl TraceBuilder {
                     true_bb,
                     safepoint,
                     ..
-                } => self.handle_condbr(safepoint, nextbb.as_ref().unwrap(), cond, true_bb),
+                } => self.handle_condbr(safepoint.as_ref(), nextbb.as_ref().unwrap(), cond, true_bb),
                 aot_ir::Inst::Cast {
                     cast_kind,
                     val,
@@ -222,7 +222,7 @@ impl TraceBuilder {
                 } => self.handle_switch(
                     bid,
                     iidx,
-                    safepoint,
+                    safepoint.as_ref(),
                     nextbb.as_ref().unwrap(),
                     test_val,
                     default_dest,
@@ -516,14 +516,18 @@ impl TraceBuilder {
     /// Translate a conditional `Br` instruction.
     fn handle_condbr(
         &mut self,
-        safepoint: &'static aot_ir::DeoptSafepoint,
+        safepoint: &'static Option<aot_ir::DeoptSafepoint>,
         next_bb: &aot_ir::BBlockId,
         cond: &aot_ir::Operand,
         true_bb: &aot_ir::BBlockIdx,
     ) -> Result<(), CompilationError> {
-        let jit_cond = self.handle_operand(cond)?;
-        let guard = self.create_guard(&jit_cond, *true_bb == next_bb.bbidx(), safepoint)?;
-        self.jit_mod.push(guard.into())?;
+        
+        if let Some(sp) = safepoint {
+            let jit_cond = self.handle_operand(cond)?;
+            let guard = self.create_guard(&jit_cond, *true_bb == next_bb.bbidx(), &sp)?;
+            self.jit_mod.push(guard.into())?;
+        }
+        
         Ok(())
     }
 
@@ -849,7 +853,7 @@ impl TraceBuilder {
         &mut self,
         bid: &aot_ir::BBlockId,
         aot_inst_idx: usize,
-        safepoint: &'static aot_ir::DeoptSafepoint,
+        safepoint: &Option<'static aot_ir::DeoptSafepoint>, // Changed to Option
         next_bb: &aot_ir::BBlockId,
         test_val: &aot_ir::Operand,
         _default_dest: &aot_ir::BBlockIdx,
@@ -880,8 +884,12 @@ impl TraceBuilder {
                     jit_ir::ICmpInst::new(jit_test_val, jit_ir::Predicate::Equal, jit_const_opnd);
                 let jit_cond = self.jit_mod.push_and_make_operand(cmp_inst.into())?;
 
-                // Guard the result of the comparison.
-                self.create_guard(&jit_cond, bb == next_bb.bbidx(), safepoint)?
+                if let Some(sp) = safepoint {
+                    // Guard the result of the comparison.
+                    self.create_guard(&jit_cond, bb == next_bb.bbidx(), sp)?
+                } else {
+                    None
+                }
             }
             None => {
                 // The default case was traced.

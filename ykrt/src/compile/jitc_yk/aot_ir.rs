@@ -845,7 +845,10 @@ pub(crate) enum Inst {
         cond: Operand,
         true_bb: BBlockIdx,
         false_bb: BBlockIdx,
-        safepoint: DeoptSafepoint,
+        #[deku(temp)]
+        has_safepoint: u8,
+        #[deku(cond = "*has_safepoint != 0", default = "None")]
+        safepoint: Option<DeoptSafepoint>,
     },
     #[deku(id = "7")]
     ICmp {
@@ -933,7 +936,10 @@ pub(crate) enum Inst {
         case_values: Vec<u64>,
         #[deku(count = "num_cases")]
         case_dests: Vec<BBlockIdx>,
-        safepoint: DeoptSafepoint,
+        #[deku(temp)]
+        has_safepoint: u8,
+        #[deku(cond = "*has_safepoint != 0", default = "None")]
+        safepoint: Option<DeoptSafepoint>,
     },
     #[deku(id = "14")]
     Phi {
@@ -1093,7 +1099,13 @@ impl Inst {
     pub(crate) fn safepoint(&'static self) -> Option<&'static DeoptSafepoint> {
         match self {
             Self::Call { safepoint, .. } => safepoint.as_ref(),
-            Self::CondBr { ref safepoint, .. } => Some(safepoint),
+            Self::CondBr { ref safepoint, .. } => {
+                if let Some(safepoint) = safepoint {
+                    Some(safepoint)
+                } else {
+                    None
+                }
+            },
             _ => None,
         }
     }
@@ -1205,14 +1217,21 @@ impl fmt::Display for DisplayableInst<'_> {
                 true_bb,
                 false_bb,
                 safepoint,
-            } => write!(
-                f,
-                "condbr {}, bb{}, bb{} {}",
-                cond.display(self.m),
-                usize::from(*true_bb),
-                usize::from(*false_bb),
-                safepoint.display(self.m)
-            ),
+            } => {
+                let mut s = String::new();
+
+                if let Some(safepoint) = safepoint {
+                    s.push_str(&format!(" {}", safepoint.display(self.m))); // Use push_str to append
+                }
+                write!(
+                    f,
+                    "condbr {}, bb{}, bb{} {}",
+                    cond.display(self.m),
+                    usize::from(*true_bb),
+                    usize::from(*false_bb),
+                    s
+                )
+            },
             Inst::ICmp { lhs, pred, rhs, .. } => {
                 write!(f, "{pred} {}, {}", lhs.display(self.m), rhs.display(self.m))
             }
@@ -1290,14 +1309,21 @@ impl fmt::Display for DisplayableInst<'_> {
                     .zip(case_dests)
                     .map(|(val, dest)| format!("{} -> bb{}", val, usize::from(*dest)))
                     .collect::<Vec<_>>();
-                write!(
-                    f,
-                    "switch {}, bb{}, [{}] {}",
-                    test_val.display(self.m),
-                    usize::from(*default_dest),
-                    cases.join(", "),
-                    safepoint.display(self.m)
-                )
+                {
+                    let mut s = String::new();
+
+                    if let Some(safepoint) = safepoint {
+                        s.push_str(&format!(" {}", safepoint.display(self.m))); // Use push_str to append
+                    }
+                    write!(
+                        f,
+                        "switch {}, bb{}, [{}] {}",
+                        test_val.display(self.m),
+                        usize::from(*default_dest),
+                        cases.join(", "),
+                        s
+                    )
+                }
             }
             Inst::Phi {
                 incoming_vals,
