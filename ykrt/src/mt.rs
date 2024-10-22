@@ -15,10 +15,12 @@ use std::{
     },
     thread::{self, JoinHandle},
 };
+use dynasmrt::{dynasm, x64::Assembler, DynasmApi, DynasmLabelApi, ExecutableBuffer};
 
 use parking_lot::{Condvar, Mutex, MutexGuard};
 #[cfg(not(all(feature = "yk_testing", not(test))))]
 use parking_lot_core::SpinWait;
+use yksmp::LiveVar;
 
 use crate::{
     aotsmp::{load_aot_stackmaps, AOT_STACKMAPS},
@@ -130,7 +132,7 @@ impl MT {
             compiler: Mutex::new(default_compiler()?),
             compiled_trace_id: AtomicU64::new(0),
             log: Log::new()?,
-            stats: Stats::new(),
+            stats: Stats::new()
         }))
     }
 
@@ -341,6 +343,120 @@ impl MT {
         self.queue_job(Box::new(do_compile));
     }
 
+
+    // Do the same thing as we did with AOT_STACKMAPS
+    fn switch_controlpoint(self: &Arc<Self>, smid: usize) -> Result<ExecutableBuffer, Assembler<>>{
+        use yksmp;
+        let mut asm = dynasmrt::x64::Assembler::new().unwrap();
+        
+        let OPTIMISED_CONTROL_POINT_SMID: usize = 0;
+        let UNOPTIMISED_CONTROL_POINT_SMID: usize = 1;
+
+        let dst = OPTIMISED_CONTROL_POINT_SMID;
+        let src = UNOPTIMISED_CONTROL_POINT_SMID;
+
+        let (src_rec, src_pinfo) = AOT_STACKMAPS.as_ref().unwrap().get(src);
+        let (dst_rec, dst_pinfo) = AOT_STACKMAPS.as_ref().unwrap().get(dst);
+        
+        // TODO: copy live variables over.
+        for (index, src_var) in src_rec.live_vars.iter().enumerate() {
+            let dst_var = dst_rec.live_vars[index];
+            assert!(src_var.len() == 1);
+            let src_location = src_var.get(0).unwrap();
+            assert!(dst_var.len() == 1);
+            let dst_location = dst_var.get(0).unwrap();
+            // save all the registers
+            // the order is important cause we can use the dwarfnumber 
+            // in the locations to get the registers 
+            dynasm!(asm; 
+                push r15; 
+                push r14;
+                push r13;
+                push r12;
+                push r11;
+                push r10;add rsp, 16; // restore stack pointer adjustment
+                push r9;
+                push r8;
+                sub rsp, 16; // this is a span for rsp + rbp
+                push rsi;
+                push rdi;
+                push rbx;
+                push rcx;
+                push rdx;
+                push rax
+            );
+
+            match src_location {
+                yksmp::Location::Register(src_num, src_val_size, src_add_locs, src_add_loc_reg) => {
+                    assert!(*src_add_locs == 0, "deal with additional information");
+                    assert!(src_add_loc_reg.len() == 0, "deal with additional information");
+                    match dst_location {
+                        yksmp::Location::Register(dst_num, dst_val_size, dst_add_locs, dst_add_loc_reg) => {
+                            // TODO: copy location from register to regist  
+                            // Example: ykrt/src/compile/jitc_yk/codegen/x64/deopt.rs:  
+                            // dynasm!(asm; 
+                            //     push rax;
+                            //     push rbx;
+                            //     mov rax, [rbp]; // Load value from [rbp] into RAX
+                            //     mov rbx, [rbp - src_val_size]; // Load value from [rbp - offset] into RBX
+                            //     mov [max - 10], rbx; // Store RBX into [max - 10]
+                            //     pop rbx; // Restore RBX from the stack
+                            //     pop rax; // Restore RAX from the stack
+                            // );
+                        },
+                        _ => panic!("not implemented")
+
+
+                    }
+                     // Push the RAX and RBX registers onto the stack
+                   
+                    // TODO: deal with extrast in in deopt.rs
+
+                },
+                yksmp::Location::Direct(_,_,_) =>{
+                    panic!("unimplemented");
+                },
+                yksmp::Location::Indirect(a) => {
+                    panic!("unimplemented");
+                },
+                yksmp::Location::Constant(a) => {
+                    panic!("unimplemented");
+                },
+                yksmp::LocationLargeConstant(a) => {
+                    panic!("unimplemented");
+                }
+                _ => panic!(),
+            }
+            // println!("@@ switch_controlpoint {smid:?} live_var: {var:?}");
+        }
+        
+        // TODO: set the funciton call instruction size in asm
+        let size_of_call = 0;  
+        let target_addr = dst_rec.offset + size_of_call;
+        // TODO: jump to control point.
+        dynasm!(asm; jmp target_addr as i32); // Cast to i32 if you're sure the address fits
+
+        // restore all the registers
+        dynasm!(asm; 
+            pop rax;
+            pop rdx;
+            pop rcx;
+            pop rbx;
+            pop rdi;
+            pop rsi;
+            add rsp, 16; // restore stack pointer adjustment
+            pop r8;
+            pop r9;
+            pop r10;
+            pop r11;
+            pop r12;
+            pop r13;
+            pop r14;
+            pop r15
+        );
+        return asm.finalize()
+    }
+    
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
     pub fn control_point(self: &Arc<Self>, loc: &Location, frameaddr: *mut c_void, smid: u64) {
         match self.transition_control_point(loc) {
@@ -374,6 +490,8 @@ impl MT {
                     let lk = self.tracer.lock();
                     Arc::clone(&*lk)
                 };
+            
+
                 match Arc::clone(&tracer).start_recorder() {
                     Ok(tt) => MTThread::with(|mtt| {
                         *mtt.tstate.borrow_mut() = MTThreadState::Tracing {
@@ -384,6 +502,11 @@ impl MT {
                     }),
                     Err(e) => todo!("{e:?}"),
                 }
+                // TODO: is this the right place?
+                // SWT original contorl point id is 0
+                self.switch_controlpoint();
+                // SWT original contorl point id is 1
+                // self.switch_controlpoint(&mut asm, 1);
             }
             TransitionControlPoint::StopTracing => {
                 // Assuming no bugs elsewhere, the `unwrap`s cannot fail, because `StartTracing`
