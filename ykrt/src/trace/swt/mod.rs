@@ -12,6 +12,8 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
+pub(crate) mod cp;
+
 #[derive(Debug, Eq, PartialEq, Clone)]
 struct TracingBBlock {
     function_index: usize,

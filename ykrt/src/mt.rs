@@ -15,12 +15,10 @@ use std::{
     },
     thread::{self, JoinHandle},
 };
-use dynasmrt::{dynasm, x64::Assembler, DynasmApi, DynasmLabelApi, ExecutableBuffer};
 
 use parking_lot::{Condvar, Mutex, MutexGuard};
 #[cfg(not(all(feature = "yk_testing", not(test))))]
 use parking_lot_core::SpinWait;
-use yksmp::LiveVar;
 
 use crate::{
     aotsmp::{load_aot_stackmaps, AOT_STACKMAPS},
@@ -32,6 +30,8 @@ use crate::{
     },
     trace::{default_tracer, AOTTraceIterator, TraceRecorder, Tracer},
 };
+
+use crate::trace::swt::cp::jump_into_unoptimised_version;
 
 // The HotThreshold must be less than a machine word wide for [`Location::Location`] to do its
 // pointer tagging thing. We therefore choose a type which makes this statically clear to
@@ -132,7 +132,7 @@ impl MT {
             compiler: Mutex::new(default_compiler()?),
             compiled_trace_id: AtomicU64::new(0),
             log: Log::new()?,
-            stats: Stats::new()
+            stats: Stats::new(),
         }))
     }
 
@@ -343,8 +343,6 @@ impl MT {
         self.queue_job(Box::new(do_compile));
     }
 
-
-    
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
     pub fn control_point(self: &Arc<Self>, loc: &Location, frameaddr: *mut c_void, smid: u64) {
         match self.transition_control_point(loc) {
@@ -378,7 +376,6 @@ impl MT {
                     let lk = self.tracer.lock();
                     Arc::clone(&*lk)
                 };
-            
 
                 match Arc::clone(&tracer).start_recorder() {
                     Ok(tt) => MTThread::with(|mtt| {
@@ -390,11 +387,7 @@ impl MT {
                     }),
                     Err(e) => todo!("{e:?}"),
                 }
-                // TODO: is this the right place?
-                // SWT original contorl point id is 0
-                self.switch_controlpoint();
-                // SWT original contorl point id is 1
-                // self.switch_controlpoint(&mut asm, 1);
+                jump_into_unoptimised_version();
             }
             TransitionControlPoint::StopTracing => {
                 // Assuming no bugs elsewhere, the `unwrap`s cannot fail, because `StartTracing`
