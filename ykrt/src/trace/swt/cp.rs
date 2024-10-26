@@ -1,11 +1,7 @@
 //! The main end-user interface to the meta-tracing system.
 
 use dynasmrt::{dynasm, x64::Assembler, DynasmApi, DynasmLabelApi, ExecutableBuffer};
-use std::{
-    assert_matches::debug_assert_matches,
-    cell::RefCell,
-    sync::Arc,
-};
+use std::{assert_matches::debug_assert_matches, cell::RefCell, sync::Arc};
 
 use parking_lot::{Condvar, Mutex, MutexGuard};
 
@@ -63,10 +59,18 @@ const OPTIMISED_CONTROL_POINT_SMID: usize = 1;
 //         pop rbpR
 // }
 
-pub(crate) fn jump_into_unoptimised_version(){
-    let bytes = build_asm_jump_into_unoptimised_version();
-    println!("@@@@@@@@@@@@ {:?}", bytes);
-    // TODO: How to exec this buffer? std::mem::transmute ?
+pub(crate) fn jump_into_unoptimised_version() {
+    // build
+    let exec_buffer = SWITCH_INTO_OPTIMISED_VERSION.as_ref();
+    println!("exec_buffer: {:?}", exec_buffer);
+
+    // exec
+    //  let code_ptr = exec_buffer.as_ptr();
+    //  type JitFunction = unsafe extern "C" fn();
+    //  let func: JitFunction = unsafe { std::mem::transmute(code_ptr) };
+    //  unsafe {
+    //      func();
+    //  }
 }
 pub(crate) static SWITCH_INTO_OPTIMISED_VERSION: LazyLock<Arc<ExecutableBuffer>> =
     LazyLock::new(|| {
@@ -393,14 +397,24 @@ fn build_asm_jump_into_unoptimised_version() -> ExecutableBuffer {
                 todo!("implementation")
             }
         }
-
     }
 
-    // TODO: set the funciton call instruction size in asm
-    let size_of_call = 0;
-    let target_addr = dst_rec.offset + size_of_call;
+    // let function_label = asm.new_dynamic_label();
+    // // Emit the call instruction (replace <function_label> with your actual label or function)
+    // let call_start_offset = asm.offset();
+    // dynasm!(asm
+    //     ; call =>function_label
+    // );
+    // // Record the offset after emitting the call instruction
+    // let call_end_offset = asm.offset();
+    // // Calculate the size of the call instruction
+    // let size_of_call = (call_end_offset.0 - call_start_offset.0) as i32;
+    // println!("@@@@ size_of_call {:?}", size_of_call);
+
+    // let size_of_call = 5;
+    // let target_addr = dst_rec.offset + size_of_call;
     // TODO: jump to control point.
-    dynasm!(asm; jmp target_addr as i32); // Cast to i32 if you're sure the address fits
+    // dynasm!(asm; jmp target_addr as i32); // Cast to i32 if you're sure the address fits
 
     return asm.finalize().unwrap();
 }
