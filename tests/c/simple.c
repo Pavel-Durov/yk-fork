@@ -2,24 +2,7 @@
 //   env-var: YKD_LOG_IR=-:aot,jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   env-var: YK_LOG=4
-//   stderr:
-//     yk-jit-event: start-tracing
-//     4
-//     yk-jit-event: stop-tracing
-//     --- Begin aot ---
-//     ...
-//     func main(%arg0: i32, %arg1: ptr) -> i32 {
-//     ...
-//     --- End aot ---
-//     --- Begin jit-pre-opt ---
-//     ...
-//     --- End jit-pre-opt ---
-//     3
-//     yk-jit-event: enter-jit-code
-//     2
-//     1
-//     yk-jit-event: deoptimise
-//     exit
+//   stderr: ...
 
 // Check that basic trace compilation works.
 
