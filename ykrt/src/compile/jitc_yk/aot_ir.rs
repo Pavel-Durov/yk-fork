@@ -405,8 +405,10 @@ fn map_to_lineinfo(v: Vec<RawLineInfoRec>) -> Result<HashMap<InstID, LineInfoLoc
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[deku(type = "u8")]
 pub(crate) enum BinOp {
+    /// The canonicalised form of `Add` in JIT IR is (Var, Var) or (Var, Const).
     Add = 0,
     Sub,
+    /// The canonicalised form of `Mul` in JIT IR is (Var, Var) or (Var, Const).
     Mul,
     Or,
     And,
@@ -545,6 +547,27 @@ pub(crate) enum Predicate {
     /// "sle: interprets the operands as signed values and yields true if op1 is less
     /// than or equal to op2."
     SignedLessEqual,
+}
+
+impl Predicate {
+    /// Returns whether the comparison is signed.
+    ///
+    /// Not that [Self::Equal] and [Self::NotEqual] are considered not unsigned, since such
+    /// comparisons are signedness agnostic.
+    pub(crate) fn signed(&self) -> bool {
+        match self {
+            Self::Equal
+            | Self::NotEqual
+            | Self::UnsignedGreater
+            | Self::UnsignedGreaterEqual
+            | Self::UnsignedLess
+            | Self::UnsignedLessEqual => false,
+            Self::SignedGreater
+            | Self::SignedGreaterEqual
+            | Self::SignedLess
+            | Self::SignedLessEqual => true,
+        }
+    }
 }
 
 impl Display for Predicate {

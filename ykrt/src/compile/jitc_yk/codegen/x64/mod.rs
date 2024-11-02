@@ -4,6 +4,18 @@
 //!   * Functions with a `cg_X` prefix generate code for a [jit_ir] construct `X`.
 //!   * Helper functions arguments are in order `(<destination>, <source_1>, ... <source_n>)`.
 //!
+//! Notes:
+//!
+//!   * The codegen routines try to avoid the use of operations which set 8 or 16-bit
+//!     sub-registers. This is for two reasons: a) to simplify the code, but also b) to avoid
+//!     partial register stalls in the CPU pipeline. Generally speaking we prefer to use 64-bit
+//!     operations, but sometimes we special-case 32-bit operations since they are so common.
+//!
+//!   * If an object occupies only part of a 64-bit register, then there are no guarantees about
+//!     the unused higher-order bits. Codegen routines must be mindful of this and, depending upon
+//!     the operation, may be required to (for example) "mask off" or "sign extend into" the
+//!     undefined bits in order to compute the correct result.
+//!
 //! FIXME: the code generator clobbers registers willy-nilly because at the time of writing we have
 //! a register allocator that doesn't actually use any registers. Later we will have to audit the
 //! backend and insert register save/restore for clobbered registers.
@@ -11,7 +23,7 @@
 use super::{
     super::{
         int_signs::{SignExtend, Truncate},
-        jit_ir::{self, BinOp, FloatTy, InstIdx, Module, Operand, Ty},
+        jit_ir::{self, BinOp, FloatTy, Inst, InstIdx, Module, Operand, Ty},
         CompilationError,
     },
     reg_alloc::{self, StackDirection, VarLocation},
@@ -41,9 +53,13 @@ use dynasmrt::{
 };
 use indexmap::IndexMap;
 use parking_lot::Mutex;
-use std::sync::{Arc, Weak};
-use std::{cell::Cell, slice};
-use std::{collections::HashMap, error::Error};
+use std::{
+    cell::Cell,
+    collections::HashMap,
+    error::Error,
+    slice,
+    sync::{Arc, Weak},
+};
 use ykaddr::addr::symbol_to_ptr;
 use yksmp;
 
@@ -96,7 +112,8 @@ static STACKMAP_GP_REGS: [Rq; 7] = [
 static JITFUNC_LIVEVARS_ARGIDX: usize = 0;
 
 /// The size of a 64-bit register in bytes.
-pub(crate) static REG64_SIZE: usize = 8;
+pub(crate) static REG64_BYTESIZE: usize = 8;
+static REG64_BITSIZE: usize = REG64_BYTESIZE * 8;
 static RBP_DWARF_NUM: u16 = 6;
 
 /// The x64 SysV ABI requires a 16-byte aligned stack prior to any call.
@@ -184,7 +201,7 @@ impl<'a> Assemble<'a> {
                 let size = if pinfo.hasfp {
                     // The frame size includes the pushed RBP, but since we only care about the size of
                     // the local variables we need to subtract it again.
-                    rec.size - u64::try_from(REG64_SIZE).unwrap()
+                    rec.size - u64::try_from(REG64_BYTESIZE).unwrap()
                 } else {
                     rec.size
                 };
@@ -235,11 +252,7 @@ impl<'a> Assemble<'a> {
         }
 
         let alloc_off = self.emit_prologue();
-
-        for (iidx, inst) in self.m.iter_skipping_insts() {
-            self.ra.expire_regs(iidx);
-            self.cg_inst(iidx, inst)?;
-        }
+        self.cg_insts()?;
 
         if !self.deoptinfo.is_empty() {
             // We now have to construct the "full" deopt points. Inside the trace itself, are just
@@ -369,42 +382,77 @@ impl<'a> Assemble<'a> {
     }
 
     /// Codegen an instruction.
-    fn cg_inst(
-        &mut self,
-        iidx: jit_ir::InstIdx,
-        inst: &jit_ir::Inst,
-    ) -> Result<(), CompilationError> {
-        self.comment(self.asm.offset(), inst.display(iidx, self.m).to_string());
+    fn cg_insts(&mut self) -> Result<(), CompilationError> {
+        let mut iter = self.m.iter_skipping_insts();
+        let mut next = iter.next();
+        while let Some((iidx, inst)) = next {
+            self.ra.expire_regs(iidx);
+            self.comment(self.asm.offset(), inst.display(iidx, self.m).to_string());
 
-        match inst {
-            #[cfg(test)]
-            jit_ir::Inst::BlackBox(_) => unreachable!(),
-            jit_ir::Inst::Const(_) | jit_ir::Inst::Copy(_) | jit_ir::Inst::Tombstone => {
-                unreachable!();
+            match inst {
+                #[cfg(test)]
+                jit_ir::Inst::BlackBox(_) => unreachable!(),
+                jit_ir::Inst::Const(_) | jit_ir::Inst::Copy(_) | jit_ir::Inst::Tombstone => {
+                    unreachable!();
+                }
+
+                jit_ir::Inst::BinOp(i) => self.cg_binop(iidx, i),
+                jit_ir::Inst::LoadTraceInput(i) => self.cg_loadtraceinput(iidx, i),
+                jit_ir::Inst::Load(i) => self.cg_load(iidx, i),
+                jit_ir::Inst::PtrAdd(pa_inst) => {
+                    next = iter.next();
+                    // We have a special optimisation for `PtrAdd`s iff they're immediately followed
+                    // by a `load` *and* the result of the `PtrAdd` isn't used again.
+                    if let Some((next_iidx, Inst::Load(l_inst))) = next {
+                        if let Operand::Var(op_iidx) = l_inst.operand(self.m) {
+                            if op_iidx == iidx
+                                && !self.ra.is_inst_var_still_used_after(next_iidx, iidx)
+                            {
+                                self.cg_ptradd_load(iidx, pa_inst, next_iidx, l_inst);
+                                next = iter.next();
+                                continue;
+                            }
+                        }
+                    }
+                    self.cg_ptradd(iidx, pa_inst);
+                    continue;
+                }
+                jit_ir::Inst::DynPtrAdd(i) => self.cg_dynptradd(iidx, i),
+                jit_ir::Inst::Store(i) => self.cg_store(iidx, i),
+                jit_ir::Inst::LookupGlobal(i) => self.cg_lookupglobal(iidx, i),
+                jit_ir::Inst::Call(i) => self.cg_call(iidx, i)?,
+                jit_ir::Inst::IndirectCall(i) => self.cg_indirectcall(iidx, i)?,
+                jit_ir::Inst::ICmp(ic_inst) => {
+                    next = iter.next();
+                    // We have a special optimisation for `ICmp`s iff they're immediately followed
+                    // by a `Guard`.
+                    if let Some((next_iidx, Inst::Guard(g_inst))) = next {
+                        if let Operand::Var(cond_idx) = g_inst.cond(self.m) {
+                            if cond_idx == iidx {
+                                self.cg_icmp_guard(iidx, ic_inst, next_iidx, g_inst);
+                                next = iter.next();
+                                continue;
+                            }
+                        }
+                    }
+                    self.cg_icmp(iidx, ic_inst);
+                    continue;
+                }
+                jit_ir::Inst::Guard(i) => self.cg_guard(iidx, i),
+                jit_ir::Inst::TraceLoopStart => self.cg_traceloopstart(),
+                jit_ir::Inst::TraceLoopJump => self.cg_traceloopjump(),
+                jit_ir::Inst::RootJump => self.cg_rootjump(self.m.root_jump_addr()),
+                jit_ir::Inst::SExt(i) => self.cg_sext(iidx, i),
+                jit_ir::Inst::ZExt(i) => self.cg_zext(iidx, i),
+                jit_ir::Inst::Trunc(i) => self.cg_trunc(iidx, i),
+                jit_ir::Inst::Select(i) => self.cg_select(iidx, i),
+                jit_ir::Inst::SIToFP(i) => self.cg_sitofp(iidx, i),
+                jit_ir::Inst::FPExt(i) => self.cg_fpext(iidx, i),
+                jit_ir::Inst::FCmp(i) => self.cg_fcmp(iidx, i),
+                jit_ir::Inst::FPToSI(i) => self.cg_fptosi(iidx, i),
             }
 
-            jit_ir::Inst::BinOp(i) => self.cg_binop(iidx, i),
-            jit_ir::Inst::LoadTraceInput(i) => self.cg_loadtraceinput(iidx, i),
-            jit_ir::Inst::Load(i) => self.cg_load(iidx, i),
-            jit_ir::Inst::PtrAdd(i) => self.cg_ptradd(iidx, i),
-            jit_ir::Inst::DynPtrAdd(i) => self.cg_dynptradd(iidx, i),
-            jit_ir::Inst::Store(i) => self.cg_store(iidx, i),
-            jit_ir::Inst::LookupGlobal(i) => self.cg_lookupglobal(iidx, i),
-            jit_ir::Inst::Call(i) => self.cg_call(iidx, i)?,
-            jit_ir::Inst::IndirectCall(i) => self.cg_indirectcall(iidx, i)?,
-            jit_ir::Inst::ICmp(i) => self.cg_icmp(iidx, i),
-            jit_ir::Inst::Guard(i) => self.cg_guard(iidx, i),
-            jit_ir::Inst::TraceLoopStart => self.cg_traceloopstart(),
-            jit_ir::Inst::TraceLoopJump => self.cg_traceloopjump(),
-            jit_ir::Inst::RootJump => self.cg_rootjump(self.m.root_jump_addr()),
-            jit_ir::Inst::SExt(i) => self.cg_sext(iidx, i),
-            jit_ir::Inst::ZeroExtend(i) => self.cg_zeroextend(iidx, i),
-            jit_ir::Inst::Trunc(i) => self.cg_trunc(iidx, i),
-            jit_ir::Inst::Select(i) => self.cg_select(iidx, i),
-            jit_ir::Inst::SIToFP(i) => self.cg_sitofp(iidx, i),
-            jit_ir::Inst::FPExt(i) => self.cg_fpext(iidx, i),
-            jit_ir::Inst::FCmp(i) => self.cg_fcmp(iidx, i),
-            jit_ir::Inst::FPToSI(i) => self.cg_fptosi(iidx, i),
+            next = iter.next();
         }
         Ok(())
     }
@@ -456,6 +504,57 @@ impl<'a> Assemble<'a> {
         alloc_off
     }
 
+    /// Sign extend the `from_bits`-sized integer stored in `reg` up to the full size of the 64-bit
+    /// register.
+    ///
+    /// `from_bits` must be between 1 and 64.
+    fn sign_extend_to_reg64(&mut self, reg: Rq, from_bits: u8) {
+        debug_assert!(from_bits > 0 && from_bits <= 64);
+        // For "regularly-sized" integers, we can use movsx to achieve the sign extend and without
+        // fear of register stalls.
+        match from_bits {
+            8 => dynasm!(self.asm; movsx Rq(reg.code()), Rb(reg.code())),
+            16 => dynasm!(self.asm; movsx Rq(reg.code()), Rw(reg.code())),
+            32 => dynasm!(self.asm; movsx Rq(reg.code()), Rd(reg.code())),
+            64 => (), // nothing to do.
+            _ => {
+                // For "oddly-sized" integers we have to do the sign extend ourselves.
+                let shift = REG64_BITSIZE - usize::from(from_bits);
+                dynasm!(self.asm
+                    ; shl Rq(reg.code()), shift as i8 // shift all the way left.
+                    ; sar Rq(reg.code()), shift as i8 // shift back with the correct leading bits.
+                );
+            }
+        }
+    }
+
+    /// Zero extend the `from_bits`-sized integer stored in `reg` up to the full size of the 64-bit
+    /// register.
+    ///
+    /// `from_bits` must be between 1 and 64.
+    fn zero_extend_to_reg64(&mut self, reg: Rq, from_bits: u8) {
+        debug_assert!(from_bits > 0 && from_bits <= 64);
+        // For "regularly-sized" integers, we can use movzx to achieve the zero extend and without
+        // fear of register stalls.
+        match from_bits {
+            8 => dynasm!(self.asm; movzx Rq(reg.code()), Rb(reg.code())),
+            16 => dynasm!(self.asm; movzx Rq(reg.code()), Rw(reg.code())),
+            32 => {
+                // mov into a 32-bit register sign-extends up to 64 already.
+                dynasm!(self.asm; mov Rd(reg.code()), Rd(reg.code()));
+            }
+            64 => (), // nothing to do.
+            _ => {
+                // For "oddly-sized" integers we have to do the zero extend ourselves.
+                let shift = REG64_BITSIZE - usize::from(from_bits);
+                dynasm!(self.asm
+                    ; shl Rq(reg.code()), shift as i8 // shift all the way left.
+                    ; shr Rq(reg.code()), shift as i8 // shift back with leading zeros.
+                );
+            }
+        }
+    }
+
     fn patch_frame_allocation(&mut self, asm_off: AssemblyOffset) {
         // The stack should be 16-byte aligned after allocation. This ensures that calls in the
         // trace also get a 16-byte aligned stack, as per the SysV ABI.
@@ -488,142 +587,199 @@ impl<'a> Assemble<'a> {
         let rhs = inst.rhs(self.m);
 
         match inst.binop() {
-            BinOp::Add => {
+            BinOp::Add | BinOp::And | BinOp::Or | BinOp::Xor => {
                 let byte_size = lhs.byte_size(self.m);
-                match (&lhs, &rhs) {
-                    (Operand::Const(cidx), Operand::Var(_))
-                    | (Operand::Var(_), Operand::Const(cidx)) => {
-                        // Addition involves a constant. We may be able to emit more optimal code.
-                        let Const::Int(ctyidx, v) = self.m.const_(*cidx) else {
-                            unreachable!()
-                        };
-                        let Ty::Integer(bit_size) = self.m.type_(*ctyidx) else {
-                            unreachable!()
-                        };
-                        // If it's a 64-bit add and the numeric value of the constant can be
-                        // expressed in 32-bits...
-                        //
-                        // We are only optimising (exactly) 64-bit add operations for now, but
-                        // there is certainly oppertunity to optimised other cases later.
-                        //
-                        // We could have used Rust `as` casts to truncate and sign-extend here,
-                        // since we are currently only dealing with i32s and i64s, but if/when we
-                        // want to cover operations on other "odd-bit-size" integers we will need
-                        // these custom implementations.
-                        if *bit_size == 64 && v.truncate(32).sign_extend(32, 64) == *v {
-                            let v32 = v.truncate(32);
-                            let [lhs_reg] = self.ra.assign_gp_regs(
-                                &mut self.asm,
-                                iidx,
-                                [RegConstraint::InputOutput(lhs)],
-                            );
-                            dynasm!(self.asm; add Rq(lhs_reg.code()), v32 as i32);
-                            return;
-                        }
-                        // Same optimisation, but for 32-bit add.
-                        //
-                        // This time the constant fits by definition.
-                        if *bit_size == 32 {
-                            let v32 = v.truncate(32);
-                            let [lhs_reg] = self.ra.assign_gp_regs(
-                                &mut self.asm,
-                                iidx,
-                                [RegConstraint::InputOutput(lhs)],
-                            );
-                            dynasm!(self.asm; add Rd(lhs_reg.code()), v32 as i32);
-                            return;
-                        }
+                // We only optimise the canonicalised case.
+                if let Some(v) = self.op_to_i32(&rhs) {
+                    let [lhs_reg] = self.ra.assign_gp_regs(
+                        &mut self.asm,
+                        iidx,
+                        [RegConstraint::InputOutput(lhs)],
+                    );
+                    match inst.binop() {
+                        BinOp::Add => match byte_size {
+                            8 => dynasm!(self.asm; add Rq(lhs_reg.code()), v),
+                            1..=4 => dynasm!(self.asm; add Rd(lhs_reg.code()), v),
+                            _ => unreachable!(),
+                        },
+                        BinOp::And => match byte_size {
+                            8 => dynasm!(self.asm; and Rq(lhs_reg.code()), v),
+                            1..=4 => dynasm!(self.asm; and Rd(lhs_reg.code()), v),
+                            _ => unreachable!(),
+                        },
+                        BinOp::Or => match byte_size {
+                            8 => dynasm!(self.asm; or Rq(lhs_reg.code()), v),
+                            1..=4 => dynasm!(self.asm; or Rd(lhs_reg.code()), v),
+                            _ => unreachable!(),
+                        },
+                        BinOp::Xor => match byte_size {
+                            8 => dynasm!(self.asm; xor Rq(lhs_reg.code()), v),
+                            1..=4 => dynasm!(self.asm; xor Rd(lhs_reg.code()), v),
+                            _ => unreachable!(),
+                        },
+                        _ => unreachable!(),
                     }
-                    _ => (),
-                }
-
-                let [lhs_reg, rhs_reg] = self.ra.assign_gp_regs(
-                    &mut self.asm,
-                    iidx,
-                    [RegConstraint::InputOutput(lhs), RegConstraint::Input(rhs)],
-                );
-                match byte_size {
-                    1 => dynasm!(self.asm; add Rb(lhs_reg.code()), Rb(rhs_reg.code())),
-                    2 => dynasm!(self.asm; add Rw(lhs_reg.code()), Rw(rhs_reg.code())),
-                    4 => dynasm!(self.asm; add Rd(lhs_reg.code()), Rd(rhs_reg.code())),
-                    8 => dynasm!(self.asm; add Rq(lhs_reg.code()), Rq(rhs_reg.code())),
-                    _ => todo!(),
+                } else {
+                    let [lhs_reg, rhs_reg] = self.ra.assign_gp_regs(
+                        &mut self.asm,
+                        iidx,
+                        [RegConstraint::InputOutput(lhs), RegConstraint::Input(rhs)],
+                    );
+                    match inst.binop() {
+                        BinOp::Add => {
+                            match byte_size {
+                                0 => unreachable!(),
+                                1..=8 => {
+                                    // OK to ignore any undefined high-order bits here.
+                                    dynasm!(self.asm; add Rq(lhs_reg.code()), Rq(rhs_reg.code()));
+                                }
+                                _ => todo!(),
+                            }
+                        }
+                        BinOp::And => {
+                            match byte_size {
+                                0 => unreachable!(),
+                                1..=8 => {
+                                    // OK to ignore any undefined high-order bits here.
+                                    dynasm!(self.asm; and Rq(lhs_reg.code()), Rq(rhs_reg.code()));
+                                }
+                                _ => todo!(),
+                            }
+                        }
+                        BinOp::Or => {
+                            match byte_size {
+                                0 => unreachable!(),
+                                1..=8 => {
+                                    // OK to ignore any undefined high-order bits here.
+                                    dynasm!(self.asm; or Rq(lhs_reg.code()), Rq(rhs_reg.code()));
+                                }
+                                _ => todo!(),
+                            }
+                        }
+                        BinOp::Xor => {
+                            match byte_size {
+                                0 => unreachable!(),
+                                1..=8 => {
+                                    // OK to ignore any undefined high-order bits here.
+                                    dynasm!(self.asm; xor Rq(lhs_reg.code()), Rq(rhs_reg.code()));
+                                }
+                                _ => todo!(),
+                            }
+                        }
+                        _ => unreachable!(),
+                    }
                 }
             }
-            BinOp::And => {
-                let size = lhs.byte_size(self.m);
-                let [lhs_reg, rhs_reg] = self.ra.assign_gp_regs(
-                    &mut self.asm,
-                    iidx,
-                    [RegConstraint::InputOutput(lhs), RegConstraint::Input(rhs)],
-                );
-                match size {
-                    1 => dynasm!(self.asm; and Rb(lhs_reg.code()), Rb(rhs_reg.code())),
-                    2 => dynasm!(self.asm; and Rw(lhs_reg.code()), Rw(rhs_reg.code())),
-                    4 => dynasm!(self.asm; and Rd(lhs_reg.code()), Rd(rhs_reg.code())),
-                    8 => dynasm!(self.asm; and Rq(lhs_reg.code()), Rq(rhs_reg.code())),
-                    _ => todo!(),
-                }
-            }
-            BinOp::AShr => {
-                let size = lhs.byte_size(self.m);
-                let [lhs_reg, _rhs_reg] = self.ra.assign_gp_regs(
-                    &mut self.asm,
-                    iidx,
-                    [
-                        RegConstraint::InputOutput(lhs),
-                        RegConstraint::InputIntoReg(rhs, Rq::RCX),
-                    ],
-                );
-                debug_assert_eq!(_rhs_reg, Rq::RCX);
-                match size {
-                    1 => dynasm!(self.asm; sar Rb(lhs_reg.code()), cl),
-                    2 => dynasm!(self.asm; sar Rw(lhs_reg.code()), cl),
-                    4 => dynasm!(self.asm; sar Rd(lhs_reg.code()), cl),
-                    8 => dynasm!(self.asm; sar Rq(lhs_reg.code()), cl),
-                    _ => todo!(),
-                }
-            }
-            BinOp::LShr => {
-                let size = lhs.byte_size(self.m);
-                let [lhs_reg, _rhs_reg] = self.ra.assign_gp_regs(
-                    &mut self.asm,
-                    iidx,
-                    [
-                        RegConstraint::InputOutput(lhs),
-                        RegConstraint::InputIntoReg(rhs, Rq::RCX),
-                    ],
-                );
-                debug_assert_eq!(_rhs_reg, Rq::RCX);
-                match size {
-                    1 => dynasm!(self.asm; shr Rb(lhs_reg.code()), cl),
-                    2 => dynasm!(self.asm; shr Rw(lhs_reg.code()), cl),
-                    4 => dynasm!(self.asm; shr Rd(lhs_reg.code()), cl),
-                    8 => dynasm!(self.asm; shr Rq(lhs_reg.code()), cl),
-                    _ => todo!(),
+            BinOp::AShr | BinOp::LShr => {
+                // We inherit from LLVM the following semantics: a poison value is computed if you
+                // shift by >= the bit width of the first operand. We can ignore this, since we are
+                // free to compute any value in place of a poison value.
+                let Ty::Integer(bit_size) = self.m.type_(lhs.tyidx(self.m)) else {
+                    unreachable!()
+                };
+                if let Some(v) = self.op_to_i8(&rhs) {
+                    let [lhs_reg] = self.ra.assign_gp_regs(
+                        &mut self.asm,
+                        iidx,
+                        [RegConstraint::InputOutput(lhs)],
+                    );
+                    match inst.binop() {
+                        BinOp::AShr => match bit_size {
+                            0 => unreachable!(),
+                            32 => dynasm!(self.asm; sar Rd(lhs_reg.code()), v),
+                            1..=64 => {
+                                // Ensure we shift in zeros at the most-significant bits.
+                                self.sign_extend_to_reg64(
+                                    lhs_reg,
+                                    u8::try_from(*bit_size).unwrap(),
+                                );
+                                dynasm!(self.asm; sar Rq(lhs_reg.code()), v);
+                            }
+                            _ => todo!(),
+                        },
+                        BinOp::LShr => match bit_size {
+                            0 => unreachable!(),
+                            32 => dynasm!(self.asm; shr Rd(lhs_reg.code()), v),
+                            1..=64 => {
+                                // Ensure we shift in zeros at the most-significant bits.
+                                self.zero_extend_to_reg64(
+                                    lhs_reg,
+                                    u8::try_from(*bit_size).unwrap(),
+                                );
+                                dynasm!(self.asm; shr Rq(lhs_reg.code()), v);
+                            }
+                            _ => todo!(),
+                        },
+                        _ => unreachable!(),
+                    }
+                } else {
+                    let [lhs_reg, _rhs_reg] = self.ra.assign_gp_regs(
+                        &mut self.asm,
+                        iidx,
+                        [
+                            RegConstraint::InputOutput(lhs),
+                            // When using a register second operand, it has to be passed in CL.
+                            RegConstraint::InputIntoReg(rhs, Rq::RCX),
+                        ],
+                    );
+                    debug_assert_eq!(_rhs_reg, Rq::RCX);
+                    match inst.binop() {
+                        BinOp::AShr => match bit_size {
+                            0 => unreachable!(),
+                            32 => dynasm!(self.asm; sar Rd(lhs_reg.code()), cl),
+                            1..=64 => {
+                                // Ensure we shift in zeros at the most-significant bits.
+                                self.sign_extend_to_reg64(
+                                    lhs_reg,
+                                    u8::try_from(*bit_size).unwrap(),
+                                );
+                                dynasm!(self.asm; sar Rq(lhs_reg.code()), cl);
+                            }
+                            _ => todo!(),
+                        },
+                        BinOp::LShr => match bit_size {
+                            0 => unreachable!(),
+                            32 => dynasm!(self.asm; shr Rd(lhs_reg.code()), cl),
+                            1..=64 => {
+                                // Ensure we shift in zeros at the most-significant bits.
+                                self.zero_extend_to_reg64(
+                                    lhs_reg,
+                                    u8::try_from(*bit_size).unwrap(),
+                                );
+                                dynasm!(self.asm; shr Rq(lhs_reg.code()), cl);
+                            }
+                            _ => todo!(),
+                        },
+                        _ => unreachable!(),
+                    }
                 }
             }
             BinOp::Shl => {
-                let size = lhs.byte_size(self.m);
+                // We inherit from LLVM the following semantics: a poison value is computed if you
+                // shift by >= the bit width of the first operand. We can ignore this, since we are
+                // free to compute any value in place of a poison value.
+                let byte_size = lhs.byte_size(self.m);
                 let [lhs_reg, _rhs_reg] = self.ra.assign_gp_regs(
                     &mut self.asm,
                     iidx,
                     [
                         RegConstraint::InputOutput(lhs),
+                        // When using a register second operand, it has to be passed in CL.
                         RegConstraint::InputIntoReg(rhs, Rq::RCX),
                     ],
                 );
                 debug_assert_eq!(_rhs_reg, Rq::RCX);
-                match size {
-                    1 => dynasm!(self.asm; shl Rb(lhs_reg.code()), cl),
-                    2 => dynasm!(self.asm; shl Rw(lhs_reg.code()), cl),
-                    4 => dynasm!(self.asm; shl Rd(lhs_reg.code()), cl),
-                    8 => dynasm!(self.asm; shl Rq(lhs_reg.code()), cl),
+                match byte_size {
+                    0 => unreachable!(),
+                    1..=8 => {
+                        // OK to ignore any undefined high-order bits here.
+                        dynasm!(self.asm; shl Rq(lhs_reg.code()), cl);
+                    }
                     _ => todo!(),
                 }
             }
             BinOp::Mul => {
-                let size = lhs.byte_size(self.m);
+                let byte_size = lhs.byte_size(self.m);
                 self.ra
                     .clobber_gp_regs_hack(&mut self.asm, iidx, &[Rq::RDX]);
                 let [_lhs_reg, rhs_reg] = self.ra.assign_gp_regs_avoiding(
@@ -636,145 +792,157 @@ impl<'a> Assemble<'a> {
                     RegSet::from(Rq::RDX),
                 );
                 debug_assert_eq!(_lhs_reg, Rq::RAX);
-                match size {
-                    1 => dynasm!(self.asm; mul Rb(rhs_reg.code())),
-                    2 => dynasm!(self.asm; mul Rw(rhs_reg.code())),
-                    4 => dynasm!(self.asm; mul Rd(rhs_reg.code())),
-                    8 => dynasm!(self.asm; mul Rq(rhs_reg.code())),
+                match byte_size {
+                    0 => unreachable!(),
+                    1..=8 => {
+                        // OK to ignore any undefined high-order bits here.
+                        dynasm!(self.asm; mul Rq(rhs_reg.code()));
+                    }
                     _ => todo!(),
                 }
                 // Note that because we are code-genning an unchecked multiply, the higher-order part of
                 // the result in RDX is entirely ignored.
             }
-            BinOp::Or => {
-                let size = lhs.byte_size(self.m);
-                let [lhs_reg, rhs_reg] = self.ra.assign_gp_regs(
-                    &mut self.asm,
-                    iidx,
-                    [RegConstraint::InputOutput(lhs), RegConstraint::Input(rhs)],
-                );
-                match size {
-                    1 => dynasm!(self.asm; or Rb(lhs_reg.code()), Rb(rhs_reg.code())),
-                    2 => dynasm!(self.asm; or Rw(lhs_reg.code()), Rw(rhs_reg.code())),
-                    4 => dynasm!(self.asm; or Rd(lhs_reg.code()), Rd(rhs_reg.code())),
-                    8 => dynasm!(self.asm; or Rq(lhs_reg.code()), Rq(rhs_reg.code())),
-                    _ => todo!(),
-                }
-            }
             BinOp::SDiv => {
-                let size = lhs.byte_size(self.m);
+                let Ty::Integer(bit_size) = self.m.type_(lhs.tyidx(self.m)) else {
+                    unreachable!()
+                };
                 self.ra
                     .clobber_gp_regs_hack(&mut self.asm, iidx, &[Rq::RDX]);
-                let [_lhs_reg, rhs_reg] = self.ra.assign_gp_regs_avoiding(
+                let [lhs_reg, rhs_reg] = self.ra.assign_gp_regs_avoiding(
                     &mut self.asm,
                     iidx,
                     [
-                        // The quotient is stored in RAX. We don't care about the remainder stored
-                        // in RDX.
+                        // 64-bit (or 32-bit) signed division with idiv operates on RDX:RAX
+                        // (EDX:EAX) and stores the quotient in RAX (EAX). We ignore the remainder
+                        // stored into RDX (EDX).
                         RegConstraint::InputOutputIntoReg(lhs, Rq::RAX),
                         RegConstraint::Input(rhs),
                     ],
                     RegSet::from(Rq::RDX),
                 );
-                // The dividend is hard-coded into DX:AX/EDX:EAX/RDX:RAX. However unless we have 128bit
-                // values or want to optimise register usage, we won't be needing this, and just zero out
-                // RDX.
-
-                // Signed division (idiv) operates on the DX:AX, EDX:EAX, RDX:RAX registers, so we
-                // use `cdq`/`cqo` to double the size via sign extension and store the result in
-                // DX:AX, EDX:EAX, RDX:RAX.
-                match size {
-                    // There's no `cwd` equivalent for byte-sized values, so we use `movsx`
-                    // (sign-extend) instead.
-                    1 => dynasm!(self.asm; movsx ax, al; idiv Rb(rhs_reg.code())),
-                    2 => dynasm!(self.asm; cwd; idiv Rw(rhs_reg.code())),
-                    4 => dynasm!(self.asm; cdq; idiv Rd(rhs_reg.code())),
-                    8 => dynasm!(self.asm; cqo; idiv Rq(rhs_reg.code())),
+                match bit_size {
+                    0 => unreachable!(),
+                    32 => dynasm!(self.asm
+                        ; cdq // Sign extend EAX up to EDX:EAX.
+                        ; idiv Rd(rhs_reg.code())
+                    ),
+                    1..=64 => {
+                        self.sign_extend_to_reg64(lhs_reg, u8::try_from(*bit_size).unwrap());
+                        self.sign_extend_to_reg64(rhs_reg, u8::try_from(*bit_size).unwrap());
+                        dynasm!(self.asm
+                            ; cqo // Sign extend RAX up to RDX:RAX.
+                            ; idiv Rq(rhs_reg.code())
+                        );
+                    }
                     _ => todo!(),
                 }
             }
             BinOp::SRem => {
-                // The dividend is hard-coded into DX:AX/EDX:EAX/RDX:RAX. However unless we have 128bit
-                // values or want to optimise register usage, we won't be needing this, and just zero out
-                // RDX.
-                let size = lhs.byte_size(self.m);
-                debug_assert!(size == 4 || size == 8);
-                let [_lhs_reg, rhs_reg, _rem_reg] = self.ra.assign_gp_regs(
+                let Ty::Integer(bit_size) = self.m.type_(lhs.tyidx(self.m)) else {
+                    unreachable!()
+                };
+                let [lhs_reg, rhs_reg, _rem_reg] = self.ra.assign_gp_regs(
                     &mut self.asm,
                     iidx,
                     [
+                        // 64-bit (or 32-bit) signed division with idiv operates on RDX:RAX
+                        // (EDX:EAX) and stores the remainder in RDX (EDX). We ignore the
+                        // remainder stored into RAX (EAX).
                         RegConstraint::InputIntoRegAndClobber(lhs, Rq::RAX),
                         RegConstraint::Input(rhs),
                         RegConstraint::OutputFromReg(Rq::RDX),
                     ],
                 );
-                debug_assert_eq!(_lhs_reg, Rq::RAX);
+                debug_assert_eq!(lhs_reg, Rq::RAX);
                 debug_assert_eq!(_rem_reg, Rq::RDX);
-                dynasm!(self.asm; xor rdx, rdx);
-                match size {
-                    1 => dynasm!(self.asm; idiv Rb(rhs_reg.code())),
-                    2 => dynasm!(self.asm; idiv Rw(rhs_reg.code())),
-                    4 => dynasm!(self.asm; idiv Rd(rhs_reg.code())),
-                    8 => dynasm!(self.asm; idiv Rq(rhs_reg.code())),
+                match bit_size {
+                    0 => unreachable!(),
+                    32 => dynasm!(self.asm
+                        ; cdq // Sign extend EAX up to EDX:EAX.
+                        ; idiv Rd(rhs_reg.code())
+                    ),
+                    1..=64 => {
+                        self.sign_extend_to_reg64(lhs_reg, u8::try_from(*bit_size).unwrap());
+                        self.sign_extend_to_reg64(rhs_reg, u8::try_from(*bit_size).unwrap());
+                        dynasm!(self.asm
+                            ; cqo // Sign extend RAX up to RDX:RAX.
+                            ; idiv Rq(rhs_reg.code())
+                        );
+                    }
                     _ => todo!(),
                 }
-                // The remainder is stored in RDX. We don't care about the quotient stored in RAX.
             }
             BinOp::Sub => {
-                let size = lhs.byte_size(self.m);
-                let [lhs_reg, rhs_reg] = self.ra.assign_gp_regs(
-                    &mut self.asm,
-                    iidx,
-                    [RegConstraint::InputOutput(lhs), RegConstraint::Input(rhs)],
-                );
-                match size {
-                    1 => dynasm!(self.asm; sub Rb(lhs_reg.code()), Rb(rhs_reg.code())),
-                    2 => dynasm!(self.asm; sub Rw(lhs_reg.code()), Rw(rhs_reg.code())),
-                    4 => dynasm!(self.asm; sub Rd(lhs_reg.code()), Rd(rhs_reg.code())),
-                    8 => dynasm!(self.asm; sub Rq(lhs_reg.code()), Rq(rhs_reg.code())),
-                    _ => todo!(),
-                }
-            }
-            BinOp::Xor => {
-                let size = lhs.byte_size(self.m);
-                let [lhs_reg, rhs_reg] = self.ra.assign_gp_regs(
-                    &mut self.asm,
-                    iidx,
-                    [RegConstraint::InputOutput(lhs), RegConstraint::Input(rhs)],
-                );
-                match size {
-                    1 => dynasm!(self.asm; xor Rb(lhs_reg.code()), Rb(rhs_reg.code())),
-                    2 => dynasm!(self.asm; xor Rw(lhs_reg.code()), Rw(rhs_reg.code())),
-                    4 => dynasm!(self.asm; xor Rd(lhs_reg.code()), Rd(rhs_reg.code())),
-                    8 => dynasm!(self.asm; xor Rq(lhs_reg.code()), Rq(rhs_reg.code())),
-                    _ => todo!(),
+                let Ty::Integer(bit_size) = self.m.type_(lhs.tyidx(self.m)) else {
+                    unreachable!()
+                };
+                if let Some(0) = self.op_to_i32(&lhs) {
+                    let [rhs_reg] = self.ra.assign_gp_regs(
+                        &mut self.asm,
+                        iidx,
+                        [RegConstraint::InputOutput(rhs)],
+                    );
+                    match bit_size {
+                        0 => unreachable!(),
+                        32 => dynasm!(self.asm; neg Rd(rhs_reg.code())),
+                        1..=64 => {
+                            self.sign_extend_to_reg64(rhs_reg, u8::try_from(*bit_size).unwrap());
+                            dynasm!(self.asm; neg Rq(rhs_reg.code()));
+                        }
+                        _ => todo!(),
+                    }
+                } else {
+                    let [lhs_reg, rhs_reg] = self.ra.assign_gp_regs(
+                        &mut self.asm,
+                        iidx,
+                        [RegConstraint::InputOutput(lhs), RegConstraint::Input(rhs)],
+                    );
+                    match bit_size {
+                        0 => unreachable!(),
+                        32 => dynasm!(self.asm; sub Rd(lhs_reg.code()), Rd(rhs_reg.code())),
+                        1..=64 => {
+                            self.sign_extend_to_reg64(lhs_reg, u8::try_from(*bit_size).unwrap());
+                            self.sign_extend_to_reg64(rhs_reg, u8::try_from(*bit_size).unwrap());
+                            dynasm!(self.asm; sub Rq(lhs_reg.code()), Rq(rhs_reg.code()));
+                        }
+                        _ => todo!(),
+                    }
                 }
             }
             BinOp::UDiv => {
-                let size = lhs.byte_size(self.m);
+                let Ty::Integer(bit_size) = self.m.type_(lhs.tyidx(self.m)) else {
+                    unreachable!()
+                };
                 self.ra
                     .clobber_gp_regs_hack(&mut self.asm, iidx, &[Rq::RDX]);
-                let [_lhs_reg, rhs_reg] = self.ra.assign_gp_regs_avoiding(
+                let [lhs_reg, rhs_reg] = self.ra.assign_gp_regs_avoiding(
                     &mut self.asm,
                     iidx,
                     [
-                        // The quotient is stored in RAX. We don't care about the remainder stored
-                        // in RDX.
+                        // 64-bit (or 32-bit) unsigned division with idiv operates on RDX:RAX
+                        // (EDX:EAX) and stores the quotient in RAX (EAX). We ignore the remainder
+                        // put into RDX (EDX).
                         RegConstraint::InputOutputIntoReg(lhs, Rq::RAX),
                         RegConstraint::Input(rhs),
                     ],
                     RegSet::from(Rq::RDX),
                 );
-                debug_assert_eq!(_lhs_reg, Rq::RAX);
-                // Like SDiv the dividend goes into AX, DX:AX, EDX:EAX, RDX:RAX. But since the
-                // values aren't signed we don't need to sign-extend them and can just zero out
-                // `rdx`.
-                dynasm!(self.asm; xor rdx, rdx);
-                match size {
-                    1 => dynasm!(self.asm; div Rb(rhs_reg.code())),
-                    2 => dynasm!(self.asm; div Rw(rhs_reg.code())),
-                    4 => dynasm!(self.asm; div Rd(rhs_reg.code())),
-                    8 => dynasm!(self.asm; div Rq(rhs_reg.code())),
+                debug_assert_eq!(lhs_reg, Rq::RAX);
+                match bit_size {
+                    0 => unreachable!(),
+                    32 => dynasm!(self.asm
+                        ; xor edx, edx
+                        ; div Rd(rhs_reg.code())
+                    ),
+                    1..=64 => {
+                        self.zero_extend_to_reg64(lhs_reg, u8::try_from(*bit_size).unwrap());
+                        self.zero_extend_to_reg64(rhs_reg, u8::try_from(*bit_size).unwrap());
+                        dynasm!(self.asm
+                            ; xor rdx, rdx
+                            ; div Rq(rhs_reg.code())
+                        );
+                    }
                     _ => todo!(),
                 }
             }
@@ -792,39 +960,39 @@ impl<'a> Assemble<'a> {
                 }
             }
             BinOp::FAdd => {
-                let size = lhs.byte_size(self.m);
+                let byte_size = lhs.byte_size(self.m);
                 let [lhs_reg, rhs_reg] = self.ra.assign_fp_regs(
                     &mut self.asm,
                     iidx,
                     [RegConstraint::InputOutput(lhs), RegConstraint::Input(rhs)],
                 );
-                match size {
+                match byte_size {
                     4 => dynasm!(self.asm; addss Rx(lhs_reg.code()), Rx(rhs_reg.code())),
                     8 => dynasm!(self.asm; addsd Rx(lhs_reg.code()), Rx(rhs_reg.code())),
                     _ => todo!(),
                 }
             }
             BinOp::FMul => {
-                let size = lhs.byte_size(self.m);
+                let byte_size = lhs.byte_size(self.m);
                 let [lhs_reg, rhs_reg] = self.ra.assign_fp_regs(
                     &mut self.asm,
                     iidx,
                     [RegConstraint::InputOutput(lhs), RegConstraint::Input(rhs)],
                 );
-                match size {
+                match byte_size {
                     4 => dynasm!(self.asm; mulss Rx(lhs_reg.code()), Rx(rhs_reg.code())),
                     8 => dynasm!(self.asm; mulsd Rx(lhs_reg.code()), Rx(rhs_reg.code())),
                     _ => todo!(),
                 }
             }
             BinOp::FSub => {
-                let size = lhs.byte_size(self.m);
+                let byte_size = lhs.byte_size(self.m);
                 let [lhs_reg, rhs_reg] = self.ra.assign_fp_regs(
                     &mut self.asm,
                     iidx,
                     [RegConstraint::InputOutput(lhs), RegConstraint::Input(rhs)],
                 );
-                match size {
+                match byte_size {
                     4 => dynasm!(self.asm; subss Rx(lhs_reg.code()), Rx(rhs_reg.code())),
                     8 => dynasm!(self.asm; subsd Rx(lhs_reg.code()), Rx(rhs_reg.code())),
                     _ => todo!(),
@@ -899,13 +1067,11 @@ impl<'a> Assemble<'a> {
             yksmp::Location::Constant(v) => {
                 // FIXME: This isn't fine-grained enough, as there may be constants of any
                 // bit-size.
-                let size = self.m.inst_no_copies(iidx).def_byte_size(self.m);
-                match size {
-                    4 => VarLocation::ConstInt {
-                        bits: 32,
-                        v: u64::from(*v),
-                    },
-                    _ => todo!(),
+                let byte_size = self.m.inst_no_copies(iidx).def_byte_size(self.m);
+                debug_assert!(byte_size <= 8);
+                VarLocation::ConstInt {
+                    bits: u32::try_from(byte_size).unwrap() * 8,
+                    v: u64::from(*v),
                 }
             }
             e => {
@@ -913,7 +1079,7 @@ impl<'a> Assemble<'a> {
             }
         };
         let size = self.m.inst_no_copies(iidx).def_byte_size(self.m);
-        debug_assert!(size <= REG64_SIZE);
+        debug_assert!(size <= REG64_BYTESIZE);
         match m {
             VarLocation::Register(reg_alloc::Register::GP(reg)) => {
                 self.ra.force_assign_inst_gp_reg(iidx, reg);
@@ -938,13 +1104,44 @@ impl<'a> Assemble<'a> {
     fn cg_load(&mut self, iidx: jit_ir::InstIdx, inst: &jit_ir::LoadInst) {
         match self.m.type_(inst.tyidx()) {
             Ty::Integer(_) | Ty::Ptr => {
+                let op = inst.operand(self.m);
+                if let Operand::Var(op_iidx) = op {
+                    if self.ra.is_inst_var_still_used_after(iidx, op_iidx) {
+                        // If the operand value is still live after the current instruction, avoid
+                        // clobbering it, in the hope that it can be reused.
+                        let [in_reg, out_reg] = self.ra.assign_gp_regs(
+                            &mut self.asm,
+                            iidx,
+                            [
+                                RegConstraint::Input(inst.operand(self.m)),
+                                RegConstraint::Output,
+                            ],
+                        );
+                        let size = self.m.inst_no_copies(iidx).def_byte_size(self.m);
+                        debug_assert!(size <= REG64_BYTESIZE);
+                        match size {
+                            1 => {
+                                dynasm!(self.asm ; movzx Rq(out_reg.code()), BYTE [Rq(in_reg.code())])
+                            }
+                            2 => {
+                                dynasm!(self.asm ; movzx Rq(out_reg.code()), WORD [Rq(in_reg.code())])
+                            }
+                            4 => dynasm!(self.asm ; mov Rd(out_reg.code()), [Rq(in_reg.code())]),
+                            8 => dynasm!(self.asm ; mov Rq(out_reg.code()), [Rq(in_reg.code())]),
+                            _ => todo!("{}", size),
+                        };
+                        return;
+                    }
+                }
+                // The input operand is dead after this instruction, so reuse the same register for
+                // input and output.
                 let [reg] = self.ra.assign_gp_regs(
                     &mut self.asm,
                     iidx,
                     [RegConstraint::InputOutput(inst.operand(self.m))],
                 );
                 let size = self.m.inst_no_copies(iidx).def_byte_size(self.m);
-                debug_assert!(size <= REG64_SIZE);
+                debug_assert!(size <= REG64_BYTESIZE);
                 match size {
                     1 => dynasm!(self.asm ; movzx Rq(reg.code()), BYTE [Rq(reg.code())]),
                     2 => dynasm!(self.asm ; movzx Rq(reg.code()), WORD [Rq(reg.code())]),
@@ -975,6 +1172,49 @@ impl<'a> Assemble<'a> {
         }
     }
 
+    /// Optimise `PtrAdd` followed by `Load`. This has the following preconditions:
+    ///   1. The `Load` must consume the result of the `PtrAdd`.
+    ///   2. The result of the `PtrAdd` must not be used later (i.e. the `Load` is the sole
+    ///      consumer of the `PtrAdd`s result).
+    fn cg_ptradd_load(
+        &mut self,
+        pa_iidx: InstIdx,
+        pa_inst: &jit_ir::PtrAddInst,
+        l_iidx: InstIdx,
+        l_inst: &jit_ir::LoadInst,
+    ) {
+        let [_reg] = self.ra.assign_gp_regs(
+            &mut self.asm,
+            pa_iidx,
+            [RegConstraint::InputOutput(pa_inst.ptr(self.m))],
+        );
+        self.ra.expire_regs(l_iidx);
+        self.comment(
+            self.asm.offset(),
+            Inst::Load(*l_inst).display(l_iidx, self.m).to_string(),
+        );
+        let [reg] = self.ra.assign_gp_regs(
+            &mut self.asm,
+            l_iidx,
+            [RegConstraint::InputOutput(l_inst.operand(self.m))],
+        );
+        debug_assert_eq!(_reg, reg);
+
+        let byte_size = self.m.inst_no_copies(l_iidx).def_byte_size(self.m);
+        debug_assert!(byte_size <= REG64_BYTESIZE);
+        match byte_size {
+            1 => {
+                dynasm!(self.asm ; movzx Rq(reg.code()), BYTE [Rq(reg.code()) + pa_inst.off()])
+            }
+            2 => {
+                dynasm!(self.asm ; movzx Rq(reg.code()), WORD [Rq(reg.code()) + pa_inst.off()])
+            }
+            4 => dynasm!(self.asm ; mov Rd(reg.code()), [Rq(reg.code()) + pa_inst.off()]),
+            8 => dynasm!(self.asm ; mov Rq(reg.code()), [Rq(reg.code()) + pa_inst.off()]),
+            _ => todo!("{}", byte_size),
+        }
+    }
+
     fn cg_ptradd(&mut self, iidx: jit_ir::InstIdx, inst: &jit_ir::PtrAddInst) {
         // LLVM semantics dictate that the offset should be sign-extended/truncated up/down to the
         // size of the LLVM pointer index type. For address space zero on x86, truncation can't
@@ -1002,22 +1242,80 @@ impl<'a> Assemble<'a> {
         // LLVM semantics dictate that the element size and number of elements should be
         // sign-extended/truncated up/down to the size of the LLVM pointer index type. For address
         // space zero on x86_64, truncation can't happen, and when an immediate third operand is
-        // used for x86_64 `mul`, it is implicitly sign extended.
-        dynasm!(self.asm
-            // multiply the element size by the number of elements.
-            ; imul Rq(num_elems_reg.code()), Rq(num_elems_reg.code()), i32::from(inst.elem_size())
-            // add the result to the pointer. We make use of addition's commutative property to
-            // reverse the "obvious" ordering of registers: doing so allows us not to overwrite
-            // ptr_reg.
-            ; add Rq(num_elems_reg.code()), Rq(ptr_reg.code())
-        );
+        // used, that also isn't a worry.
+        match inst.elem_size() {
+            1 => {
+                dynasm!(self.asm; lea Rq(num_elems_reg.code()), [Rq(ptr_reg.code()) + Rq(num_elems_reg.code())])
+            }
+            2 => {
+                dynasm!(self.asm; lea Rq(num_elems_reg.code()), [Rq(ptr_reg.code()) + Rq(num_elems_reg.code()) * 2])
+            }
+            4 => {
+                dynasm!(self.asm; lea Rq(num_elems_reg.code()), [Rq(ptr_reg.code()) + Rq(num_elems_reg.code()) * 4])
+            }
+            8 => {
+                dynasm!(self.asm; lea Rq(num_elems_reg.code()), [Rq(ptr_reg.code()) + Rq(num_elems_reg.code()) * 8])
+            }
+            _ => {
+                if inst.elem_size().is_power_of_two() {
+                    let v = i8::try_from(inst.elem_size().ilog2()).unwrap();
+                    dynasm!(self.asm; shl Rq(num_elems_reg.code()), v);
+                } else {
+                    dynasm!(self.asm; imul Rq(num_elems_reg.code()), Rq(num_elems_reg.code()), i32::from(inst.elem_size()));
+                }
+                // Add the result to the pointer. We make use of addition's commutative property to
+                // reverse the "obvious" ordering of registers: doing so allows us not to overwrite
+                // ptr_reg.
+                dynasm!(self.asm; add Rq(num_elems_reg.code()), Rq(ptr_reg.code()));
+            }
+        }
     }
 
     fn cg_store(&mut self, iidx: InstIdx, inst: &jit_ir::StoreInst) {
         let val = inst.val(self.m);
         match self.m.type_(val.tyidx(self.m)) {
             Ty::Integer(_) | Ty::Ptr => {
-                let size = val.byte_size(self.m);
+                let byte_size = val.byte_size(self.m);
+                match byte_size {
+                    1 => {
+                        if let Some(v) = self.op_to_i8(&val) {
+                            let [tgt_reg] = self.ra.assign_gp_regs(
+                                &mut self.asm,
+                                iidx,
+                                [RegConstraint::Input(inst.tgt(self.m))],
+                            );
+                            dynasm!(self.asm ; mov BYTE [Rq(tgt_reg.code())], v);
+                            return;
+                        }
+                    }
+                    2 => {
+                        if let Some(v) = self.op_to_i16(&val) {
+                            let [tgt_reg] = self.ra.assign_gp_regs(
+                                &mut self.asm,
+                                iidx,
+                                [RegConstraint::Input(inst.tgt(self.m))],
+                            );
+                            dynasm!(self.asm ; mov WORD [Rq(tgt_reg.code())], v);
+                            return;
+                        }
+                    }
+                    4 | 8 => {
+                        if let Some(v) = self.op_to_i32(&val) {
+                            let [tgt_reg] = self.ra.assign_gp_regs(
+                                &mut self.asm,
+                                iidx,
+                                [RegConstraint::Input(inst.tgt(self.m))],
+                            );
+                            match byte_size {
+                                4 => dynasm!(self.asm ; mov DWORD [Rq(tgt_reg.code())], v),
+                                8 => dynasm!(self.asm ; mov QWORD [Rq(tgt_reg.code())], v),
+                                _ => unreachable!(),
+                            }
+                            return;
+                        }
+                    }
+                    _ => (),
+                }
                 let [tgt_reg, val_reg] = self.ra.assign_gp_regs(
                     &mut self.asm,
                     iidx,
@@ -1026,7 +1324,7 @@ impl<'a> Assemble<'a> {
                         RegConstraint::Input(val),
                     ],
                 );
-                match size {
+                match byte_size {
                     1 => dynasm!(self.asm ; mov [Rq(tgt_reg.code())], Rb(val_reg.code())),
                     2 => dynasm!(self.asm ; mov [Rq(tgt_reg.code())], Rw(val_reg.code())),
                     4 => dynasm!(self.asm ; mov [Rq(tgt_reg.code())], Rd(val_reg.code())),
@@ -1157,7 +1455,7 @@ impl<'a> Assemble<'a> {
         let ret_ty = fty.ret_type(self.m);
         #[cfg(debug_assertions)]
         if !matches!(ret_ty, Ty::Void) {
-            debug_assert!(ret_ty.byte_size().unwrap() <= REG64_SIZE);
+            debug_assert!(ret_ty.byte_size().unwrap() <= REG64_BYTESIZE);
         }
         match ret_ty {
             Ty::Void => (),
@@ -1215,21 +1513,179 @@ impl<'a> Assemble<'a> {
         Ok(())
     }
 
-    fn cg_icmp(&mut self, iidx: InstIdx, inst: &jit_ir::ICmpInst) {
-        let (lhs, pred, rhs) = (inst.lhs(self.m), inst.predicate(), inst.rhs(self.m));
-        let size = lhs.byte_size(self.m);
-        let [lhs_reg, rhs_reg] = self.ra.assign_gp_regs(
-            &mut self.asm,
-            iidx,
-            [RegConstraint::InputOutput(lhs), RegConstraint::Input(rhs)],
-        );
-        match size {
-            1 => dynasm!(self.asm; cmp Rb(lhs_reg.code()), Rb(rhs_reg.code())),
-            2 => dynasm!(self.asm; cmp Rw(lhs_reg.code()), Rw(rhs_reg.code())),
-            4 => dynasm!(self.asm; cmp Rd(lhs_reg.code()), Rd(rhs_reg.code())),
-            8 => dynasm!(self.asm; cmp Rq(lhs_reg.code()), Rq(rhs_reg.code())),
+    /// If an `Operand` refers to a constant integer that can be represented as an `i8`, return
+    /// it, otherwise return `None`.
+    fn op_to_i8(&self, op: &Operand) -> Option<i8> {
+        if let Operand::Const(cidx) = op {
+            if let Const::Int(tyidx, v) = self.m.const_(*cidx) {
+                let Ty::Integer(bit_size) = self.m.type_(*tyidx) else {
+                    panic!()
+                };
+                if *bit_size <= 8 {
+                    return Some(v.sign_extend(*bit_size, 8) as i8);
+                } else if v.truncate(8).sign_extend(8, 64) == *v {
+                    return Some(v.truncate(8) as i8);
+                }
+            }
+        }
+        None
+    }
+    ///
+    /// If an `Operand` refers to a constant integer that can be represented as an `i16`, return
+    /// it, otherwise return `None`.
+    fn op_to_i16(&self, op: &Operand) -> Option<i16> {
+        if let Operand::Const(cidx) = op {
+            if let Const::Int(tyidx, v) = self.m.const_(*cidx) {
+                let Ty::Integer(bit_size) = self.m.type_(*tyidx) else {
+                    panic!()
+                };
+                if *bit_size <= 16 {
+                    return Some(v.sign_extend(*bit_size, 16) as i16);
+                } else if v.truncate(16).sign_extend(16, 64) == *v {
+                    return Some(v.truncate(16) as i16);
+                }
+            }
+        }
+        None
+    }
+
+    /// If an `Operand` refers to a constant integer that can be represented as an `i32`, return
+    /// it, otherwise return `None`.
+    fn op_to_i32(&self, op: &Operand) -> Option<i32> {
+        if let Operand::Const(cidx) = op {
+            if let Const::Int(tyidx, v) = self.m.const_(*cidx) {
+                let Ty::Integer(bit_size) = self.m.type_(*tyidx) else {
+                    panic!()
+                };
+                if *bit_size <= 32 {
+                    return Some(v.sign_extend(*bit_size, 32) as i32);
+                } else if v.truncate(32).sign_extend(32, 64) == *v {
+                    return Some(v.truncate(32) as i32);
+                }
+            }
+        }
+        None
+    }
+
+    fn cg_cmp_const(&mut self, bit_size: usize, pred: jit_ir::Predicate, lhs_reg: Rq, rhs: i32) {
+        match bit_size {
+            0 => unreachable!(),
+            32 => dynasm!(self.asm; cmp Rd(lhs_reg.code()), rhs),
+            1..=64 => {
+                if pred.signed() {
+                    self.sign_extend_to_reg64(lhs_reg, u8::try_from(bit_size).unwrap());
+                } else {
+                    self.zero_extend_to_reg64(lhs_reg, u8::try_from(bit_size).unwrap());
+                }
+                dynasm!(self.asm; cmp Rq(lhs_reg.code()), rhs);
+            }
             _ => todo!(),
         }
+    }
+
+    fn cg_cmp_regs(&mut self, bit_size: usize, pred: jit_ir::Predicate, lhs_reg: Rq, rhs_reg: Rq) {
+        match bit_size {
+            0 => unreachable!(),
+            32 => dynasm!(self.asm; cmp Rd(lhs_reg.code()), Rd(rhs_reg.code())),
+            1..=64 => {
+                if pred.signed() {
+                    self.sign_extend_to_reg64(lhs_reg, u8::try_from(bit_size).unwrap());
+                    self.sign_extend_to_reg64(rhs_reg, u8::try_from(bit_size).unwrap());
+                } else {
+                    self.zero_extend_to_reg64(lhs_reg, u8::try_from(bit_size).unwrap());
+                    self.zero_extend_to_reg64(rhs_reg, u8::try_from(bit_size).unwrap());
+                }
+                dynasm!(self.asm; cmp Rq(lhs_reg.code()), Rq(rhs_reg.code()));
+            }
+            _ => todo!(),
+        }
+    }
+
+    /// Optimise an `ICmpInst` iff it's immediately followed by a `GuardInst`. Calling this
+    /// function in any other situation will lead to undefined results.
+    fn cg_icmp_guard(
+        &mut self,
+        ic_iidx: InstIdx,
+        ic_inst: &jit_ir::ICmpInst,
+        g_iidx: InstIdx,
+        g_inst: &jit_ir::GuardInst,
+    ) {
+        // Codegen ICmp
+        let (lhs, pred, rhs) = (
+            ic_inst.lhs(self.m),
+            ic_inst.predicate(),
+            ic_inst.rhs(self.m),
+        );
+        let bit_size = self.m.type_(lhs.tyidx(self.m)).bit_size().unwrap();
+        if let Some(v) = self.op_to_i32(&rhs) {
+            let [lhs_reg] =
+                self.ra
+                    .assign_gp_regs(&mut self.asm, ic_iidx, [RegConstraint::Input(lhs)]);
+            self.cg_cmp_const(bit_size, pred, lhs_reg, v);
+        } else {
+            let [lhs_reg, rhs_reg] = self.ra.assign_gp_regs(
+                &mut self.asm,
+                ic_iidx,
+                [RegConstraint::Input(lhs), RegConstraint::Input(rhs)],
+            );
+            self.cg_cmp_regs(bit_size, pred, lhs_reg, rhs_reg);
+        }
+
+        // Codegen guard
+        self.ra.expire_regs(g_iidx);
+        self.comment(
+            self.asm.offset(),
+            Inst::Guard(*g_inst).display(g_iidx, self.m).to_string(),
+        );
+        let fail_label = self.guard_to_deopt(g_inst);
+
+        if g_inst.expect() {
+            match pred {
+                jit_ir::Predicate::Equal => dynasm!(self.asm; jne => fail_label),
+                jit_ir::Predicate::NotEqual => dynasm!(self.asm; je => fail_label),
+                jit_ir::Predicate::UnsignedGreater => dynasm!(self.asm; jna => fail_label),
+                jit_ir::Predicate::UnsignedGreaterEqual => dynasm!(self.asm; jnae => fail_label),
+                jit_ir::Predicate::UnsignedLess => dynasm!(self.asm; jnb => fail_label),
+                jit_ir::Predicate::UnsignedLessEqual => dynasm!(self.asm; jnbe => fail_label),
+                jit_ir::Predicate::SignedGreater => dynasm!(self.asm; jng => fail_label),
+                jit_ir::Predicate::SignedGreaterEqual => dynasm!(self.asm; jnge => fail_label),
+                jit_ir::Predicate::SignedLess => dynasm!(self.asm; jnl => fail_label),
+                jit_ir::Predicate::SignedLessEqual => dynasm!(self.asm; jnle => fail_label),
+            }
+        } else {
+            match pred {
+                jit_ir::Predicate::Equal => dynasm!(self.asm; je => fail_label),
+                jit_ir::Predicate::NotEqual => dynasm!(self.asm; jne => fail_label),
+                jit_ir::Predicate::UnsignedGreater => dynasm!(self.asm; ja => fail_label),
+                jit_ir::Predicate::UnsignedGreaterEqual => dynasm!(self.asm; jae => fail_label),
+                jit_ir::Predicate::UnsignedLess => dynasm!(self.asm; jb => fail_label),
+                jit_ir::Predicate::UnsignedLessEqual => dynasm!(self.asm; jbe => fail_label),
+                jit_ir::Predicate::SignedGreater => dynasm!(self.asm; jg => fail_label),
+                jit_ir::Predicate::SignedGreaterEqual => dynasm!(self.asm; jge => fail_label),
+                jit_ir::Predicate::SignedLess => dynasm!(self.asm; jl => fail_label),
+                jit_ir::Predicate::SignedLessEqual => dynasm!(self.asm; jle => fail_label),
+            }
+        }
+    }
+
+    fn cg_icmp(&mut self, iidx: InstIdx, inst: &jit_ir::ICmpInst) {
+        let (lhs, pred, rhs) = (inst.lhs(self.m), inst.predicate(), inst.rhs(self.m));
+        let bit_size = self.m.type_(lhs.tyidx(self.m)).bit_size().unwrap();
+        let lhs_reg = if let Some(v) = self.op_to_i32(&rhs) {
+            let [lhs_reg] =
+                self.ra
+                    .assign_gp_regs(&mut self.asm, iidx, [RegConstraint::InputOutput(lhs)]);
+            self.cg_cmp_const(bit_size, pred, lhs_reg, v);
+            lhs_reg
+        } else {
+            let [lhs_reg, rhs_reg] = self.ra.assign_gp_regs(
+                &mut self.asm,
+                iidx,
+                [RegConstraint::InputOutput(lhs), RegConstraint::Input(rhs)],
+            );
+            self.cg_cmp_regs(bit_size, pred, lhs_reg, rhs_reg);
+            lhs_reg
+        };
 
         // Interpret the flags assignment WRT the predicate.
         //
@@ -1239,14 +1695,14 @@ impl<'a> Assemble<'a> {
         //  - "above"/"below" -- unsigned predicate. e.g. `seta`.
         //  - "greater"/"less" -- signed predicate. e.g. `setle`.
         //
-        //  Note that the equal/not-equal predicates are signedness agnostic.
+        // Note that the equal/not-equal predicates are signedness agnostic.
         match pred {
             jit_ir::Predicate::Equal => dynasm!(self.asm; sete Rb(lhs_reg.code())),
             jit_ir::Predicate::NotEqual => dynasm!(self.asm; setne Rb(lhs_reg.code())),
             jit_ir::Predicate::UnsignedGreater => dynasm!(self.asm; seta Rb(lhs_reg.code())),
             jit_ir::Predicate::UnsignedGreaterEqual => dynasm!(self.asm; setae Rb(lhs_reg.code())),
             jit_ir::Predicate::UnsignedLess => dynasm!(self.asm; setb Rb(lhs_reg.code())),
-            jit_ir::Predicate::UnsignedLessEqual => dynasm!(self.asm; setb Rb(lhs_reg.code())),
+            jit_ir::Predicate::UnsignedLessEqual => dynasm!(self.asm; setbe Rb(lhs_reg.code())),
             jit_ir::Predicate::SignedGreater => dynasm!(self.asm; setg Rb(lhs_reg.code())),
             jit_ir::Predicate::SignedGreaterEqual => dynasm!(self.asm; setge Rb(lhs_reg.code())),
             jit_ir::Predicate::SignedLess => dynasm!(self.asm; setl Rb(lhs_reg.code())),
@@ -1336,124 +1792,26 @@ impl<'a> Assemble<'a> {
         }
     }
 
-    fn cg_traceloopjump(&mut self) {
-        // Loop the JITted code if the `tloop_start` label is present (not relevant for IR created
-        // by a test or a side-trace).
-        let label = StaticLabel::global("tloop_start");
-        match self.asm.labels().resolve_static(&label) {
-            Ok(_) => {
-                // Found the label, emit a jump to it.
-                for (i, op) in self.m.loop_jump_vars().iter().enumerate() {
-                    let (iidx, src) = match op {
-                        Operand::Var(iidx) => (*iidx, self.ra.var_location(*iidx)),
-                        _ => panic!(),
-                    };
-                    let dst = self.loop_start_locs[i];
-                    if dst == src {
-                        // The value is already in the correct place, so there's nothing we need to
-                        // do.
-                        continue;
-                    }
-                    match dst {
-                        VarLocation::Stack {
-                            frame_off: off_dst,
-                            size: size_dst,
-                        } => {
-                            match src {
-                                VarLocation::Register(reg_alloc::Register::GP(reg)) => {
-                                    match size_dst {
-                                        8 => dynasm!(self.asm;
-                                            mov QWORD [rbp - i32::try_from(off_dst).unwrap()], Rq(reg.code())
-                                        ),
-                                        _ => todo!(),
-                                    }
-                                }
-                                VarLocation::ConstInt { bits, v } => match bits {
-                                    32 => dynasm!(self.asm;
-                                        mov DWORD [rbp - i32::try_from(off_dst).unwrap()], v as i32
-                                    ),
-                                    _ => todo!(),
-                                },
-                                VarLocation::Stack {
-                                    frame_off: off_src,
-                                    size: size_src,
-                                } => match size_src {
-                                    // FIXME: Better to ask register allocator for a free register
-                                    // rather than pushing/popping RAX here?
-                                    8 => dynasm!(self.asm;
-                                        push rax;
-                                        mov rax, QWORD [rbp - i32::try_from(off_src).unwrap()];
-                                        mov QWORD [rbp - i32::try_from(off_dst).unwrap()], rax;
-                                        pop rax
-                                    ),
-                                    _ => todo!(),
-                                },
-                                e => todo!("{:?}", e),
-                            }
-                        }
-                        VarLocation::Direct { .. } => {
-                            // Direct locations are read-only, so it doesn't make sense to write to
-                            // them. This is likely a case where the direct value has been moved
-                            // somewhere else (register/normal stack) so dst and src no longer
-                            // match. But since the value can't change we can safely ignore this.
-                        }
-                        VarLocation::Register(reg) => {
-                            // Copy the value into a register. We can ask the register allocator to
-                            // this for us, but telling it to load the source operand into the
-                            // target register.
-                            match reg {
-                                reg_alloc::Register::GP(r) => {
-                                    let [_] = self.ra.assign_gp_regs(
-                                        &mut self.asm,
-                                        iidx,
-                                        [RegConstraint::InputIntoReg(op.clone(), r)],
-                                    );
-                                }
-                                reg_alloc::Register::FP(r) => {
-                                    let [_] = self.ra.assign_fp_regs(
-                                        &mut self.asm,
-                                        iidx,
-                                        [RegConstraint::InputIntoReg(op.clone(), r)],
-                                    );
-                                }
-                            }
-                        }
-                        _ => todo!(),
-                    }
-                }
-                dynasm!(self.asm; jmp ->tloop_start);
-            }
-            Err(DynasmError::UnknownLabel(_)) => {
-                // Label not found. This is OK for unit testing, where we sometimes construct
-                // traces that don't loop.
-                #[cfg(test)]
-                {
-                    self.comment(self.asm.offset(), "Unterminated trace".to_owned());
-                    dynasm!(self.asm; ud2);
-                }
-                // FIXME: Side traces don't currently loop back to the parent trace and deopt into
-                // the main interpreter instead. Once we implement proper looping, this check can
-                // be reinstated.
-                // #[cfg(not(test))]
-                // panic!("unterminated trace in non-unit-test");
-            }
-            Err(e) => {
-                // Any other error suggests something has gone quite wrong. Just crash.
-                panic!("{}", e.to_string())
-            }
-        }
-    }
-
-    fn cg_rootjump(&mut self, addr: *const libc::c_void) {
-        // The end of a side-trace. Map live variables of this side-trace to the entry variables of
-        // the root parent trace, then jump to it.
-        // FIXME: This shares a lot of code with `cg_traceloopjump`.
+    /// Move live values from their source location into the target location when doing a jump back
+    /// to the beginning of a trace (or a jump from a side-trace to the beginning of its root
+    /// trace).
+    ///
+    /// # Arguments
+    ///
+    /// * `tgt_vars` - The target locations. If `None` use `self.loop_start_locs` instead.
+    fn write_jump_vars(&mut self, tgt_vars: Option<&[VarLocation]>) {
+        // If we pass in `None` use `self.loop_start_locs` instead. We need to do this since we
+        // can't pass in `&self.loop_start_locs` directly due to borrowing restrictions.
+        let tgt_vars = tgt_vars.unwrap_or(self.loop_start_locs.as_slice());
         for (i, op) in self.m.loop_jump_vars().iter().enumerate() {
             let (iidx, src) = match op {
-                Operand::Var(iidx) => (*iidx, self.ra.var_location(*iidx)),
+                Operand::Var(iidx) => {
+                    let iidx = self.m.inst_decopy(*iidx).0;
+                    (iidx, self.ra.var_location(iidx))
+                }
                 _ => panic!(),
             };
-            let dst = *self.m.root_entry_vars().get(i).unwrap();
+            let dst = tgt_vars[i];
             if dst == src {
                 // The value is already in the correct place, so there's nothing we need to
                 // do.
@@ -1512,12 +1870,52 @@ impl<'a> Assemble<'a> {
                                 [RegConstraint::InputIntoReg(op.clone(), r)],
                             );
                         }
-                        _ => todo!(),
+                        reg_alloc::Register::FP(r) => {
+                            let [_] = self.ra.assign_fp_regs(
+                                &mut self.asm,
+                                iidx,
+                                [RegConstraint::InputIntoReg(op.clone(), r)],
+                            );
+                        }
                     }
                 }
-                e => todo!("{:?}", e),
+                _ => todo!(),
             }
         }
+    }
+
+    fn cg_traceloopjump(&mut self) {
+        // Loop the JITted code if the `tloop_start` label is present (not relevant for IR created
+        // by a test or a side-trace).
+        let label = StaticLabel::global("tloop_start");
+        match self.asm.labels().resolve_static(&label) {
+            Ok(_) => {
+                // Found the label, emit a jump to it.
+                self.write_jump_vars(None);
+                dynasm!(self.asm; jmp ->tloop_start);
+            }
+            Err(DynasmError::UnknownLabel(_)) => {
+                // Label not found. This is OK for unit testing, where we sometimes construct
+                // traces that don't loop.
+                #[cfg(test)]
+                {
+                    self.comment(self.asm.offset(), "Unterminated trace".to_owned());
+                    dynasm!(self.asm; ud2);
+                }
+                #[cfg(not(test))]
+                panic!("unterminated trace in non-unit-test");
+            }
+            Err(e) => {
+                // Any other error suggests something has gone quite wrong. Just crash.
+                panic!("{}", e.to_string())
+            }
+        }
+    }
+
+    fn cg_rootjump(&mut self, addr: *const libc::c_void) {
+        // The end of a side-trace. Map live variables of this side-trace to the entry variables of
+        // the root parent trace, then jump to it.
+        self.write_jump_vars(Some(self.m.root_entry_vars()));
         self.ra.align_stack(SYSV_CALL_STACK_ALIGN);
         // Get the interpreter frame size, so we can subtract it from the current stack size (we
         // only want to reset things to the state before the root trace, but the stack size
@@ -1528,7 +1926,7 @@ impl<'a> Assemble<'a> {
         let loopsize = if pinfo.hasfp {
             // The frame size includes the pushed RBP, but since we only care about the size of
             // the local variables we need to subtract it again.
-            rec.size - u64::try_from(REG64_SIZE).unwrap()
+            rec.size - u64::try_from(REG64_BYTESIZE).unwrap()
         } else {
             rec.size
         };
@@ -1621,61 +2019,31 @@ impl<'a> Assemble<'a> {
             unreachable!(); // must be an integer
         };
 
-        // FIXME: assumes the input and output fit in a register.
-        match (src_bitsize, dest_bitsize) {
-            (1, 64) => {
-                // FIXME: find a way to efficiently generalise all the non-byte-sized extends.
-                // Copy what LLVM does?
-                dynasm!(self.asm
-                    ; and Rb(reg.code()), 1
-                    ; neg Rb(reg.code())
-                    ; movsx Rq(reg.code()), Rb(reg.code()));
-            }
-            (8, 32) => dynasm!(self.asm; movsx Rd(reg.code()), Rb(reg.code())),
-            (8, 64) => dynasm!(self.asm; movsx Rq(reg.code()), Rb(reg.code())),
-            (16, 32) => dynasm!(self.asm; movsx Rd(reg.code()), Rw(reg.code())),
-            (16, 64) => dynasm!(self.asm; movsx Rq(reg.code()), Rw(reg.code())),
-            (32, 64) => dynasm!(self.asm; movsx Rq(reg.code()), Rd(reg.code())),
-            _ => todo!("{} {}", src_bitsize, dest_bitsize),
+        if *dest_bitsize <= u32::try_from(REG64_BITSIZE).unwrap() {
+            // If it fits in a register, we can just sign extend up to the entire register width.
+            self.sign_extend_to_reg64(reg, u8::try_from(*src_bitsize).unwrap());
+        } else {
+            todo!("{} {}", src_bitsize, dest_bitsize);
         }
     }
 
-    fn cg_zeroextend(&mut self, iidx: InstIdx, i: &jit_ir::ZeroExtendInst) {
+    fn cg_zext(&mut self, iidx: InstIdx, i: &jit_ir::ZExtInst) {
         let [reg] = self.ra.assign_gp_regs(
             &mut self.asm,
             iidx,
             [RegConstraint::InputOutput(i.val(self.m))],
         );
 
-        let from_val = i.val(self.m);
-        let from_type = self.m.type_(from_val.tyidx(self.m));
-        let from_size = from_type.byte_size().unwrap();
+        let src_type = self.m.type_(i.val(self.m).tyidx(self.m));
+        let src_bitsize = src_type.bit_size().unwrap();
+        let dest_type = self.m.type_(i.dest_tyidx());
+        let dest_bitsize = dest_type.bit_size().unwrap();
 
-        let to_type = self.m.type_(i.dest_tyidx());
-        let to_size = to_type.byte_size().unwrap();
-
-        // Note that the src/dest types may be pointers for cases where non-truncating
-        // inttoptr/ptrtoint are serialised to zero-extends by ykllvm.
-        debug_assert!(
-            matches!(to_type, jit_ir::Ty::Integer(_)) || matches!(to_type, jit_ir::Ty::Ptr)
-        );
-        debug_assert!(
-            matches!(from_type, jit_ir::Ty::Integer(_)) || matches!(from_type, jit_ir::Ty::Ptr)
-        );
-        // You can only zero-extend a smaller integer to a larger integer.
-        debug_assert!(from_size <= to_size);
-
-        // FIXME: assumes the input and output fit in a register.
-        debug_assert!(to_size <= REG64_SIZE);
-
-        // FIXME: Assumes we don't assign to sub-registers.
-        match (to_size, from_size) {
-            (4, 1) => dynasm!(self.asm; movzx Rq(reg.code()), Rb(reg.code())),
-            (4, 2) => dynasm!(self.asm; movzx Rq(reg.code()), Rw(reg.code())),
-            (8, 1) => dynasm!(self.asm; movzx Rq(reg.code()), Rb(reg.code())),
-            (8, 4) => (), // 32-bit regs are already zero-extended
-            (8, 8) => (), // Nothing to extend
-            _ => todo!("{to_size} {from_size}"),
+        if dest_bitsize <= REG64_BITSIZE {
+            // If it fits in a register, we can just sign extend up to the entire register width.
+            self.zero_extend_to_reg64(reg, u8::try_from(src_bitsize).unwrap());
+        } else {
+            todo!("{} {}", src_bitsize, dest_bitsize);
         }
     }
 
@@ -1770,27 +2138,8 @@ impl<'a> Assemble<'a> {
             [RegConstraint::InputOutput(i.val(self.m))],
         );
 
-        let from_val = i.val(self.m);
-        let from_type = self.m.type_(from_val.tyidx(self.m));
-        let from_size = from_type.byte_size().unwrap();
-
-        let to_type = self.m.type_(i.dest_tyidx());
-        let to_size = to_type.byte_size().unwrap();
-
-        debug_assert!(matches!(to_type, jit_ir::Ty::Integer(_)));
-        debug_assert!(
-            matches!(from_type, jit_ir::Ty::Integer(_)) || matches!(from_type, jit_ir::Ty::Ptr)
-        );
-        // You can only truncate a bigger integer to a smaller integer.
-        debug_assert!(from_size > to_size);
-
-        // FIXME: assumes the input and output fit in a register.
-        debug_assert!(to_size <= REG64_SIZE);
-
-        // FIXME: There's no instruction on x86_64 to mov from a bigger register into a smaller
-        // register. The simplest way to truncate the value is to zero out the higher order bits.
-        // Currently the AOT IR follows `trunc` by `and` to do this for us, but relying on that
-        // feels rather fragile.
+        // This instruction takes an integer and truncates it to a smaller one. We do nothing,
+        // other than assume that the now-unused higher-order bits are undefined.
     }
 
     fn cg_select(&mut self, iidx: jit_ir::InstIdx, inst: &jit_ir::SelectInst) {
@@ -1809,7 +2158,7 @@ impl<'a> Assemble<'a> {
         dynasm!(self.asm ; cmove Rq(true_reg.code()), Rq(false_reg.code()));
     }
 
-    fn cg_guard(&mut self, iidx: jit_ir::InstIdx, inst: &jit_ir::GuardInst) {
+    fn guard_to_deopt(&mut self, inst: &jit_ir::GuardInst) -> DynamicLabel {
         // Convert the guard info into deopt info and store it on the heap.
         let mut lives = Vec::new();
         let gi = inst.guard_info(self.m);
@@ -1852,7 +2201,11 @@ impl<'a> Assemble<'a> {
             guard: Guard::new(),
         };
         self.deoptinfo.insert(inst.gidx.into(), deoptinfo);
+        fail_label
+    }
 
+    fn cg_guard(&mut self, iidx: jit_ir::InstIdx, inst: &jit_ir::GuardInst) {
+        let fail_label = self.guard_to_deopt(inst);
         let cond = inst.cond(self.m);
         // ICmp instructions evaluate to a one-byte zero/one value.
         debug_assert_eq!(cond.byte_size(self.m), 1);
@@ -1885,13 +2238,7 @@ pub(super) struct X64CompiledTrace {
     mt: Arc<MT>,
     /// The executable code itself.
     buf: ExecutableBuffer,
-    /// Deoptimisation info: maps a deoptimisation ID to it's information.
-    ///
-    /// Tracked here so they can be freed when the compiled trace is dropped.
-    ///
-    /// FIXME: The key of this shouldn't be a raw integer. I think it should be either GuardIdx or
-    /// GuardInfoIdx (which are effectively the same thing, just defined differently and in
-    /// different places -- can/should we merge them?)
+    /// Deoptimisation info: maps a [GuardIdx] to [DeoptInfo].
     deoptinfo: HashMap<usize, DeoptInfo>,
     /// Stack pointer offset from the base pointer of interpreter frame as defined in
     /// [YkSideTraceInfo::sp_offset].
@@ -1962,8 +2309,8 @@ impl CompiledTrace for X64CompiledTrace {
         })
     }
 
-    fn guard(&self, gid: GuardIdx) -> &crate::compile::Guard {
-        &self.deoptinfo[&usize::from(gid)].guard
+    fn guard(&self, gidx: GuardIdx) -> &crate::compile::Guard {
+        &self.deoptinfo[&usize::from(gidx)].guard
     }
 
     fn hl(&self) -> &std::sync::Weak<parking_lot::Mutex<crate::location::HotLocation>> {
@@ -2241,8 +2588,7 @@ mod tests {
             "
                 ...
                 ; %1: ptr = load %0
-                {{_}} {{_}}: mov [rbp-0x08], r.64.x
-                {{_}} {{_}}: mov r.64.x, [r.64.x]
+                {{_}} {{_}}: mov r.64.x, [rbx]
                 ...
                 ",
         );
@@ -2259,8 +2605,7 @@ mod tests {
             "
                 ...
                 ; %1: i8 = load %0
-                {{_}} {{_}}: mov [rbp-0x01], r.8.x
-                {{_}} {{_}}: movzx r.64.x, byte ptr [r.64.x]
+                {{_}} {{_}}: movzx r.64.x, byte ptr [rbx]
                 ...
                 ",
         );
@@ -2277,7 +2622,6 @@ mod tests {
             "
                 ...
                 ; %1: i32 = Load %0
-                {{_}} {{_}}: mov [rbp-0x04], r.32.x
                 {{_}} {{_}}: mov r.32.x, [r.64.x]
                 ...
                 ",
@@ -2313,8 +2657,34 @@ mod tests {
             "
                 ...
                 ; %1: ptr = ptr_add %0, 64
-                {{_}} {{_}}: mov ...
                 {{_}} {{_}}: add r.64.x, 0x40
+                ...
+                ",
+        );
+    }
+
+    #[test]
+    fn cg_ptradd_load() {
+        codegen_and_test(
+            "
+              entry:
+                %0: ptr = load_ti 0
+                %1: ptr = load_ti 1
+                %2: ptr = ptr_add %0, 64
+                %3: i64 = load %2
+                %4: ptr = ptr_add %1, 32
+                %5: i64 = load %4
+                %6: ptr = ptr_add %4, 1
+            ",
+            "
+                ...
+                ; %2: ptr = ptr_add %0, 64
+                ; %3: i64 = load %2
+                {{_}} {{_}}: mov r.64.x, [rbx+{{_}}]
+                ; %4: ptr = ptr_add %1, 32
+                {{_}} {{_}}: add r.64.y, 0x20
+                ; %5: i64 = load %4
+                {{_}} {{_}}: mov r.64._, [r.64.y]
                 ...
                 ",
         );
@@ -2327,14 +2697,90 @@ mod tests {
               entry:
                 %0: ptr = load_ti 0
                 %1: i32 = load_ti 1
-                %2: ptr = dyn_ptr_add %0, %1, 32
+                %2: ptr = dyn_ptr_add %0, %1, 1
             ",
             "
                 ...
-                ; %2: ptr = dyn_ptr_add %0, %1, 32
-                {{_}} {{_}}: mov [rbp-{{_}}], r.32.x
-                {{_}} {{_}}: imul r.64.x, r.64.x, 0x20
-                {{_}} {{_}}: add r.64.x, r.64.y
+                ; %2: ptr = dyn_ptr_add %0, %1, 1
+                {{_}} {{_}}: lea r.64.x, [r.64._+r.64.x*1]
+                ...
+                ",
+        );
+
+        codegen_and_test(
+            "
+              entry:
+                %0: ptr = load_ti 0
+                %1: i32 = load_ti 1
+                %2: ptr = dyn_ptr_add %0, %1, 2
+            ",
+            "
+                ...
+                ; %2: ptr = dyn_ptr_add %0, %1, 2
+                {{_}} {{_}}: lea r.64.x, [r.64._+r.64.x*2]
+                ...
+                ",
+        );
+
+        codegen_and_test(
+            "
+              entry:
+                %0: ptr = load_ti 0
+                %1: i32 = load_ti 1
+                %2: ptr = dyn_ptr_add %0, %1, 4
+            ",
+            "
+                ...
+                ; %2: ptr = dyn_ptr_add %0, %1, 4
+                {{_}} {{_}}: lea r.64.x, [r.64._+r.64.x*4]
+                ...
+                ",
+        );
+
+        codegen_and_test(
+            "
+              entry:
+                %0: ptr = load_ti 0
+                %1: i32 = load_ti 1
+                %2: ptr = dyn_ptr_add %0, %1, 5
+            ",
+            "
+                ...
+                ; %2: ptr = dyn_ptr_add %0, %1, 5
+                {{_}} {{_}}: imul r.64.x, r.64.x, 0x05
+                {{_}} {{_}}: add r.64.x, r.64._
+                ...
+                ",
+        );
+
+        codegen_and_test(
+            "
+              entry:
+                %0: ptr = load_ti 0
+                %1: i32 = load_ti 1
+                %2: ptr = dyn_ptr_add %0, %1, 16
+            ",
+            "
+                ...
+                ; %2: ptr = dyn_ptr_add %0, %1, 16
+                {{_}} {{_}}: shl r.64.x, 0x04
+                {{_}} {{_}}: add r.64.x, r.64._
+                ...
+                ",
+        );
+
+        codegen_and_test(
+            "
+              entry:
+                %0: ptr = load_ti 0
+                %1: i32 = load_ti 1
+                %2: ptr = dyn_ptr_add %0, %1, 77
+            ",
+            "
+                ...
+                ; %2: ptr = dyn_ptr_add %0, %1, 77
+                {{_}} {{_}}: imul r.64.x, r.64.x, 0x4d
+                {{_}} {{_}}: add r.64.x, r.64._
                 ...
                 ",
         );
@@ -2361,6 +2807,33 @@ mod tests {
     }
 
     #[test]
+    fn cg_store_consts() {
+        codegen_and_test(
+            "
+              entry:
+                %0: ptr = load_ti 0
+                *%0 = 1i8
+                *%0 = 2i16
+                *%0 = 3i32
+                *%0 = 4i64
+            ",
+            "
+                ...
+                ; %0: ptr = load_ti ...
+                ; *%0 = 1i8
+                {{_}} {{_}}: mov byte ptr [r.64.x], 0x01
+                ; *%0 = 2i16
+                {{_}} {{_}}: mov word ptr [r.64.x], 0x02
+                ; *%0 = 3i32
+                {{_}} {{_}}: mov dword ptr [r.64.x], 0x03
+                ; *%0 = 4i64
+                {{_}} {{_}}: mov qword ptr [r.64.x], 0x04
+                ...
+                ",
+        );
+    }
+
+    #[test]
     fn cg_add_i16() {
         codegen_and_test(
             "
@@ -2372,8 +2845,7 @@ mod tests {
             "
                 ...
                 ; %2: i16 = add %0, %1
-                ......
-                {{_}} {{_}}: add r.16.x, r.16.y
+                {{_}} {{_}}: add r.64.x, r.64.y
                 ...
                 ",
         );
@@ -2391,7 +2863,6 @@ mod tests {
             "
                 ...
                 ; %2: i64 = add %0, %1
-                ......
                 {{_}} {{_}}: add r.64.x, r.64.y
                 ...
                 ",
@@ -2409,7 +2880,6 @@ mod tests {
             "
                 ...
                 ; %1: i64 = add %0, 1i64
-                ......
                 {{_}} {{_}}: add r.64.x, 0x01
                 ...
                 ",
@@ -2427,7 +2897,6 @@ mod tests {
             "
                 ...
                 ; %1: i64 = add %0, 18446744073709551615i64
-                ......
                 {{_}} {{_}}: add r.64.x, 0xffffffffffffffff
                 ...
                 ",
@@ -2446,7 +2915,6 @@ mod tests {
             "
                 ...
                 ; %1: i64 = add %0, 2147483647i64
-                ......
                 {{_}} {{_}}: add r.64.x, 0x7fffffff
                 ...
                 ",
@@ -2464,7 +2932,6 @@ mod tests {
             "
                 ...
                 ; %1: i64 = add %0, 2147483648i64
-                ......
                 {{_}} {{_}}: mov r.64.x, 0x80000000
                 {{_}} {{_}}: add r.64.y, r.64.x
                 ...
@@ -2483,7 +2950,6 @@ mod tests {
             "
                 ...
                 ; %1: i32 = add %0, 1i32
-                ......
                 {{_}} {{_}}: add r.32.x, 0x01
                 ...
                 ",
@@ -2501,8 +2967,370 @@ mod tests {
             "
                 ...
                 ; %1: i32 = add %0, 4294967295i32
-                ......
                 {{_}} {{_}}: add r.32.x, 0xffffffff
+                ...
+                ",
+        );
+    }
+
+    #[test]
+    fn cg_and() {
+        codegen_and_test(
+            "
+              entry:
+                %0: i16 = load_ti 0
+                %1: i16 = load_ti 1
+                %2: i32 = load_ti 2
+                %3: i32 = load_ti 3
+                %4: i63 = load_ti 4
+                %5: i63 = load_ti 5
+                %6: i16 = and %0, %1
+                %7: i32 = and %2, %3
+                %8: i63 = and %4, %5
+            ",
+            "
+                ...
+                ; %6: i16 = and %0, %1
+                {{_}} {{_}}: and r.64.a, r.64.b
+                ; %7: i32 = and %2, %3
+                {{_}} {{_}}: and r.64.c, r.64.d
+                ; %8: i63 = and %4, %5
+                {{_}} {{_}}: and r.64.e, r.64.f
+                ...
+                ",
+        );
+    }
+
+    #[test]
+    fn cg_ashr() {
+        codegen_and_test(
+            "
+              entry:
+                %0: i16 = load_ti 0
+                %1: i32 = load_ti 1
+                %2: i63 = load_ti 2
+                %3: i16 = ashr %0, 1i16
+                %4: i32 = ashr %1, 2i32
+                %5: i63 = ashr %2, 3i63
+            ",
+            "
+                ...
+                ; %3: i16 = ashr %0, 1i16
+                ...
+                {{_}} {{_}}: movsx r.64.a, r.16.a
+                {{_}} {{_}}: sar r.64.a, 0x01
+                ; %4: i32 = ashr %1, 2i32
+                ...
+                {{_}} {{_}}: sar r.32.c, 0x02
+                ; %5: i63 = ashr %2, 3i63
+                ...
+                {{_}} {{_}}: shl r.64.e, 0x01
+                {{_}} {{_}}: sar r.64.e, 0x01
+                {{_}} {{_}}: sar r.64.e, 0x03
+                ...
+                ",
+        );
+    }
+
+    #[test]
+    fn cg_lshr() {
+        codegen_and_test(
+            "
+              entry:
+                %0: i16 = load_ti 0
+                %1: i32 = load_ti 1
+                %2: i63 = load_ti 2
+                %3: i16 = lshr %0, 1i16
+                %4: i32 = lshr %1, 2i32
+                %5: i63 = lshr %2, 3i63
+            ",
+            "
+                ...
+                ; %3: i16 = lshr %0, 1i16
+                ...
+                {{_}} {{_}}: movzx r.64.a, r.16.a
+                {{_}} {{_}}: shr r.64.a, 0x01
+                ; %4: i32 = lshr %1, 2i32
+                ...
+                {{_}} {{_}}: shr r.32.c, 0x02
+                ; %5: i63 = lshr %2, 3i63
+                ...
+                {{_}} {{_}}: shl r.64.e, 0x01
+                {{_}} {{_}}: shr r.64.e, 0x01
+                {{_}} {{_}}: shr r.64.e, 0x03
+                ...
+                ",
+        );
+    }
+
+    #[test]
+    fn cg_shl() {
+        codegen_and_test(
+            "
+              entry:
+                %0: i16 = load_ti 0
+                %1: i32 = load_ti 1
+                %2: i63 = load_ti 2
+                %3: i16 = shl %0, 1i16
+                %4: i32 = shl %1, 2i32
+                %5: i63 = shl %2, 3i63
+            ",
+            "
+                ...
+                ; %3: i16 = shl %0, 1i16
+                ...
+                {{_}} {{_}}: shl r.64.a, r.8.b
+                ; %4: i32 = shl %1, 2i32
+                ...
+                {{_}} {{_}}: shl r.64.c, r.8.b
+                ; %5: i63 = shl %2, 3i63
+                ...
+                {{_}} {{_}}: shl r.64.e, r.8.b
+                ...
+                ",
+        );
+    }
+
+    #[test]
+    fn cg_mul() {
+        codegen_and_test(
+            "
+              entry:
+                %0: i16 = load_ti 0
+                %1: i16 = load_ti 1
+                %2: i32 = load_ti 2
+                %3: i32 = load_ti 3
+                %4: i63 = load_ti 4
+                %5: i63 = load_ti 5
+                %6: i16 = mul %0, %1
+                %7: i32 = mul %2, %3
+                %8: i63 = mul %4, %5
+            ",
+            "
+                ...
+                ; %6: i16 = mul %0, %1
+                {{_}} {{_}}: mov rax, ...
+                {{_}} {{_}}: mul r.64.a
+                ; %7: i32 = mul %2, %3
+                ...
+                {{_}} {{_}}: mov rax, ...
+                {{_}} {{_}}: mul r.64.b
+                ; %8: i63 = mul %4, %5
+                ...
+                {{_}} {{_}}: mov rax, ...
+                {{_}} {{_}}: mul r.64.c
+                ...
+                ",
+        );
+    }
+
+    #[test]
+    fn cg_or() {
+        codegen_and_test(
+            "
+              entry:
+                %0: i16 = load_ti 0
+                %1: i16 = load_ti 1
+                %2: i32 = load_ti 2
+                %3: i32 = load_ti 3
+                %4: i63 = load_ti 4
+                %5: i63 = load_ti 5
+                %6: i16 = or %0, %1
+                %7: i32 = or %2, %3
+                %8: i63 = or %4, %5
+            ",
+            "
+                ...
+                ; %6: i16 = or %0, %1
+                {{_}} {{_}}: or r.64.a, r.64.b
+                ; %7: i32 = or %2, %3
+                {{_}} {{_}}: or r.64.c, r.64.d
+                ; %8: i63 = or %4, %5
+                {{_}} {{_}}: or r.64.e, r.64.f
+                ...
+                ",
+        );
+    }
+
+    #[test]
+    fn cg_sdiv() {
+        codegen_and_test(
+            "
+              entry:
+                %0: i16 = load_ti 0
+                %1: i16 = load_ti 1
+                %2: i32 = load_ti 2
+                %3: i32 = load_ti 3
+                %4: i63 = load_ti 4
+                %5: i63 = load_ti 5
+                %6: i16 = sdiv %0, %1
+                %7: i32 = sdiv %2, %3
+                %8: i63 = sdiv %4, %5
+            ",
+            "
+                ...
+                ; %6: i16 = sdiv %0, %1
+                ...
+                {{_}} {{_}}: movsx rax, ax
+                {{_}} {{_}}: movsx r.64.a, r.16.a
+                {{_}} {{_}}: cqo
+                {{_}} {{_}}: idiv r.64.a
+                ; %7: i32 = sdiv %2, %3
+                ...
+                {{_}} {{_}}: cdq
+                {{_}} {{_}}: idiv r.32.b
+                ; %8: i63 = sdiv %4, %5
+                ...
+                {{_}} {{_}}: shl rax, 0x01
+                {{_}} {{_}}: sar rax, 0x01
+                {{_}} {{_}}: shl r.64.c, 0x01
+                {{_}} {{_}}: sar r.64.c, 0x01
+                {{_}} {{_}}: cqo
+                {{_}} {{_}}: idiv r.64.c
+                ...
+                ",
+        );
+    }
+
+    #[test]
+    fn cg_srem() {
+        codegen_and_test(
+            "
+              entry:
+                %0: i16 = load_ti 0
+                %1: i16 = load_ti 1
+                %2: i32 = load_ti 2
+                %3: i32 = load_ti 3
+                %4: i63 = load_ti 4
+                %5: i63 = load_ti 5
+                %6: i16 = srem %0, %1
+                %7: i32 = srem %2, %3
+                %8: i63 = srem %4, %5
+            ",
+            "
+                ...
+                ; %6: i16 = srem %0, %1
+                ...
+                {{_}} {{_}}: movsx rax, ax
+                {{_}} {{_}}: movsx r.64.a, r.16.a
+                {{_}} {{_}}: cqo
+                {{_}} {{_}}: idiv r.64.a
+                ; %7: i32 = srem %2, %3
+                ...
+                {{_}} {{_}}: cdq
+                {{_}} {{_}}: idiv r.32.b
+                ; %8: i63 = srem %4, %5
+                ...
+                {{_}} {{_}}: shl rax, 0x01
+                {{_}} {{_}}: sar rax, 0x01
+                {{_}} {{_}}: shl r.64.c, 0x01
+                {{_}} {{_}}: sar r.64.c, 0x01
+                {{_}} {{_}}: cqo
+                {{_}} {{_}}: idiv r.64.c
+                ...
+                ",
+        );
+    }
+
+    #[test]
+    fn cg_sub() {
+        codegen_and_test(
+            "
+              entry:
+                %0: i16 = load_ti 0
+                %1: i16 = load_ti 1
+                %2: i32 = load_ti 2
+                %3: i32 = load_ti 3
+                %4: i63 = load_ti 4
+                %5: i63 = load_ti 5
+                %6: i16 = sub %0, %1
+                %7: i32 = sub %2, %3
+                %8: i63 = sub %4, %5
+                %9: i32 = sub 0i32, %7
+            ",
+            "
+                ...
+                ; %6: i16 = sub %0, %1
+                {{_}} {{_}}: movsx r.64.a, r.16.a
+                {{_}} {{_}}: movsx r.64.b, r.16.b
+                {{_}} {{_}}: sub r.64.a, r.64.b
+                ; %7: i32 = sub %2, %3
+                {{_}} {{_}}: sub r.32.c, r.32.d
+                ; %8: i63 = sub %4, %5
+                {{_}} {{_}}: shl r.64.e, 0x01
+                {{_}} {{_}}: sar r.64.e, 0x01
+                {{_}} {{_}}: shl r.64.f, 0x01
+                {{_}} {{_}}: sar r.64.f, 0x01
+                {{_}} {{_}}: sub r.64.e, r.64.f
+                ; %9: i32 = sub 0i32, %7
+                {{_}} {{_}}: neg r.32.c
+                ",
+        );
+    }
+
+    #[test]
+    fn cg_xor() {
+        codegen_and_test(
+            "
+              entry:
+                %0: i16 = load_ti 0
+                %1: i16 = load_ti 1
+                %2: i32 = load_ti 2
+                %3: i32 = load_ti 3
+                %4: i63 = load_ti 4
+                %5: i63 = load_ti 5
+                %6: i16 = xor %0, %1
+                %7: i32 = xor %2, %3
+                %8: i63 = xor %4, %5
+            ",
+            "
+                ...
+                ; %6: i16 = xor %0, %1
+                {{_}} {{_}}: xor r.64.a, r.64.b
+                ; %7: i32 = xor %2, %3
+                {{_}} {{_}}: xor r.64.c, r.64.d
+                ; %8: i63 = xor %4, %5
+                {{_}} {{_}}: xor r.64.e, r.64.f
+                ...
+                ",
+        );
+    }
+
+    #[test]
+    fn cg_udiv() {
+        codegen_and_test(
+            "
+              entry:
+                %0: i16 = load_ti 0
+                %1: i16 = load_ti 1
+                %2: i32 = load_ti 2
+                %3: i32 = load_ti 3
+                %4: i63 = load_ti 4
+                %5: i63 = load_ti 5
+                %6: i16 = udiv %0, %1
+                %7: i32 = udiv %2, %3
+                %8: i63 = udiv %4, %5
+            ",
+            "
+                ...
+                ; %6: i16 = udiv %0, %1
+                ...
+                {{_}} {{_}}: movzx rax, ax
+                {{_}} {{_}}: movzx r.64.a, r.16.a
+                {{_}} {{_}}: xor rdx, rdx
+                {{_}} {{_}}: div r.64.a
+                ; %7: i32 = udiv %2, %3
+                ...
+                {{_}} {{_}}: xor edx, edx
+                {{_}} {{_}}: div r.32.b
+                ; %8: i63 = udiv %4, %5
+                ...
+                {{_}} {{_}}: shl rax, 0x01
+                {{_}} {{_}}: shr rax, 0x01
+                {{_}} {{_}}: shl r.64.c, 0x01
+                {{_}} {{_}}: shr r.64.c, 0x01
+                {{_}} {{_}}: xor rdx, rdx
+                {{_}} {{_}}: div r.64.c
                 ...
                 ",
         );
@@ -2548,7 +3376,7 @@ mod tests {
                 ...
                 ; call @puts(%0, %1, %2)
                 ...
-                {{{{_}}}} {{{{_}}}}: mov edi, ...
+                {{{{_}}}} {{{{_}}}}: mov rdi, ...
                 {{{{_}}}} {{{{_}}}}: mov esi, ...
                 {{{{_}}}} {{{{_}}}}: mov edx, ...
                 {{{{_}}}} {{{{_}}}}: mov r.64.tgt, 0x{sym_addr:X}
@@ -2577,7 +3405,7 @@ mod tests {
                 ...
                 ; call @puts(%0, %1, %2)
                 ...
-                {{{{_}}}} {{{{_}}}}: movzx rdi, ...
+                {{{{_}}}} {{{{_}}}}: mov rdi, ...
                 {{{{_}}}} {{{{_}}}}: movzx rsi, ...
                 {{{{_}}}} {{{{_}}}}: mov rdx, ...
                 {{{{_}}}} {{{{_}}}}: mov r.64.tgt, 0x{sym_addr:X}
@@ -2608,59 +3436,107 @@ mod tests {
              func_decl puts() -> i32
              entry:
                %0: i32 = call @puts()
-               %1: i32 = add %0, %0
             ",
             "
                 ...
                 ; %0: i32 = call @puts()
                 {{_}} {{_}}: mov r.64.x, ...
                 {{_}} {{_}}: call r.64.x
-                ; %1: i32 = add %0, %0
-                {{_}} {{_}}: mov [rbp-0x04], eax
-                {{_}} {{_}}: mov r.32.x, [rbp-0x04]
-                {{_}} {{_}}: add eax, r.32.x
                 ...
             ",
         );
     }
 
     #[test]
-    fn cg_eq_i64() {
+    fn cg_eq() {
         codegen_and_test(
             "
               entry:
-                %0: i64 = load_ti 0
-                %1: i1 = eq %0, %0
+                %0: i16 = load_ti 0
+                %1: i32 = load_ti 1
+                %2: i63 = load_ti 2
+                tloop_start [%0, %1, %2]
+                %4: i1 = eq %0, %0
+                %5: i1 = eq %1, %1
+                %6: i1 = eq %2, %2
+                tloop_jump [%0, %1, %2]
             ",
             "
                 ...
-                ; %1: i1 = eq %0, %0
-                {{_}} {{_}}: mov [rbp-{{0x08}}], r.64.x
-                {{_}} {{_}}: mov r.64.y, [rbp-{{0x08}}]
-                {{_}} {{_}}: cmp r.64.x, r.64.y
-                {{_}} {{_}}: setz r.8.x
+                ; %4: i1 = eq %0, %0
+                ......
+                ......
+                {{_}} {{_}}: movzx r.64.a, r.16.a
+                {{_}} {{_}}: movzx r.64.b, r.16.b
+                {{_}} {{_}}: cmp r.64.a, r.64.b
+                {{_}} {{_}}: setz r.8._
+                ...
+                ; %5: i1 = eq %1, %1
+                ......
+                ......
+                {{_}} {{_}}: cmp r.32.c, r.32.d
+                {{_}} {{_}}: setz r.8._
+                ; %6: i1 = eq %2, %2
+                ......
+                ......
+                {{_}} {{_}}: shl r.64.e, 0x01
+                {{_}} {{_}}: shr r.64.e, 0x01
+                {{_}} {{_}}: shl r.64.f, 0x01
+                {{_}} {{_}}: shr r.64.f, 0x01
+                {{_}} {{_}}: cmp r.64.e, r.64.f
+                {{_}} {{_}}: setz r.8._
                 ...
             ",
         );
     }
 
     #[test]
-    fn cg_eq_i8() {
+    fn cg_sext() {
         codegen_and_test(
             "
               entry:
-                %0: i8 = load_ti 0
-                %1: i1 = eq %0, %0
-            ",
+                %0: i16 = load_ti 0
+                %1: i32 = load_ti 1
+                %2: i63 = load_ti 2
+                %3: i32 = sext %0
+                %4: i64 = sext %1
+                %5: i64 = sext %2
+                ",
             "
                 ...
-                ; %1: i1 = eq %0, %0
-                {{_}} {{_}}: mov [rbp-{{0x01}}], r.8.x
-                {{_}} {{_}}: movzx r.64.y, byte ptr [rbp-{{0x01}}]
-                {{_}} {{_}}: cmp r.8.x, r.8.y
-                {{_}} {{_}}: setz r.8.x
+                ; %3: i32 = sext %0
+                {{_}} {{_}}: movsx r.64.a, r.16.a
+                ; %4: i64 = sext %1
+                {{_}} {{_}}: movsxd r.64.b, r.32.b
+                ; %5: i64 = sext %2
+                {{_}} {{_}}: shl r.64.c, 0x01
+                {{_}} {{_}}: sar r.64.c, 0x01
+                ",
+        );
+    }
+
+    #[test]
+    fn cg_zext() {
+        codegen_and_test(
+            "
+              entry:
+                %0: i16 = load_ti 0
+                %1: i32 = load_ti 1
+                %2: i63 = load_ti 2
+                %3: i32 = zext %0
+                %4: i64 = zext %1
+                %5: i64 = zext %2
+                ",
+            "
                 ...
-            ",
+                ; %3: i32 = zext %0
+                {{_}} {{_}}: movzx r.64.a, r.16.a
+                ; %4: i64 = zext %1
+                ...
+                ; %5: i64 = zext %2
+                {{_}} {{_}}: shl r.64.c, 0x01
+                {{_}} {{_}}: shr r.64.c, 0x01
+                ",
         );
     }
 
@@ -2752,6 +3628,47 @@ mod tests {
     }
 
     #[test]
+    fn cg_icmp_const() {
+        codegen_and_test(
+            "
+              entry:
+                %0: i8 = load_ti 0
+                %2: i1 = eq %0, 3i8
+            ",
+            "
+                ...
+                ; %1: i1 = eq %0, 3i8
+                ...
+                {{_}} {{_}}: movzx r.64.x, r.8._
+                {{_}} {{_}}: cmp r.64.x, 0x03
+                {{_}} {{_}}: setz r.8.x
+                ...
+            ",
+        );
+    }
+
+    #[test]
+    fn cg_icmp_guard() {
+        codegen_and_test(
+            "
+              entry:
+                %0: i8 = load_ti 0
+                %2: i1 = eq %0, 3i8
+                guard true, %2, []
+            ",
+            "
+                ...
+                ; %1: i1 = eq %0, 3i8
+                {{_}} {{_}}: movzx r.64.x, r.8._
+                {{_}} {{_}}: cmp r.64.x, 0x03
+                ; guard true, %1, []
+                {{_}} {{_}}: jnz 0x...
+                ...
+            ",
+        );
+    }
+
+    #[test]
     fn unterminated_trace() {
         codegen_and_test(
             "
@@ -2792,7 +3709,7 @@ mod tests {
                 %0: i8 = load_ti 0
                 tloop_start [%0]
                 %2: i8 = add %0, %0
-                tloop_jump [%2]
+                tloop_jump [%0]
             ",
             "
                 ...
@@ -2801,7 +3718,7 @@ mod tests {
                 ; tloop_start [%0]:
                 ; %2: i8 = add %0, %0
                 ...
-                ; tloop_jump [%2]:
+                ; tloop_jump [%0]:
                 ...
                 ...: jmp ...
             ",
@@ -2809,20 +3726,46 @@ mod tests {
     }
 
     #[test]
-    fn cg_srem() {
+    fn cg_srem_i8() {
         codegen_and_test(
             "
               entry:
-                %0: i32 = load_ti 0
-                %1: i32 = load_ti 1
-                %2: i32 = srem %0, %1
+                %0: i8 = load_ti 0
+                %1: i8 = load_ti 1
+                %2: i8 = srem %0, %1
             ",
             "
                 ...
-                ; %2: i32 = srem %0, %1
-                {{_}} {{_}}: mov eax, r.32.y
-                {{_}} {{_}}: xor rdx, rdx
-                {{_}} {{_}}: idiv r.32.x
+                ; %2: i8 = srem %0, %1
+                {{_}} {{_}}: mov rax, r.64.y
+                {{_}} {{_}}: movsx rax, al
+                {{_}} {{_}}: movsx rsi, sil
+                {{_}} {{_}}: cqo
+                {{_}} {{_}}: idiv r.64.x
+                ...
+            ",
+        );
+    }
+
+    #[test]
+    fn cg_srem_i56() {
+        codegen_and_test(
+            "
+              entry:
+                %0: i56 = load_ti 0
+                %1: i56 = load_ti 1
+                %2: i56 = srem %0, %1
+            ",
+            "
+                ...
+                ; %2: i56 = srem %0, %1
+                {{_}} {{_}}: mov rax, r.64.y
+                {{_}} {{_}}: shl rax, 0x08
+                {{_}} {{_}}: sar rax, 0x08
+                {{_}} {{_}}: shl rsi, 0x08
+                {{_}} {{_}}: sar rsi, 0x08
+                {{_}} {{_}}: cqo
+                {{_}} {{_}}: idiv r.64.x
                 ...
             ",
         );
@@ -2835,13 +3778,15 @@ mod tests {
               entry:
                 %0: i32 = load_ti 0
                 %1: i8 = trunc %0
+                %2: i8 = trunc %0
+                %3: i8 = add %2, %1
             ",
             "
                 ...
                 ; %0: i32 = load_ti ...
                 ...
                 ; %1: i8 = trunc %0
-                {{_}} {{_}}: mov [rbp-0x04], r.32.x
+                {{_}} {{_}}: mov r.64.x, r.64.y
                 ...
             ",
         );
@@ -2858,50 +3803,10 @@ mod tests {
             "
                 ...
                 ; %1: i32 = %0 ? 1i32 : 2i32
-                {{_}} {{_}}: mov r.32.x, 0x01
-                {{_}} {{_}}: mov r.32.y, 0x02
+                {{_}} {{_}}: mov r.64.x, 0x01
+                {{_}} {{_}}: mov r.64.y, 0x02
                 {{_}} {{_}}: cmp r.8.z, 0x00
                 {{_}} {{_}}: cmovz r.64.x, r.64.y
-                ...
-            ",
-        );
-    }
-
-    #[test]
-    fn cg_sdiv() {
-        codegen_and_test(
-            "
-              entry:
-                %0: i8 = load_ti 0
-                %1: i8 = load_ti 1
-                %2: i8 = sdiv %0, %1
-            ",
-            "
-                ...
-                ; %2: i8 = sdiv %0, %1
-                {{_}} {{_}}: movzx rax, r.8.x
-                {{_}} {{_}}: movsx ax, al
-                {{_}} {{_}}: idiv r.8.y
-                ...
-            ",
-        );
-    }
-
-    #[test]
-    fn cg_udiv() {
-        codegen_and_test(
-            "
-              entry:
-                %0: i8 = load_ti 0
-                %1: i8 = load_ti 1
-                %2: i8 = udiv %0, %1
-            ",
-            "
-                ...
-                ; %2: i8 = udiv %0, %1
-                {{_}} {{_}}: movzx rax, r.8.x
-                {{_}} {{_}}: xor rdx, rdx
-                {{_}} {{_}}: div r.8.y
                 ...
             ",
         );
@@ -2919,29 +3824,7 @@ mod tests {
             "
                 ...
                 ; %2: i8 = add %0, 1i8
-                ......
-                {{_}} {{_}}: mov r.8.x, 0x01
-                {{_}} {{_}}: add r.8.y, r.8.x
-                ...
-            ",
-        );
-    }
-
-    #[test]
-    fn cg_shl() {
-        codegen_and_test(
-            "
-              entry:
-                %0: i8 = load_ti 0
-                %1: i8 = load_ti 1
-                %2: i8 = shl %0, %1
-            ",
-            "
-                ...
-                ; %2: i8 = shl %0, %1
-                ...
-                {{_}} {{_}}: movzx rcx, r.8.a
-                {{_}} {{_}}: shl r.8.b, cl
+                {{_}} {{_}}: add r.32.y, 0x01
                 ...
             ",
         );
@@ -2993,7 +3876,6 @@ mod tests {
                 ...
                 ; %0: float = load_ti ...
                 ; %1: double = fp_ext %0
-                {{_}} {{_}}: movss [rbp-{{0x04}}], fp.128.x
                 {{_}} {{_}}: cvtss2sd fp.128.x, fp.128.x
                 ...
                 ",
@@ -3046,7 +3928,6 @@ mod tests {
             "
                 ...
                 ; %2: float = fdiv %0, %1
-                ......
                 {{_}} {{_}}: divss fp.128.x, fp.128.y
                 ...
                 ",
@@ -3065,7 +3946,6 @@ mod tests {
             "
                 ...
                 ; %2: double = fdiv %0, %1
-                ......
                 {{_}} {{_}}: divsd fp.128.x, fp.128.y
                 ...
                 ",
@@ -3084,7 +3964,6 @@ mod tests {
             "
                 ...
                 ; %2: float = fadd %0, %1
-                ......
                 {{_}} {{_}}: addss fp.128.x, fp.128.y
                 ...
                 ",
@@ -3103,7 +3982,6 @@ mod tests {
             "
                 ...
                 ; %2: double = fadd %0, %1
-                ......
                 {{_}} {{_}}: addsd fp.128.x, fp.128.y
                 ...
                 ",
@@ -3122,7 +4000,6 @@ mod tests {
             "
                 ...
                 ; %2: float = fsub %0, %1
-                ......
                 {{_}} {{_}}: subss fp.128.x, fp.128.y
                 ...
                 ",
@@ -3141,7 +4018,6 @@ mod tests {
             "
                 ...
                 ; %2: double = fsub %0, %1
-                ......
                 {{_}} {{_}}: subsd fp.128.x, fp.128.y
                 ...
                 ",
@@ -3160,7 +4036,6 @@ mod tests {
             "
                 ...
                 ; %2: float = fmul %0, %1
-                ......
                 {{_}} {{_}}: mulss fp.128.x, fp.128.y
                 ...
                 ",
@@ -3179,7 +4054,6 @@ mod tests {
             "
                 ...
                 ; %2: double = fmul %0, %1
-                ......
                 {{_}} {{_}}: mulsd fp.128.x, fp.128.y
                 ...
                 ",
@@ -3286,9 +4160,8 @@ mod tests {
                 ...
                 ; tloop_start [%0]:
                 ; tloop_jump [42i8]:
-                {{_}} {{_}}: mov ...
-                {{_}} {{_}}: mov r.8.x, 0x2a
-                ...: jmp ...
+                {{_}} {{_}}: mov r.64.x, 0x2a
+                {{_}} {{_}}: jmp ...
             ",
         );
     }
