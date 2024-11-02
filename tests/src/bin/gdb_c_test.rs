@@ -32,6 +32,10 @@ struct Args {
     /// Don't immediately run the program.
     #[arg(short = 'n', long)]
     wait_at_prompt: bool,
+
+    /// Execute GDB commands from file.
+    #[arg(short = 'c', long)]
+    command: Option<String>,
 }
 
 fn main() {
@@ -93,6 +97,10 @@ fn main() {
 
     if !args.wait_at_prompt {
         gdb.args(["-ex", "run"]);
+    }
+
+    if let Some(command) = args.command {
+        gdb.args(["--command", command.as_str()]);
     }
 
     // Run gdb!
