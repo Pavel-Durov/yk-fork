@@ -1,5 +1,3 @@
-//! The main end-user interface to the meta-tracing system.
-
 use dynasmrt::{dynasm, x64::Assembler, DynasmApi, DynasmLabelApi, ExecutableBuffer};
 use std::{assert_matches::debug_assert_matches, cell::RefCell, sync::Arc};
 
@@ -13,73 +11,38 @@ use dynasmrt::x64::Rq::{RAX, RBP, RCX, RDI, RDX, RSI, RSP};
 
 use std::sync::LazyLock;
 
-// unoptimised - the original funcitons
-const UNOPTIMISED_CONTROL_POINT_SMID: usize = 0;
-// optimised - the cloned funcitons
-const OPTIMISED_CONTROL_POINT_SMID: usize = 1;
+// unoptimised (original functions) control point stack map id
+const UNOPT_CP_SMID: usize = 0;
+// optimised (cloned functions) control point stack map id
+const OPT_CP_SMID: usize = 1;
 
-// Do the same thing as we did with AOT_STACKMAPS - LazyLoad
-
-// fn switch_into_optimised_version() -> Result<ExecutableBuffer, Assembler<X64Relocation>> {
-//     let mut asm = dynasmrt::x64::Assembler::new().unwrap();
-
-//     // Get the size of needed for the funciton, then do something like:
-//     // dynasm!(asm;
-//     //     mov rsp, rbp
-//     //     pop rbp
-//     // );
-
-//     let (src_rec, src_pinfo) = AOT_STACKMAPS.as_ref().unwrap().get(UNOPTIMISED_CONTROL_POINT_SMID);
-//     let (dst_rec, dst_pinfo) = AOT_STACKMAPS.as_ref().unwrap().get(OPTIMISED_CONTROL_POINT_SMID);
-
-//     // save all the registers
-//     // NOTE: the order is important cause we can use the dwarfnumber
-//     // in the locations to get the registers
-//     dynasm!(asm;
-//         push r15;
-//         push r14;
-//         push r13;
-//         push r12;
-//         push r11;
-//         push r10;
-//         push r9;
-//         push r8;
-//         sub rsp, 16; // this is a span for rsp + rbp
-//         push rsi;
-//         push rdi;
-//         push rbx;
-//         push rcx;
-//         push rdx;
-//         push rax
-//     );
-
-//     // NOTE: from cloned to main
-//     dynasm!(asm;
-//         mov rsp, rbp
-//         pop rbpR
-// }
-
+pub(crate) fn jump_into_optimised_version() {
+    jump_into(ASM_JUMP_INTO_OPT_CP.as_ref());
+}
 
 pub(crate) fn jump_into_unoptimised_version() {
-    // build
-    let exec_buffer = SWITCH_INTO_OPTIMISED_VERSION.as_ref();
-    // exec
-    let code_ptr = exec_buffer.as_ptr();
-    println!("Executable buffer starts at: {:?}", code_ptr);
-    type JitFunction = unsafe extern "C" fn();
-    let func: unsafe fn() = unsafe { std::mem::transmute(code_ptr) };
+    jump_into(ASM_JUMP_INTO_UNOPT_CP.as_ref());
+}
 
-    // Execute the code
+fn jump_into(buffer: &ExecutableBuffer) {
+    let code_ptr = buffer.as_ptr();
+    println!("Executable buffer starts at: {:?}", code_ptr);
+    let func: unsafe fn() = unsafe { std::mem::transmute(code_ptr) };
     unsafe {
         func();
     }
 }
 
-pub(crate) static SWITCH_INTO_OPTIMISED_VERSION: LazyLock<Arc<ExecutableBuffer>> =
-    LazyLock::new(|| {
-        let asm_bytes = build_asm_jump_into_unoptimised_version();
-        Arc::new(asm_bytes)
-    });
+static ASM_JUMP_INTO_OPT_CP: LazyLock<Arc<ExecutableBuffer>> = LazyLock::new(|| {
+    // TODO: allocate stack frame
+    let asm_bytes = build_asm_jump_into_cp(UNOPT_CP_SMID, OPT_CP_SMID);
+    Arc::new(asm_bytes)
+});
+
+static ASM_JUMP_INTO_UNOPT_CP: LazyLock<Arc<ExecutableBuffer>> = LazyLock::new(|| {
+    let asm_bytes = build_asm_jump_into_cp(OPT_CP_SMID, UNOPT_CP_SMID);
+    Arc::new(asm_bytes)
+});
 
 fn reg_num_to_dynasm_reg(dwarf_reg_num: u16) -> Rq {
     match dwarf_reg_num {
@@ -123,18 +86,12 @@ fn reg_num_stack_offset(dwarf_reg_num: u16) -> i32 {
     }
 }
 
-fn build_asm_jump_into_unoptimised_version() -> ExecutableBuffer {
+fn build_asm_jump_into_cp(src_smid: usize, dst_smid: usize) -> ExecutableBuffer {
     let mut asm = dynasmrt::x64::Assembler::new().unwrap();
 
-    let (src_rec, _) = AOT_STACKMAPS
-        .as_ref()
-        .unwrap()
-        .get(OPTIMISED_CONTROL_POINT_SMID);
+    let (src_rec, _) = AOT_STACKMAPS.as_ref().unwrap().get(src_smid);
 
-    let (dst_rec, _) = AOT_STACKMAPS
-        .as_ref()
-        .unwrap()
-        .get(UNOPTIMISED_CONTROL_POINT_SMID);
+    let (dst_rec, _) = AOT_STACKMAPS.as_ref().unwrap().get(dst_smid);
 
     // Save all the registers to the stack
     dynasm!(asm
@@ -156,7 +113,10 @@ fn build_asm_jump_into_unoptimised_version() -> ExecutableBuffer {
         ; push rax    // offset 0
     );
 
-     for (index, src_var) in src_rec.live_vars.iter().enumerate() {
+    // TODO: remove this temporary break instruction
+    dynasm!(asm; int3);
+
+    for (index, src_var) in src_rec.live_vars.iter().enumerate() {
         let dst_var = &dst_rec.live_vars[index];
         if src_var.len() > 1 || dst_var.len() > 1 {
             todo!("Deal with multi register locations");
@@ -165,31 +125,34 @@ fn build_asm_jump_into_unoptimised_version() -> ExecutableBuffer {
         let src_location = &src_var.get(0).unwrap();
         let dst_location = &dst_var.get(0).unwrap();
 
-        println!("@@ src {:?} dst {:?}", src_location, dst_location);
+        // println!("@@ src {:?} dst {:?}", src_location, dst_location);
         // copy live vars
         match (src_location, dst_location) {
             // Src Register
             (
-                Register(src_num, src_val_size, src_add_locs, _src_add_loc_reg),
-                Register(dst_num, _dst_val_size, dst_add_locs, _dst_add_loc_reg),
+                Register(src_reg_num, src_val_size, src_add_locs, _src_add_loc_reg),
+                Register(dst_reg_num, dst_val_size, dst_add_locs, _dst_add_loc_reg),
             ) => {
-                assert!(*src_add_locs == 0, "deal with additional info");
-                assert!(*dst_add_locs == 0, "deal with additional info");
-
-                // let offset = reg_num_stack_offset(*src_num);
-                let offset = i32::try_from(src_num * 8).unwrap();
-                let dest_reg = u8::try_from(*dst_num).unwrap();
-                println!("@@ offset {} reg {}", offset, dest_reg);
+                assert!(*src_add_locs == 0 && *dst_add_locs == 0, "deal with additional info");
+                assert!(dst_val_size == src_val_size, "src and dst val size must match");
+                // skip copying to the same register with the same value size
+                if (src_reg_num == dst_reg_num && src_val_size == dst_val_size) {
+                    continue;
+                }
+                let src_offset = reg_num_stack_offset(*src_reg_num);
+                let dest_reg = u8::try_from(*dst_reg_num).unwrap();
                 match *src_val_size {
-                    1 => todo!(),
-                    2 => todo!(),
-                    4 => todo!(),
+                    // 1 => { dynasm!(asm; mov Rq(dest_reg), BYTE [rsp - src_offset]); }
+                    // 2 => { dynasm!(asm; mov Rq(dest_reg), WORD [rsp - src_offset]); }
+                    // 4 => { dynasm!(asm; mov Rq(dest_reg), DWORD [rsp - src_offset]); }
                     8 => {
-                        dynasm!(asm
-                            ; mov Rq(dest_reg), QWORD [rsp - offset]
-                        )
-                    },
-                    _ => todo!()
+                        println!(
+                            "@@ Reg to Reg - moving 8 bytes from {:?} to {:?}",
+                            src_reg_num, dst_reg_num
+                        );
+                        dynasm!(asm; mov Rq(dest_reg), QWORD [rsp - src_offset]);
+                    }
+                    _ => todo!("Unsupported source value size: {}", src_val_size),
                 }
             }
             (
@@ -237,18 +200,26 @@ fn build_asm_jump_into_unoptimised_version() -> ExecutableBuffer {
                 let src_reg = u8::try_from(*src_reg_num).unwrap();
                 let dst_reg = u8::try_from(*dst_reg_num).unwrap();
 
+                if (src_reg_num == dst_reg_num && src_off == dst_off) {
+                    continue;
+                }
+                println!(
+                    "@@ Direct to Direct moving 8 bytes from {:?} + {:?} to {:?} + {:?}",
+                    src_reg, src_off, dst_reg, dst_off
+                );
+
                 match *src_val_size {
-                    1 => dynasm!(asm; mov al, BYTE [Rq(src_reg) + *src_off]),
-                    2 => dynasm!(asm; mov ax, WORD [Rq(src_reg) + *src_off]),
-                    4 => dynasm!(asm; mov eax, DWORD [Rq(src_reg) + *src_off]),
+                    // 1 => dynasm!(asm; mov al, BYTE [Rq(src_reg) + *src_off]),
+                    // 2 => dynasm!(asm; mov ax, WORD [Rq(src_reg) + *src_off]),
+                    // 4 => dynasm!(asm; mov eax, DWORD [Rq(src_reg) + *src_off]),
                     8 => dynasm!(asm; mov rax, QWORD [Rq(src_reg) + *src_off]),
                     _ => panic!("Unsupported source value size: {}", src_val_size),
                 }
                 // Store the value from RAX into the destination memory location
                 match *dst_val_size {
-                    1 => dynasm!(asm; mov BYTE [Rq(dst_reg) + *dst_off], al),
-                    2 => dynasm!(asm; mov WORD [Rq(dst_reg) + *dst_off], ax),
-                    4 => dynasm!(asm; mov DWORD [Rq(dst_reg) + *dst_off], eax),
+                    // 1 => dynasm!(asm; mov BYTE [Rq(dst_reg) + *dst_off], al),
+                    // 2 => dynasm!(asm; mov WORD [Rq(dst_reg) + *dst_off], ax),
+                    // 4 => dynasm!(asm; mov DWORD [Rq(dst_reg) + *dst_off], eax),
                     8 => dynasm!(asm; mov QWORD [Rq(dst_reg) + *dst_off], rax),
                     _ => panic!("Unsupported destination value size: {}", dst_val_size),
                 }
@@ -258,97 +229,97 @@ fn build_asm_jump_into_unoptimised_version() -> ExecutableBuffer {
                 Direct(_src_reg_num, _src_off, _src_val_size),
                 Indirect(_dst_reg_num, _dst_off, _dst_add_loc_reg),
             ) => {
-                // todo!("implementation")
+                todo!("implement Direct to Indirect")
             }
             (Direct(_src_reg_num, _src_off, _src_val_size), Constant(_val)) => {
-                panic!("Direct to constant is not expected");
+                // TODO: is that expected?
+                todo!("implement Direct to Constant")
             }
             (Direct(_src_reg_num, _src_off, _src_val_size), LargeConstant(_val)) => {
-                panic!("Direct to large constant is not expected");
+                todo!("implement Direct to LargeConstant")
             }
             // src Indirect
             (
                 Indirect(_src_reg_num, _src_off, _src_add_loc_reg),
                 Register(_dst_num, _dst_val_size, _dst_add_locs, _dst_add_loc_reg),
             ) => {
-                // todo!("implementation")
+                todo!("implement Indirect to Register")
             }
             (
                 Indirect(_src_reg_num, _src_off, _src_add_loc_reg),
                 Direct(_dst_reg_num, _dst_off, _dst_val_size),
             ) => {
-                // todo!("implementation")
+                todo!("implement Indirect to Direct")
             }
             (
                 Indirect(_src_reg_num, _src_off, _src_add_loc_reg),
                 Indirect(_dst_reg_num, _dst_off, _dst_val_size),
             ) => {
-                // todo!("implementation")
+                todo!("implement Indirect to Indirect")
             }
             (Indirect(_src_reg_num, _src_off, _src_add_loc_reg), Constant(_dst_val)) => {
-                // todo!("implementation")
+                todo!("implement Indirect to Constant")
             }
-            (Indirect(src_reg_num, src_off, src_add_loc_reg), LargeConstant(_dst_val)) => {
-                // todo!("implementation")
+            (Indirect(_src_reg_num, _src_off, _src_add_loc_reg), LargeConstant(_dst_val)) => {
+                todo!("implement Indirect to LargeConstant")
             }
             // src Constant
             (
                 Constant(_val),
                 Register(_dst_num, _dst_val_size, _dst_add_locs, _dst_add_loc_reg),
             ) => {
-                // todo!("implementation")
+                todo!("implement Constant to Register")
             }
             (Constant(_val), Direct(_dst_reg_num, _dst_off, _dst_val_size)) => {
-                // todo!("implementation")
+                todo!("implement Constant to Direct")
             }
             (Constant(_val), Indirect(_dst_reg_num, _dst_off, _dst_val_size)) => {
-                // todo!("implementation")
+                todo!("implement Constant to Indirect")
             }
             (Constant(_src_val), Constant(_dst_val)) => {
-                // todo!("implementation")
+                todo!("implement Constant to Constant")
             }
             (Constant(_src_val), LargeConstant(_dst_val)) => {
-                // todo!("implementation")
+                todo!("implement Constant to LargeConstant")
             }
             // src LargeConstant
             (
                 LargeConstant(_val),
                 Register(_dst_num, _dst_val_size, _dst_add_locs, _dst_add_loc_reg),
             ) => {
-                // todo!("implementation")
+                todo!("implement LargeConstant to Register")
             }
             (LargeConstant(_val), Direct(_dst_reg_num, _dst_off, _dst_val_size)) => {
-                // todo!("implementation")
+                todo!("implement LargeConstant to Direct")
             }
             (LargeConstant(_val), Indirect(_dst_reg_num, _dst_off, _dst_val_size)) => {
-                // todo!("implementation")
+                todo!("implement LargeConstant to Indirect")
             }
             (LargeConstant(_src_val), Constant(_dst_val)) => {
-                // todo!("implementation")
+                todo!("implement LargeConstant to Constant")
             }
             (LargeConstant(_src_val), LargeConstant(_dst_val)) => {
-                // todo!("implementation")
+                todo!("implement LargeConstant to LargeConstant")
             }
         }
     }
 
+    // dummy insruction
+    dynasm!(asm
+        ; mov rax, 666                  // Load immediate value 666 into rax
+        ; int3                          // Insert a breakpoint for GDB
+    );
 
-    // let function_label = asm.new_dynamic_label();
-    // // Emit the call instruction (replace <function_label> with your actual label or function)
-    // let call_start_offset = asm.offset();
-    // dynasm!(asm
-    //     ; call =>function_label
-    // );
-    // // Record the offset after emitting the call instruction
-    // let call_end_offset = asm.offset();
-    // // Calculate the size of the call instruction
-    // let size_of_call = (call_end_offset.0 - call_start_offset.0) as i32;
-    // println!("@@@@ size_of_call {:?}", size_of_call);
+    // let size_of_call = 5;
+    let target_addr = i64::try_from(dst_rec.offset).unwrap(); // + size_of_call;
+                                                              // println!("@@@@ dst_rec.offset {:#x}", dst_rec.offset);
+                                                              // println!("@@@@ src_rec.offset {:#x}", src_rec.offset);
 
-    let size_of_call = 5;
-    let target_addr = dst_rec.offset + size_of_call;
     // TODO: jump to control point.
-    dynasm!(asm; jmp target_addr as i32); // Cast to i32 if you're sure the address fits
+    dynasm!(asm
+        ; mov rax, QWORD target_addr     // Load the target address into rax
+        ; jmp rax
+    ); // Cast to i32 if you're sure the address fits
 
     // Assembly code to restore registers
     // dynasm!(asm

@@ -31,7 +31,7 @@ use crate::{
     trace::{default_tracer, AOTTraceIterator, TraceRecorder, Tracer},
 };
 
-use crate::trace::swt::cp::jump_into_unoptimised_version;
+use crate::trace::swt::cp::{jump_into_unoptimised_version, jump_into_optimised_version};
 
 // The HotThreshold must be less than a machine word wide for [`Location::Location`] to do its
 // pointer tagging thing. We therefore choose a type which makes this statically clear to
@@ -416,6 +416,7 @@ impl MT {
                             .log(Verbosity::Warning, &format!("stop-tracing-aborted: {e}"));
                     }
                 }
+                jump_into_optimised_version();
             }
             TransitionControlPoint::StopSideTracing {
                 gidx: guardid,
