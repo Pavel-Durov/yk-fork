@@ -1,3 +1,6 @@
+// gdb command:
+// RUST_BACKTRACE=1 YKB_TRACER=swt ./bin/gdb_c_test -s -n  --command=comms.gdb  simple_simple.c
+
 use dynasmrt::{dynasm, x64::Assembler, DynasmApi, DynasmLabelApi, ExecutableBuffer};
 use std::{assert_matches::debug_assert_matches, cell::RefCell, sync::Arc};
 
@@ -124,8 +127,6 @@ fn build_asm_jump_into_cp(src_smid: usize, dst_smid: usize) -> ExecutableBuffer 
 
         let src_location = &src_var.get(0).unwrap();
         let dst_location = &dst_var.get(0).unwrap();
-
-        // println!("@@ src {:?} dst {:?}", src_location, dst_location);
         // copy live vars
         match (src_location, dst_location) {
             // Src Register
@@ -133,24 +134,30 @@ fn build_asm_jump_into_cp(src_smid: usize, dst_smid: usize) -> ExecutableBuffer 
                 Register(src_reg_num, src_val_size, src_add_locs, _src_add_loc_reg),
                 Register(dst_reg_num, dst_val_size, dst_add_locs, _dst_add_loc_reg),
             ) => {
-                assert!(*src_add_locs == 0 && *dst_add_locs == 0, "deal with additional info");
-                assert!(dst_val_size == src_val_size, "src and dst val size must match");
+                assert!(
+                    *src_add_locs == 0 && *dst_add_locs == 0,
+                    "deal with additional info"
+                );
+                assert!(
+                    dst_val_size == src_val_size,
+                    "src and dst val size must match"
+                );
                 // skip copying to the same register with the same value size
-                if (src_reg_num == dst_reg_num && src_val_size == dst_val_size) {
+                if src_reg_num == dst_reg_num && src_val_size == dst_val_size {
                     continue;
                 }
                 let src_offset = reg_num_stack_offset(*src_reg_num);
                 let dest_reg = u8::try_from(*dst_reg_num).unwrap();
                 match *src_val_size {
-                    // 1 => { dynasm!(asm; mov Rq(dest_reg), BYTE [rsp - src_offset]); }
-                    // 2 => { dynasm!(asm; mov Rq(dest_reg), WORD [rsp - src_offset]); }
-                    // 4 => { dynasm!(asm; mov Rq(dest_reg), DWORD [rsp - src_offset]); }
+                    1 => todo!("implement reg to reg 1 byte"),
+                    2 => todo!("implement reg to reg 2 bytes"),
+                    4 => todo!("implement reg to reg 4 bytes"),
                     8 => {
                         println!(
                             "@@ Reg to Reg - moving 8 bytes from {:?} to {:?}",
                             src_reg_num, dst_reg_num
                         );
-                        dynasm!(asm; mov Rq(dest_reg), QWORD [rsp - src_offset]);
+                        dynasm!(asm; mov Rq(dest_reg), QWORD [rsp + src_offset]);
                     }
                     _ => todo!("Unsupported source value size: {}", src_val_size),
                 }
@@ -200,7 +207,8 @@ fn build_asm_jump_into_cp(src_smid: usize, dst_smid: usize) -> ExecutableBuffer 
                 let src_reg = u8::try_from(*src_reg_num).unwrap();
                 let dst_reg = u8::try_from(*dst_reg_num).unwrap();
 
-                if (src_reg_num == dst_reg_num && src_off == dst_off) {
+                // Skipping copying to the same register with the same offset
+                if src_reg_num == dst_reg_num && src_off == dst_off {
                     continue;
                 }
                 println!(
@@ -209,9 +217,9 @@ fn build_asm_jump_into_cp(src_smid: usize, dst_smid: usize) -> ExecutableBuffer 
                 );
 
                 match *src_val_size {
-                    // 1 => dynasm!(asm; mov al, BYTE [Rq(src_reg) + *src_off]),
-                    // 2 => dynasm!(asm; mov ax, WORD [Rq(src_reg) + *src_off]),
-                    // 4 => dynasm!(asm; mov eax, DWORD [Rq(src_reg) + *src_off]),
+                    1 => todo!("implement direct to direct 1 byte"),
+                    2 => todo!("implement direct to direct 2 bytes"),
+                    4 => todo!("implement direct to direct 4 bytes"),
                     8 => dynasm!(asm; mov rax, QWORD [Rq(src_reg) + *src_off]),
                     _ => panic!("Unsupported source value size: {}", src_val_size),
                 }

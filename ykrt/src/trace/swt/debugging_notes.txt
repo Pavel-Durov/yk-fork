@@ -1,0 +1,58 @@
+@@ Direct to Direct moving 8 bytes from 6 + -24 to 6 + -32
+
+display /gx $rsi-24
+1: x/xg $rsi-24  0x7ffff7fae388 <_ZN3std6thread16MAIN_THREAD_INFO17h9adfb44b73259c5cE>:	0x0000000000000000
+>>> display /gx $rsi-32
+2: x/xg $rsi-32  0x7ffff7fae380 <_ZN3std6thread7Builder16spawn_unchecked_28_$u7b$$u7b$closure$u7d$$u7d$3MIN17hd5ea92a2acb9de18E>:	0x0000000000200001
+
+after:
+>>>  display /gx $rsi-32
+6: x/xg $rsi-32  0x7ffff7fae380 <_ZN3std6thread7Builder16spawn_unchecked_28_$u7b$$u7b$closure$u7d$$u7d$3MIN17hd5ea92a2acb9de18E>:	0x0000000000000000
+
+@@ Reg to Reg - moving 8 bytes from 3 to 3
+
+command:
+    mov    0x18(%rsp),%rbx
+
+before:
+>>> display /gx $rsp+0x18
+1: x/xg $rsp+0x18  0x7fffffffd350:	0x00007ffff7828018
+>>> print/x $rbx
+$3 = 0x7ffff7828018
+
+after:
+>>> print/x $rbx
+$2 = 0x7ffff7828018
+
+
+@@ Reg to Reg - moving 8 bytes from 14 to 15
+command:
+    mov     0x70(%rsp),%r15
+
+before:
+>>> display /gx $rsp+0x70
+2: x/xg $rsp+0x70  0x7fffffffd3a8:	0x0000000000000001
+>>> print/x $r15
+$3 = 0x7ffff7828020
+
+after:
+>>> print/x $r15
+$4 = 0x1
+
+@@ Reg to Reg - moving 8 bytes from 5 to 5
+Executable buffer starts at: 0x7ffff7fbe000
+
+command:
+    mov    0x20(%rsp),%rbp
+
+before:
+>>> display /gx $rsp+0x20
+4: x/xg $rsp+0x20  0x7fffffffd358:	0x0000000000205780
+>>> print/x $rbp
+$6 = 0x7fffffffddc0
+
+after:
+...
+
+
+mt = 0x5153575610ec8348: <incomplete type>, loc = {state = 2127296}, i = Cannot access memory at address 0x1
