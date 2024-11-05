@@ -33,9 +33,9 @@ struct Args {
     #[arg(short = 'n', long)]
     wait_at_prompt: bool,
 
-    /// Execute GDB commands from file.
-    #[arg(short = 'c', long)]
-    command: Option<String>,
+    /// Pass all arguments after `--` directly to GDB.
+    #[arg(last = true, required = false)]
+    gdb_args: Vec<String>,
 }
 
 fn main() {
@@ -99,10 +99,12 @@ fn main() {
         gdb.args(["-ex", "run"]);
     }
 
-    if let Some(command) = args.command {
-        gdb.args(["--command", command.as_str()]);
+    // Pass all GDB-specific arguments after '--'
+    if !args.gdb_args.is_empty() {
+        for gdb_arg in &args.gdb_args {
+            gdb.arg(gdb_arg);
+        }
     }
-
     // Run gdb!
     gdb.spawn().expect("failed to spawn gdb").wait().unwrap();
 }
