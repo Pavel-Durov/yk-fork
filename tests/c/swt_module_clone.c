@@ -42,9 +42,9 @@
 #include <yk.h>
 #include <yk_testing.h>
 
-int add(int i, int j) { return i + j; }
+__attribute__((yk_outline)) int add(int i, int j) { return i + j; }
 
-int dec(int i) { return add(i, -1); }
+__attribute__((yk_outline)) int dec(int i) { return add(i, -1); }
 
 int main(int argc, char **argv) {
   YkMT *mt = yk_mt_new(NULL);
