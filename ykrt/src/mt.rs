@@ -20,6 +20,8 @@ use parking_lot::{Condvar, Mutex, MutexGuard};
 #[cfg(not(all(feature = "yk_testing", not(test))))]
 use parking_lot_core::SpinWait;
 
+#[cfg(tracer_swt)]
+use crate::trace::swt::cp::{RETURN_INTO_OPT_CP, RETURN_INTO_UNOPT_CP};
 use crate::{
     aotsmp::{load_aot_stackmaps, AOT_STACKMAPS},
     compile::{default_compiler, CompilationError, CompiledTrace, Compiler, GuardIdx},
@@ -56,6 +58,8 @@ const DEFAULT_SIDETRACE_THRESHOLD: HotThreshold = 5;
 /// give up trying to trace (or compile...) it?
 const DEFAULT_TRACECOMPILATION_ERROR_THRESHOLD: TraceCompilationErrorThreshold = 5;
 static REG64_SIZE: usize = 8;
+
+static mut SWT_JUMP_FLAG: bool = false;
 
 thread_local! {
     static THREAD_MTTHREAD: MTThread = MTThread::new();
@@ -463,6 +467,18 @@ impl MT {
                         todo!("{e:?}");
                     }
                 }
+                #[cfg(tracer_swt)]
+                unsafe {
+                    if !SWT_JUMP_FLAG {
+                        SWT_JUMP_FLAG = true;
+                    } else {
+                        // let func: unsafe fn() = std::mem::transmute(debug_return_into_unopt_cp().as_ptr());
+                        let func: unsafe fn() = std::mem::transmute(RETURN_INTO_UNOPT_CP.as_ptr());
+                        // self.log.log(Verbosity::JITEvent, "returning into unopt cp");
+                        func();
+                    }
+                }
+                // println!("returned into unopt cp");
             }
             TransitionControlPoint::StopTracing => {
                 // Assuming no bugs elsewhere, the `unwrap`s cannot fail, because `StartTracing`
@@ -490,6 +506,13 @@ impl MT {
                         self.log
                             .log(Verbosity::Warning, &format!("stop-tracing-aborted: {e}"));
                     }
+                }
+                #[cfg(tracer_swt)]
+                unsafe {
+                    // let func: unsafe fn() = std::mem::transmute(debug_return_into_opt_cp().as_ptr());
+                    let func: unsafe fn() = std::mem::transmute(RETURN_INTO_OPT_CP.as_ptr());
+                    // self.log.log(Verbosity::JITEvent, "returning into opt cp");
+                    func();
                 }
             }
             TransitionControlPoint::StopSideTracing {
