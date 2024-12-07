@@ -1,8 +1,33 @@
 // ignore-if: test "$YKB_TRACER" != "swt"
 // Run-time:
-//   env-var: YKD_LOG_IR=-:aot,jit-pre-opt
+//   env-var: YKD_LOG_IR=-:aot
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   env-var: YK_LOG=4
+//   stderr:
+//     yk-jit-event: start-tracing
+//     4
+//     yk-jit-event: stop-tracing
+//     --- Begin aot ---
+//     ...
+//     func add(%arg0: i32, %arg1: i32) -> i32 {
+//     ...
+//     func dec(%arg0: i32) -> i32 {
+//     ...
+//     %{{_}}: i32 = call add(%{{_}}, -1i32) [safepoint: 2i64, (%{{_}}, %{{_}})]
+//     ...
+//     func main(%arg0: i32, %arg1: ptr) -> i32 {
+//     ...
+//     *%{{_}} = dec
+//     ...
+//     %{{_}}: i32 = icall %{{_}}(%{{_}})
+//     ...
+//     --- End aot ---
+//     3
+//     yk-jit-event: enter-jit-code
+//     2
+//     1
+//     yk-jit-event: deoptimise
+//     exit
 //   status: success
 
 // Check that functions which address is taken can refer to other
