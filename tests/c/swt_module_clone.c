@@ -1,6 +1,6 @@
 // ignore-if: test "$YKB_TRACER" != "swt"
 // Run-time:
-//   env-var: YKD_LOG_IR=-:aot
+//   env-var: YKD_LOG_IR=aot,jit-post-opt,jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   env-var: YK_LOG=4
 //   stderr:
@@ -22,6 +22,16 @@
 //     %{{_}}: i32 = icall %{{_}}(%{{_}})
 //     ...
 //     --- End aot ---
+//     --- Begin jit-pre-opt ---
+//     ...
+//     %{{_}}: i32 = icall %{{_}}(%{{_}})
+//     ...
+//     --- End jit-pre-opt ---
+//     --- Begin jit-post-opt ---
+//     ...
+//     %{{_}}: i32 = icall %{{_}}(%{{_}})
+//     ...
+//     --- End jit-post-opt ---
 //     3
 //     yk-jit-event: enter-jit-code
 //     2
