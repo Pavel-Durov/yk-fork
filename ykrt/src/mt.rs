@@ -31,6 +31,8 @@ use crate::{
     trace::{default_tracer, AOTTraceIterator, TraceRecorder, Tracer},
 };
 
+use crate::trace::swt::cp::{jump_into_optimised_version, jump_into_unoptimised_version};
+
 // The HotThreshold must be less than a machine word wide for [`Location::Location`] to do its
 // pointer tagging thing. We therefore choose a type which makes this statically clear to
 // users rather than having them try to use (say) u64::max() on a 64 bit machine and get a run-time
@@ -432,6 +434,7 @@ impl MT {
                     let lk = self.tracer.lock();
                     Arc::clone(&*lk)
                 };
+
                 match Arc::clone(&tracer).start_recorder() {
                     Ok(tt) => MTThread::with(|mtt| {
                         *mtt.tstate.borrow_mut() = MTThreadState::Tracing {
@@ -463,6 +466,8 @@ impl MT {
                         todo!("{e:?}");
                     }
                 }
+                jump_into_unoptimised_version();
+                // jump_into_optimised_version();
             }
             TransitionControlPoint::StopTracing => {
                 // Assuming no bugs elsewhere, the `unwrap`s cannot fail, because `StartTracing`
@@ -491,6 +496,8 @@ impl MT {
                             .log(Verbosity::Warning, &format!("stop-tracing-aborted: {e}"));
                     }
                 }
+                jump_into_optimised_version();
+                // jump_into_unoptimised_version();
             }
             TransitionControlPoint::StopSideTracing {
                 gidx: guardid,
