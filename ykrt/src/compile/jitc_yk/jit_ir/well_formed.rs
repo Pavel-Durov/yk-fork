@@ -39,10 +39,10 @@ impl Module {
         let mut last_inst = None;
         for (iidx, inst) in self.iter_skipping_insts() {
             inst.map_operand_locals(self, &mut |x| {
-                if let Inst::Tombstone = self.inst_raw(x) {
+                if let Inst::Tombstone = self.insts[usize::from(x)] {
                     panic!(
                         "Instruction at position {iidx} uses undefined value (%{x})\n  {}",
-                        self.inst_no_copies(iidx).display(iidx, self)
+                        self.inst(iidx).display(iidx, self)
                     );
                 }
             });
@@ -52,7 +52,7 @@ impl Module {
                     if lhs_tyidx != rhs.unpack(self).tyidx(self) {
                         panic!(
                             "Instruction at position {iidx} has different types on lhs and rhs\n  {}",
-                            self.inst_no_copies(iidx).display(iidx, self)
+                            self.inst(iidx).display(iidx, self)
                         );
                     }
                     match binop {
@@ -72,7 +72,7 @@ impl Module {
                             if matches!(self.type_(lhs_tyidx), Ty::Float(_)) {
                                 panic!(
                                     "Integer binop at position {iidx} operates on float operands\n  {}",
-                                    self.inst_no_copies(iidx).display(iidx, self)
+                                    self.inst(iidx).display(iidx, self)
                                 );
                             }
                         }
@@ -80,7 +80,7 @@ impl Module {
                             if !matches!(self.type_(lhs_tyidx), Ty::Float(_)) {
                                 panic!(
                                     "Float binop at position {iidx} operates on integer operands\n  {}",
-                                    self.inst_no_copies(iidx).display(iidx, self)
+                                    self.inst(iidx).display(iidx, self)
                                 );
                             }
                         }
@@ -120,35 +120,32 @@ impl Module {
                         }
                     }
                 }
-                Inst::Guard(GuardInst { cond, .. }) => {
+                Inst::Guard(GuardInst { cond, expect, .. }) => {
                     let cond = cond.unpack(self);
                     let tyidx = cond.tyidx(self);
                     let Ty::Integer(1) = self.type_(tyidx) else {
                         panic!(
                             "Guard at position {iidx} does not have 'cond' of type 'i1'\n  {}",
-                            self.inst_no_copies(iidx).display(iidx, self)
+                            self.inst(iidx).display(iidx, self)
                         )
                     };
                     if let Operand::Const(x) = cond {
-                        let Const::Int(_, _v) = self.const_(x) else {
+                        let Const::Int(_, v) = self.const_(x) else {
                             unreachable!()
                         };
-                        // FIXME: We currently need to break this check due to side-traces being
-                        // unfinished and needing to deopt back to the normal interpreter at the
-                        // end.
-                        // if (*expect && *v == 0) || (!*expect && *v == 1) {
-                        //     panic!(
-                        //         "Guard at position {iidx} references a constant that is at odds with the guard itself\n  {}",
-                        //         self.inst_no_copies(iidx).display(iidx, self)
-                        //     );
-                        // }
+                        if (expect && *v == 0) || (!expect && *v == 1) {
+                            panic!(
+                                "Guard at position {iidx} references a constant that is at odds with the guard itself\n  {}",
+                                inst.display(iidx, self)
+                            );
+                        }
                     }
                 }
                 Inst::ICmp(x) => {
                     if x.lhs(self).tyidx(self) != x.rhs(self).tyidx(self) {
                         panic!(
                             "Instruction at position {iidx} has different types on lhs and rhs\n  {}",
-                            self.inst_no_copies(iidx).display(iidx, self)
+                            self.inst(iidx).display(iidx, self)
                         );
                     }
                 }
@@ -162,7 +159,7 @@ impl Module {
                     if val_bitsize >= dest_bitsize {
                         panic!(
                             "Instruction at position {iidx} trying to sign extend from an equal-or-larger-than integer type\n  {}",
-                            self.inst_no_copies(iidx).display(iidx, self)
+                            self.inst(iidx).display(iidx, self)
                         );
                     }
                 }
@@ -171,7 +168,7 @@ impl Module {
                     if !matches!(val_ty, Ty::Integer(_)) && !matches!(val_ty, Ty::Ptr) {
                         panic!(
                             "Instruction at position {iidx} trying to zero extend from a non-integer-or-ptr type\n  {}",
-                            self.inst_no_copies(iidx).display(iidx, self)
+                            self.inst(iidx).display(iidx, self)
                         );
                     }
                     let val_bitsize = val_ty.bit_size().unwrap();
@@ -180,7 +177,7 @@ impl Module {
                     if !matches!(dest_ty, Ty::Integer(_)) && !matches!(dest_ty, Ty::Ptr) {
                         panic!(
                             "Instruction at position {iidx} trying to zero extend to a non-integer-or-ptr type\n  {}",
-                            self.inst_no_copies(iidx).display(iidx, self)
+                            self.inst(iidx).display(iidx, self)
                         );
                     }
                     let dest_bitsize = dest_ty.bit_size().unwrap();
@@ -192,7 +189,7 @@ impl Module {
                     if val_bitsize > dest_bitsize {
                         panic!(
                             "Instruction at position {iidx} trying to zero extend to a smaller integer type\n  {}",
-                            self.inst_no_copies(iidx).display(iidx, self)
+                            self.inst(iidx).display(iidx, self)
                         );
                     }
                 }
@@ -204,7 +201,7 @@ impl Module {
                     if matches!(val_ty, Ty::Ptr) && !matches!(dest_ty, Ty::Ptr) {
                         panic!(
                             "Instruction at position {iidx} trying to bitcast from a pointer type to a non-pointer type\n  {}",
-                            self.inst_no_copies(iidx).display(iidx, self)
+                            self.inst(iidx).display(iidx, self)
                         );
                     }
                     // LLVM semantics: "The bit sizes of [source] value and the destination type
@@ -214,23 +211,23 @@ impl Module {
                     if val_bitsize != dest_bitsize {
                         panic!(
                             "Instruction at position {iidx} trying to bitcast to a differently-sized type\n  {}",
-                            self.inst_no_copies(iidx).display(iidx, self)
+                            self.inst(iidx).display(iidx, self)
                         );
                     }
                 }
                 Inst::Trunc(x) => {
                     let Ty::Integer(val_bitsize) = self.type_(x.val(self).tyidx(self)) else {
                         panic!("Instruction at position {iidx} trying to convert from a non-integer type\n  {}",
-                            self.inst_no_copies(iidx).display(iidx, self));
+                            self.inst(iidx).display(iidx, self));
                     };
                     let Ty::Integer(dest_bitsize) = self.type_(x.dest_tyidx()) else {
                         panic!("Instruction at position {iidx} trying to convert to a non-integer type\n  {}",
-                            self.inst_no_copies(iidx).display(iidx, self));
+                            self.inst(iidx).display(iidx, self));
                     };
                     if dest_bitsize >= val_bitsize {
                         panic!(
                             "Instruction at position {iidx} trying to truncate to an equal-or-larger-than type\n  {}",
-                            self.inst_no_copies(iidx).display(iidx, self)
+                            self.inst(iidx).display(iidx, self)
                         );
                     }
                 }
@@ -240,15 +237,15 @@ impl Module {
 
                     if !matches!(from_type, Ty::Integer(_)) {
                         panic!("Instruction at position {iidx} trying to convert a non-integer type\n  {}",
-                            self.inst_no_copies(iidx).display(iidx, self));
+                            self.inst(iidx).display(iidx, self));
                     }
                     if !matches!(to_type, Ty::Float(_)) {
                         panic!("Instruction at position {iidx} trying to convert to a non-float type\n  {}",
-                            self.inst_no_copies(iidx).display(iidx, self));
+                            self.inst(iidx).display(iidx, self));
                     }
                     if to_type.byte_size() < from_type.byte_size() {
                         panic!("Instruction at position {iidx} trying to convert to a smaller-sized float\n  {}",
-                            self.inst_no_copies(iidx).display(iidx, self));
+                            self.inst(iidx).display(iidx, self));
                     }
                 }
                 Inst::FPExt(x) => {
@@ -256,15 +253,15 @@ impl Module {
                     let to_type = self.type_(x.dest_tyidx());
                     if !matches!(from_type, Ty::Float(_)) {
                         panic!("Instruction at position {iidx} trying to extend from a non-float type\n  {}",
-                            self.inst_no_copies(iidx).display(iidx, self));
+                            self.inst(iidx).display(iidx, self));
                     }
                     if !matches!(to_type, Ty::Float(_)) {
                         panic!("Instruction at position {iidx} trying to extend to a non-float type\n  {}",
-                            self.inst_no_copies(iidx).display(iidx, self));
+                            self.inst(iidx).display(iidx, self));
                     }
                     if to_type.byte_size() <= from_type.byte_size() {
                         panic!("Instruction at position {iidx} trying to extend to a smaller-sized float\n  {}",
-                            self.inst_no_copies(iidx).display(iidx, self));
+                            self.inst(iidx).display(iidx, self));
                     }
                 }
                 Inst::FPToSI(x) => {
@@ -273,24 +270,24 @@ impl Module {
 
                     if !matches!(from_type, Ty::Float(_)) {
                         panic!("Instruction at position {iidx} trying to convert a non-float type\n  {}",
-                            self.inst_no_copies(iidx).display(iidx, self));
+                            self.inst(iidx).display(iidx, self));
                     }
                     if !matches!(to_type, Ty::Integer(_)) {
                         panic!("Instruction at position {iidx} trying to convert to a non-integer type\n  {}",
-                            self.inst_no_copies(iidx).display(iidx, self));
+                            self.inst(iidx).display(iidx, self));
                     }
                 }
                 Inst::Param(_) => {
                     if let Some(i) = last_inst {
                         if !matches!(i, Inst::Param(_)) {
                             panic!("Param instruction may only appear at the beginning of a trace or after another Param instruction\n  {}",
-                                self.inst_no_copies(iidx).display(iidx, self));
+                                self.inst(iidx).display(iidx, self));
                         }
                     }
                 }
                 _ => (),
             }
-            last_inst = Some(*inst);
+            last_inst = Some(inst);
         }
     }
 }
@@ -496,6 +493,31 @@ mod tests {
             "
               entry:
                 %0: i8 = param 0
+                guard true, %0, []
+            ",
+        );
+    }
+
+    #[test]
+    fn guard_const() {
+        Module::from_str(
+            "
+              entry:
+                %0: i1 = 1i1
+                guard true, %0, []
+            ",
+        );
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Guard at position 1 references a constant that is at odds with the guard itself"
+    )]
+    fn guard_impossible_const() {
+        Module::from_str(
+            "
+              entry:
+                %0: i1 = 0i1
                 guard true, %0, []
             ",
         );

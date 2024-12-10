@@ -474,7 +474,7 @@ impl<'a> Assemble<'a> {
             }
             self.ra.expire_regs(iidx);
 
-            match inst {
+            match &inst {
                 #[cfg(test)]
                 jit_ir::Inst::BlackBox(_) => (),
                 jit_ir::Inst::Const(_) | jit_ir::Inst::Copy(_) | jit_ir::Inst::Tombstone => {
@@ -1125,7 +1125,7 @@ impl<'a> Assemble<'a> {
             yksmp::Location::Constant(v) => {
                 // FIXME: This isn't fine-grained enough, as there may be constants of any
                 // bit-size.
-                let byte_size = self.m.inst_no_copies(iidx).def_byte_size(self.m);
+                let byte_size = self.m.inst(iidx).def_byte_size(self.m);
                 debug_assert!(byte_size <= 8);
                 VarLocation::ConstInt {
                     bits: u32::try_from(byte_size).unwrap() * 8,
@@ -1136,7 +1136,7 @@ impl<'a> Assemble<'a> {
                 todo!("{:?}", e);
             }
         };
-        let size = self.m.inst_no_copies(iidx).def_byte_size(self.m);
+        let size = self.m.inst(iidx).def_byte_size(self.m);
         debug_assert!(size <= REG64_BYTESIZE);
         match m {
             VarLocation::Register(reg_alloc::Register::GP(reg)) => {
@@ -1178,7 +1178,7 @@ impl<'a> Assemble<'a> {
                             iidx,
                             [RegConstraint::Input(ptr_op), RegConstraint::Output],
                         );
-                        let size = self.m.inst_no_copies(iidx).def_byte_size(self.m);
+                        let size = self.m.inst(iidx).def_byte_size(self.m);
                         debug_assert!(size <= REG64_BYTESIZE);
                         match size {
                             1 => {
@@ -1205,7 +1205,7 @@ impl<'a> Assemble<'a> {
                     iidx,
                     [RegConstraint::InputOutput(ptr_op)],
                 );
-                let size = self.m.inst_no_copies(iidx).def_byte_size(self.m);
+                let size = self.m.inst(iidx).def_byte_size(self.m);
                 debug_assert!(size <= REG64_BYTESIZE);
                 match size {
                     1 => dynasm!(self.asm ; movzx Rq(reg.code()), BYTE [Rq(reg.code()) + off]),
@@ -1445,11 +1445,13 @@ impl<'a> Assemble<'a> {
                         RegConstraint::InputIntoRegAndClobber(arg.clone(), *reg);
                     num_float_args += 1;
                 }
-                _ => {
+                Ty::Integer(_) | Ty::Ptr | Ty::Func(_) => {
                     let reg = gp_regs.next().unwrap();
                     let gp_i = CALLER_CLOBBER_REGS.iter().position(|x| x == reg).unwrap();
                     gp_cnstrs[gp_i] = RegConstraint::InputIntoRegAndClobber(arg.clone(), *reg);
                 }
+                Ty::Void => unreachable!(),
+                Ty::Unimplemented(_) => todo!(),
             }
         }
 
@@ -1494,18 +1496,28 @@ impl<'a> Assemble<'a> {
         match (callee, callee_op) {
             (Some(p), None) => {
                 // Direct call
-                gp_cnstrs.push(RegConstraint::Temporary);
-                let [_, _, _, _, _, _, _, _, _, tmp_reg] =
-                    self.ra
-                        .assign_gp_regs(&mut self.asm, iidx, gp_cnstrs.try_into().unwrap());
 
-                if fty.is_vararg() {
-                    dynasm!(self.asm; mov rax, num_float_args); // SysV x64 ABI
+                if !fty.is_vararg() {
+                    let [_, _, _, _, _, _, _, _, _] =
+                        self.ra
+                            .assign_gp_regs(&mut self.asm, iidx, gp_cnstrs.try_into().unwrap());
+                    // rax is considered clobbered, but isn't used to pass an argument, so we can
+                    // safely use it for the function pointer.
+                    dynasm!(self.asm
+                        ; mov rax, QWORD p as i64
+                        ; call rax
+                    );
+                } else {
+                    gp_cnstrs.push(RegConstraint::Temporary);
+                    let [_, _, _, _, _, _, _, _, _, tmp_reg] =
+                        self.ra
+                            .assign_gp_regs(&mut self.asm, iidx, gp_cnstrs.try_into().unwrap());
+                    dynasm!(self.asm
+                        ; mov rax, num_float_args
+                        ; mov Rq(tmp_reg.code()), QWORD p as i64
+                        ; call Rq(tmp_reg.code())
+                    );
                 }
-                dynasm!(self.asm
-                    ; mov Rq(tmp_reg.code()), QWORD p as i64
-                    ; call Rq(tmp_reg.code())
-                );
             }
             (None, Some(op)) => {
                 // Indirect call
@@ -1663,7 +1675,7 @@ impl<'a> Assemble<'a> {
         ic_iidx: InstIdx,
         ic_inst: &jit_ir::ICmpInst,
         g_iidx: InstIdx,
-        g_inst: &jit_ir::GuardInst,
+        g_inst: jit_ir::GuardInst,
     ) {
         // Codegen ICmp
         let (lhs, pred, rhs) = (
@@ -1690,9 +1702,9 @@ impl<'a> Assemble<'a> {
         self.ra.expire_regs(g_iidx);
         self.comment(
             self.asm.offset(),
-            Inst::Guard(*g_inst).display(g_iidx, self.m).to_string(),
+            Inst::Guard(g_inst).display(g_iidx, self.m).to_string(),
         );
-        let fail_label = self.guard_to_deopt(g_inst);
+        let fail_label = self.guard_to_deopt(&g_inst);
 
         if g_inst.expect() {
             match pred {
@@ -1994,10 +2006,7 @@ impl<'a> Assemble<'a> {
         // back around here we need to write the live variables back into these same locations.
         for var in self.m.loop_start_vars() {
             let loc = match var {
-                Operand::Var(iidx) => {
-                    debug_assert_eq!(*iidx, self.m.inst_decopy(*iidx).0);
-                    self.ra.var_location(*iidx)
-                }
+                Operand::Var(iidx) => self.ra.var_location(*iidx),
                 _ => panic!(),
             };
             self.loop_start_locs.push(loc);
@@ -3003,8 +3012,8 @@ mod tests {
               entry:
                 %0: i16 = param 0
                 %1: i16 = param 1
-                %3: i16 = add %0, %1
-                black_box %3
+                %2: i16 = add %0, %1
+                black_box %2
             ",
             "
                 ...
@@ -3023,8 +3032,8 @@ mod tests {
               entry:
                 %0: i64 = param 0
                 %1: i64 = param 1
-                %3: i64 = add %0, %1
-                black_box %3
+                %2: i64 = add %0, %1
+                black_box %2
             ",
             "
                 ...
@@ -3579,8 +3588,8 @@ mod tests {
                 "
                 ...
                 ; call @puts()
-                mov r.64.x, 0x{sym_addr:X}
-                call r.64.x
+                mov rax, 0x{sym_addr:X}
+                call rax
                 ...
             "
             ),
@@ -3906,8 +3915,8 @@ mod tests {
             "
               entry:
                 %0: i8 = param 0
-                %2: i1 = eq %0, 3i8
-                black_box %2
+                %1: i1 = eq %0, 3i8
+                black_box %1
             ",
             "
                 ...
@@ -3928,8 +3937,8 @@ mod tests {
             "
               entry:
                 %0: i8 = param 0
-                %2: i1 = eq %0, 3i8
-                guard true, %2, []
+                %1: i1 = eq %0, 3i8
+                guard true, %1, []
             ",
             "
                 ...
@@ -4492,8 +4501,8 @@ mod tests {
               entry:
                 %0: i8 = param 0
                 tloop_start [%0]
-                %1: i8 = 42i8
-                tloop_jump [%1]
+                %2: i8 = 42i8
+                tloop_jump [%2]
             ",
             "
                 ...
