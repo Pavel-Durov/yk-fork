@@ -20,6 +20,8 @@ use parking_lot::{Condvar, Mutex, MutexGuard};
 #[cfg(not(all(feature = "yk_testing", not(test))))]
 use parking_lot_core::SpinWait;
 
+#[cfg(tracer_swt)]
+use crate::trace::swt::cp::{you_can_do_it, ControlPointStackMapId};
 use crate::{
     aotsmp::{load_aot_stackmaps, AOT_STACKMAPS},
     compile::{default_compiler, CompilationError, CompiledTrace, Compiler, GuardIdx},
@@ -56,6 +58,8 @@ const DEFAULT_SIDETRACE_THRESHOLD: HotThreshold = 5;
 /// give up trying to trace (or compile...) it?
 const DEFAULT_TRACECOMPILATION_ERROR_THRESHOLD: TraceCompilationErrorThreshold = 5;
 static REG64_SIZE: usize = 8;
+
+static mut IS_IN_OPT: bool = false;
 
 thread_local! {
     static THREAD_MTTHREAD: MTThread = MTThread::new();
@@ -463,6 +467,13 @@ impl MT {
                         todo!("{e:?}");
                     }
                 }
+                #[cfg(tracer_swt)]
+                unsafe {
+                    if IS_IN_OPT {
+                        you_can_do_it(ControlPointStackMapId::Opt, ControlPointStackMapId::UnOpt, frameaddr);
+                        self.log.log(Verbosity::JITEvent, "returning into unopt cp");
+                    }
+                }
             }
             TransitionControlPoint::StopTracing => {
                 // Assuming no bugs elsewhere, the `unwrap`s cannot fail, because `StartTracing`
@@ -490,6 +501,13 @@ impl MT {
                         self.log
                             .log(Verbosity::Warning, &format!("stop-tracing-aborted: {e}"));
                     }
+                }
+
+                #[cfg(tracer_swt)]
+                unsafe {
+                    IS_IN_OPT = true;
+                    you_can_do_it(ControlPointStackMapId::UnOpt, ControlPointStackMapId::Opt, frameaddr);
+                    self.log.log(Verbosity::JITEvent, "returning into opt cp");
                 }
             }
             TransitionControlPoint::StopSideTracing {
