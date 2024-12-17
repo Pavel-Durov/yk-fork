@@ -76,6 +76,9 @@ pub extern "C" fn __ykrt_control_point(
             // trace (at the moment we just rip out the control point's stack), which means we then
             // no longer need to recover callee-saved registers as the control point will do this
             // for us.
+            // Question: why rdx is not saved?
+            // Question: why rdi and rsi are not at their index?
+            // "int3",
             "push rax",
             "push rcx",
             "push rbx",
@@ -89,9 +92,11 @@ pub extern "C" fn __ykrt_control_point(
             "push r13",
             "push r14",
             "push r15",
+            // "int3",
             // Pass the interpreter frame's base pointer via the 4th argument register.
             "mov rcx, rbp",
             "call __ykrt_control_point_real",
+            // "int3",
             // Restore the previously pushed registers.
             "pop r15",
             "pop r14",
@@ -126,7 +131,7 @@ pub extern "C" fn __ykrt_control_point_real(
         let mt = unsafe { &*mt };
         let loc = unsafe { &*loc };
         let arc = unsafe { Arc::from_raw(mt) };
-        arc.control_point(loc, frameaddr, smid);
+        let jump = arc.control_point(loc, frameaddr, smid);
         forget(arc);
     }
 }
