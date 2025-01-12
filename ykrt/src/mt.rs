@@ -22,7 +22,8 @@ use parking_lot_core::SpinWait;
 
 #[cfg(tracer_swt)]
 use crate::trace::swt::cp::{
-    control_point_transition, ControlPointStackMapId, ControlPointTransition, CP_TRANSITION_DEBUG_MODE,
+    control_point_transition, ControlPointStackMapId, ControlPointTransition,
+    CP_TRANSITION_DEBUG_MODE,
 };
 
 use crate::{
