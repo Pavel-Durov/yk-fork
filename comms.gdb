@@ -1,0 +1,22 @@
+set logging enabled on
+set breakpoint pending on
+
+# break ykrt::trace::swt::cp::debug_return_into_unopt_cp
+# break ykrt::trace::swt::cp::debug_return_into_opt_cp
+
+break ykrt::trace::mt
+# break __yk_clone_main
+break main
+
+break simple2.c:23.c:17
+break simple.c:44.c:17
+# break buffered_vfprintf
+
+# break before cp
+break *0x0000000000202b9a
+# break after cp
+break *0x0000000000202b9d
+
+break ykrt/src/mt.rs:428
+
+# break ykcapi::__ykrt_control_point_real

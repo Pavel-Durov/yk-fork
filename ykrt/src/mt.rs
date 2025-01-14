@@ -20,6 +20,12 @@ use parking_lot::{Condvar, Mutex, MutexGuard};
 #[cfg(not(all(feature = "yk_testing", not(test))))]
 use parking_lot_core::SpinWait;
 
+#[cfg(tracer_swt)]
+use crate::trace::swt::cp::{
+    control_point_transition, ControlPointStackMapId, ControlPointTransition,
+    CP_TRANSITION_DEBUG_MODE,
+};
+
 use crate::{
     aotsmp::{load_aot_stackmaps, AOT_STACKMAPS},
     compile::{default_compiler, CompilationError, CompiledTrace, Compiler, GuardIdx},
@@ -433,10 +439,28 @@ impl MT {
                     mtt.set_running_trace(Some(ctr), None);
                 });
                 self.stats.timing_state(TimingState::JitExecuting);
-
+                #[cfg(tracer_swt)]
+                unsafe {
+                    if CP_TRANSITION_DEBUG_MODE {
+                        println!("jit.Execute - control_point_transition from Opt to UnOpt");
+                    }
+                    // Transition to unopt before trace execution since
+                    // the trace was collected un unopt version.
+                    control_point_transition(ControlPointTransition {
+                        src_smid: ControlPointStackMapId::Opt,
+                        dst_smid: ControlPointStackMapId::UnOpt,
+                        frameaddr,
+                        rsp,
+                        trace_addr: trace_addr,
+                        exec_trace: true,
+                        exec_trace_fn: __yk_exec_trace,
+                    });
+                }
                 // FIXME: Calling this function overwrites the current (Rust) function frame,
                 // rather than unwinding it. https://github.com/ykjit/yk/issues/778.
-                unsafe { __yk_exec_trace(frameaddr, rsp, trace_addr) };
+                unsafe {
+                    __yk_exec_trace(frameaddr, rsp, trace_addr);
+                };
             }
             TransitionControlPoint::StartTracing(hl) => {
                 self.log.log(Verbosity::JITEvent, "start-tracing");
@@ -476,6 +500,24 @@ impl MT {
                         todo!("{e:?}");
                     }
                 }
+                #[cfg(tracer_swt)]
+                unsafe {
+                    if CP_TRANSITION_DEBUG_MODE {
+                        println!("jit.StartTracing - control_point_transition from Opt to UnOpt");
+                    }
+                    // Transition to unopt before start tracing cause
+                    // we need the intepreter version with tracing calls..
+                    control_point_transition(ControlPointTransition {
+                        src_smid: ControlPointStackMapId::Opt,
+                        dst_smid: ControlPointStackMapId::UnOpt,
+                        frameaddr,
+                        rsp: 0 as *const c_void,
+                        trace_addr: 0 as *const c_void,
+                        exec_trace: false,
+                        exec_trace_fn: __yk_exec_trace,
+                    });
+                }
+                // self.log.log(Verbosity::JITEvent, "returning into unopt cp");
             }
             TransitionControlPoint::StopTracing => {
                 // Assuming no bugs elsewhere, the `unwrap`s cannot fail, because `StartTracing`
@@ -507,6 +549,23 @@ impl MT {
                         self.log
                             .log(Verbosity::Warning, &format!("stop-tracing-aborted: {e}"));
                     }
+                }
+                #[cfg(tracer_swt)]
+                unsafe {
+                    if CP_TRANSITION_DEBUG_MODE {
+                        println!("StopTracing - control_point_transition from UnOpt to Opt");
+                    }
+                    // Transition into opt interpreter version
+                    // when we stop tracing.
+                    control_point_transition(ControlPointTransition {
+                        src_smid: ControlPointStackMapId::UnOpt,
+                        dst_smid: ControlPointStackMapId::Opt,
+                        frameaddr,
+                        rsp: 0 as *const c_void,
+                        trace_addr: 0 as *const c_void,
+                        exec_trace: false,
+                        exec_trace_fn: __yk_exec_trace,
+                    });
                 }
             }
             TransitionControlPoint::StopSideTracing {
@@ -882,13 +941,14 @@ impl MT {
 #[cfg(target_arch = "x86_64")]
 #[naked]
 #[no_mangle]
-unsafe extern "C" fn __yk_exec_trace(
+pub(crate) unsafe extern "C" fn __yk_exec_trace(
     frameaddr: *const c_void,
     rsp: *const c_void,
     trace: *const c_void,
 ) -> ! {
     std::arch::naked_asm!(
         // Reset RBP
+        // "int3",
         "mov rbp, rdi",
         // Reset RSP to the end of the control point frame (this includes the registers we pushed
         // just before the control point)
