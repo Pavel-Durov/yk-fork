@@ -9,7 +9,7 @@ use yksmp::Location::{Constant, Direct, Indirect, LargeConstant, Register};
 pub(crate) static REG64_BYTESIZE: u64 = 8;
 
 // Feature flags
-pub static CP_TRANSITION_DEBUG_MODE: bool = false;
+pub static CP_TRANSITION_DEBUG_MODE: bool = true;
 
 #[repr(usize)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -119,17 +119,29 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
         );
     }
 
-    let mut dest_rsp_frame_size = opt_frame_size;
+    let mut dest_rsp_frame_size = 0;
+    let mut src_rsp_frame_size = 0;
+
     if dst_smid == ControlPointStackMapId::UnOpt {
         dest_rsp_frame_size = unopt_frame_size;
+        src_rsp_frame_size = opt_frame_size;
+    } else {
+        src_rsp_frame_size = unopt_frame_size;
+        dest_rsp_frame_size = opt_frame_size;
     }
+
+    // TODO: check if its valid for Unopt ->  Opt
+    let rbp_offset_to_rsp = src_rsp_frame_size as i64 + (14 * REG64_BYTESIZE) as i64;
+
+
     if CP_TRANSITION_DEBUG_MODE {
         println!(
             "@@ rbp: 0x{:x}, rsp: 0x{:x}",
             frameaddr as i64,
-            frameaddr as i64 - dest_rsp_frame_size as i64
+            frameaddr as i64 - rbp_offset_to_rsp
         );
     }
+
     dynasm!(asm
         ; .arch x64
         ; mov rbp, QWORD frameaddr as i64 // reset rbp
@@ -173,6 +185,11 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
         }
         println!("--------------------------------");
     }
+    // TODO: Copy all direct/indirect values from src to memory buffer
+    // Example of collision:
+    //     Dir2Direct src: Direct(6, -48, 8), dst: Direct(6, -40, 8)
+    //     Dir2Direct src: Direct(6, -40, 8), dst: Direct(6, -32, 8)
+
 
     for (index, src_var) in src_rec.live_vars.iter().enumerate() {
         let dst_var = &dst_rec.live_vars[index];
@@ -191,15 +208,19 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
 
         match src_location {
             Register(src_reg_num, src_val_size, src_add_locs) => {
+
+                let rsp_reg_offset = reg_num_to__ykrt_control_point_stack_offset(*src_reg_num);
+                let reg_val_rbp_offset = i32::try_from(rbp_offset_to_rsp - rsp_reg_offset as i64).unwrap();
+
                 match dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
                         assert!(
                             src_add_locs.len() == 0 && dst_add_locs.len() == 0,
-                            "Register to Register - deal with additional info"
+                            "Reg2Reg - deal with additional info"
                         );
                         assert!(
                             dst_val_size == src_val_size,
-                            "Register to Register - src and dst val size must match. Got src: {} and dst: {}",
+                            "Reg2Reg - src and dst val size must match. Got src: {} and dst: {}",
                             src_val_size, dst_val_size
                         );
                         if CP_TRANSITION_DEBUG_MODE {
@@ -216,10 +237,10 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
                             - src_rsp_offset;
                         let dest_reg = u8::try_from(*dst_reg_num).unwrap();
                         match *src_val_size {
-                            1 => dynasm!(asm; mov Rb(dest_reg), BYTE [rsp + src_offset]),
-                            2 => dynasm!(asm; mov Rw(dest_reg), WORD [rsp + src_offset]),
-                            4 => dynasm!(asm; mov Rd(dest_reg), DWORD [rsp + src_offset]),
-                            8 => dynasm!(asm; mov Rq(dest_reg), QWORD [rsp + src_offset]),
+                            1 => dynasm!(asm; mov Rb(dest_reg), BYTE [rbp - reg_val_rbp_offset]),
+                            2 => dynasm!(asm; mov Rw(dest_reg), WORD [rbp - reg_val_rbp_offset]),
+                            4 => dynasm!(asm; mov Rd(dest_reg), DWORD [rbp - reg_val_rbp_offset]),
+                            8 => dynasm!(asm; mov Rq(dest_reg), QWORD [rbp - reg_val_rbp_offset]),
                             _ => {
                                 todo!("unexpect Register to Register value size {}", src_val_size)
                             }
@@ -228,34 +249,48 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
                     Indirect(_dst_reg_num, dst_off, dst_val_size) => {
                         assert!(
                             dst_val_size == src_val_size,
-                            "Indirect to Register - src and dst val size must match. got src: {} and dst: {}",
+                            "Indirect2Reg - src and dst val size must match. got src: {} and dst: {}",
                             src_val_size, dst_val_size
                         );
                         assert!(src_add_locs.len() == 0, "deal with additional info");
                         if CP_TRANSITION_DEBUG_MODE {
-                            println!(
-                                "@@ Reg2Ind src: {:?}, dst: {:?}",
-                                src_location, dst_location
-                            );
+                            println!("Reg2Indirect src: {:?}, dst: {:?}", src_location, dst_location);
                         }
-                        let src_offset = reg_num_to__ykrt_control_point_stack_offset(*src_reg_num)
-                            - src_rsp_offset;
                         match *src_val_size {
                             1 => dynasm!(asm
-                                ; mov al, BYTE [rsp + src_offset]
+                                ; mov al, BYTE [rbp - reg_val_rbp_offset]
                                 ; mov BYTE [rbp + *dst_off], al
                             ),
                             2 => dynasm!(asm
-                                ; mov ax, WORD [rsp + src_offset]
+                                ; mov ax, WORD [rbp - reg_val_rbp_offset]
                                 ; mov WORD [rbp + *dst_off], ax
                             ),
                             4 => dynasm!(asm
-                                ; mov eax, DWORD [rsp + src_offset]
+                                ; mov eax, DWORD [rbp - reg_val_rbp_offset]
                                 ; mov DWORD [rbp + *dst_off], eax
                             ),
                             8 => dynasm!(asm
-                                ; mov rax, QWORD [rsp + src_offset]
+                                ; mov rax, QWORD [rbp - reg_val_rbp_offset]
                                 ; mov QWORD [rbp + *dst_off], rax
+                            ),
+                            _ => panic!(
+                                "Unexpected Indirect to Register value size: {}",
+                                src_val_size
+                            ),
+                        }
+                    }
+                    Direct(_dst_reg_num, dst_off, _dst_val_size) => {
+                        if CP_TRANSITION_DEBUG_MODE {
+                            println!("Reg2Direct src: {:?}, dst: {:?}",src_location, dst_location);
+                        }
+                        match *src_val_size {
+                            1 => todo!(),
+                            2 => todo!(),
+                            4 => todo!(),
+                            8 => dynasm!(asm
+                                ; mov rax, QWORD [rbp - reg_val_rbp_offset]   // Load the pointer (e.g. 0x00007ffff6e4b020)
+                                ; mov rax, QWORD [rax]              // Dereference the pointer to load the value (0x5)
+                                ; mov [rbp + *dst_off], rax         // Store the actual value (0x5) to the destination
                             ),
                             _ => panic!(
                                 "Unexpected Indirect to Register value size: {}",
@@ -269,30 +304,6 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
                     LargeConstant(_val) => {
                         todo!("implement Indirect to LargeConstant")
                     }
-                    Direct(_dst_reg_num, dst_off, _dst_val_size) => {
-                        // We can't write to a direct location cause its
-                        // a constant reference to a value on the stack
-                        // so we can't copy it to another location
-                        if CP_TRANSITION_DEBUG_MODE {
-                            println!("Reg2Dir src: {:?}, dst: {:?}", src_location, dst_location);
-                        }
-                        let src_offset = reg_num_to__ykrt_control_point_stack_offset(*src_reg_num)
-                            - src_rsp_offset;
-                        match *src_val_size {
-                            1 => todo!(),
-                            2 => todo!(),
-                            4 => todo!(),
-                            8 => dynasm!(asm
-                                ; mov rax, QWORD [rsp+src_offset]   // Load the pointer (e.g. 0x00007ffff6e4b020)
-                                ; mov rax, QWORD [rax]              // Dereference the pointer to load the value (0x5)
-                                ; mov [rbp + *dst_off], rax         // Store the actual value (0x5) to the destination
-                            ),
-                            _ => panic!(
-                                "Unexpected Indirect to Register value size: {}",
-                                src_val_size
-                            ),
-                        }
-                    }
                     _ => panic!("Unsupported dst location: {:?}", dst_location),
                 }
             }
@@ -301,7 +312,7 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
                     Indirect(_dst_reg_num, dst_off, dst_val_size) => {
                         if CP_TRANSITION_DEBUG_MODE {
                             println!(
-                                "@@ Ind2Ind src: {:?}, dst: {:?}",
+                                "@@ Indirect2Indirect src: {:?}, dst: {:?}",
                                 src_location, dst_location
                             );
                         }
@@ -356,55 +367,49 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
                         if CP_TRANSITION_DEBUG_MODE {
                             println!(
-                                "@@ Dir2Reg src: {:?}, dst: {:?}",
+                                "@@ Direct2Reg src: {:?}, dst: {:?}",
                                 src_location, dst_location
                             );
                         }
                         let src_offset = i32::try_from(*src_off).unwrap();
                         let dst_reg = u8::try_from(*dst_reg_num).unwrap();
                         match *dst_val_size {
-                            // 1 => dynasm!(asm; mov Rb(dst_reg), BYTE rbp - src_offset),
-                            // 2 => dynasm!(asm; mov Rw(dst_reg), WORD rbp - src_offset),
-                            // 4 => dynasm!(asm; mov Rd(dst_reg), DWORD rbp - src_offset),
-                            8 => dynasm!(asm; lea Rq(dst_reg), [rbp + src_offset]),
-                            _ => panic!("Unsupported source value size: {}", src_val_size),
-                        }
-                    }
-                    Direct(_dst_reg_num, dst_off, _dst_val_size) => {
-                        // if CP_TRANSITION_DEBUG_MODE {
-                        //     println!(
-                        //         "[SKIPPED] Dir2Dir src: {:?}, dst: {:?}",
-                        //         src_location, dst_location
-                        //     );
-                        // }
-                        // Direct locations are read-only, so it doesn't make sense to write to
-                        // them. This is likely a case where the direct value has been moved
-                        // somewhere else (register/normal stack) so dst and src no longer
-                        // match. But since the value can't change we can safely ignore this.
-                        if CP_TRANSITION_DEBUG_MODE {
-                            println!("Dir2Dir src: {:?}, dst: {:?}", src_location, dst_location);
-                        }
-                        let SAFE_ZERO: i32 = 0;
-                        match *src_val_size {
                             1 => todo!(),
                             2 => todo!(),
                             4 => todo!(),
                             8 => dynasm!(asm
-                                ; mov rax, QWORD [rbp+*src_off]   // Load the pointer (e.g. 0x00007ffff6e4b020)
-                                // ; mov rax, QWORD [rax]            // Dereference the pointer to load the value (0x5)
-                                ; mov [rbp + *dst_off], rax       // Store the actual value (0x5) to the destination
+                                ; lea Rq(dst_reg), [rbp + src_offset]
+                                ; mov rax, QWORD [rax]
+                                ; mov Rq(dst_reg), rax
                             ),
+                            _ => panic!("Unsupported source value size: {}", src_val_size),
+                        }
+                    }
+                    Direct(_dst_reg_num, dst_off, _dst_val_size) => {
+                        if CP_TRANSITION_DEBUG_MODE {
+                            println!("Dir2Direct src: {:?}, dst: {:?}", src_location, dst_location);
+                        }
+                        match *src_val_size {
+                            1 => todo!(),
+                            2 => todo!(),
+                            4 => todo!(),
                             // 8 => dynasm!(asm
-                            //     ; mov rax, QWORD [rbp + *src_off]   // Load the pointer from the source indirect location
-                            //     ; test rax, rax                    // Test if the pointer is 0
-                            //     ; jz >store_zero                   // If zero, jump to label 'store_zero'
-                            //     ; mov rax, QWORD [rax]             // Otherwise, dereference the pointer to load the value (e.g. 0x5)
-                            //     ; jmp >store_value                 // Jump unconditionally to the store label
-                            //     ; store_zero:                     // Label: handle the null pointer case
-                            //     ; mov rax, 0                       // Set RAX to 0 (or handle appropriately)
-                            //     ; store_value:                    // Label: now store the value in RAX
-                            //     ; mov [rbp + *dst_off], rax        // Store the final value (0x5 or 0) to the destination
+                            //     ; mov rax, QWORD [rbp+*src_off]   // Load the pointer (e.g. 0x00007ffff6e4b020)
+                            //     ; mov rax, QWORD [rax]            // Dereference the pointer to load the value (0x5)
+                            //     ; mov [rbp + *dst_off], rax       // Store the actual value (0x5) to the destination
                             // ),
+                            // handle null pointer case
+                            8 => dynasm!(asm
+                                ; mov rax, QWORD [rbp + *src_off]   // Load the pointer from the source indirect location
+                                ; test rax, rax                    // Test if the pointer is 0
+                                ; jz >store_zero                   // If zero, jump to label 'store_zero'
+                                ; mov rax, QWORD [rax]             // Otherwise, dereference the pointer to load the value (e.g. 0x5)
+                                ; jmp >store_value                 // Jump unconditionally to the store label
+                                ; store_zero:                     // Label: handle the null pointer case
+                                ; mov rax, 0                       // Set RAX to 0 (or handle appropriately)
+                                ; store_value:                    // Label: now store the value in RAX
+                                ; mov [rbp + *dst_off], rax        // Store the final value (0x5 or 0) to the destination
+                            ),
                             _ => panic!(
                                 "Unexpected Indirect to Register value size: {}",
                                 src_val_size
