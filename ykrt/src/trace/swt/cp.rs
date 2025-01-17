@@ -150,30 +150,6 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
     let mut dst_rbp_offset = -1;
     let mut src_rbp_offset = -1;
     if STACK_SANDWITCH {
-        // TODO: Something is wrong here with the src offset, I get space collision:
-        // > 0x7ffff7fbd001  int3
-        // 0x7ffff7fbd002  movabs rsp,0x7fffffffdd50
-        // 0x7ffff7fbd00c  sub    rsp,0x40
-        // 0x7ffff7fbd013  push   rbp
-        // 0x7ffff7fbd014  mov    rbp,rsp
-        // 0x7ffff7fbd017  sub    rsp,0x30
-        // 0x7ffff7fbd01e  int3
-        // 0x7ffff7fbd01f  mov    rax,QWORD PTR [rbp+0x18]
-        // 0x7ffff7fbd026  mov    QWORD PTR [rbp-0x28],rax
-        // 0x7ffff7fbd02d  int3
-        // 0x7ffff7fbd02e  mov    rax,QWORD PTR [rbp+0x20] <------- NOTICE ME
-        // 0x7ffff7fbd035  mov    QWORD PTR [rbp-0x20],rax
-        // 0x7ffff7fbd03c  int3
-        // 0x7ffff7fbd03d  mov    rax,QWORD PTR [rbp+0xa0]
-        // 0x7ffff7fbd044  mov    rax,QWORD PTR [rax]
-        // 0x7ffff7fbd047  mov    QWORD PTR [rbp-0x14],rax
-        // 0x7ffff7fbd04e  sub    rsp,0x10
-        // 0x7ffff7fbd052  mov    QWORD PTR [rsp],rax
-        // 0x7ffff7fbd056  movabs rax,0x2021e7
-        // 0x7ffff7fbd060  mov    QWORD PTR [rsp+0x8],rax
-        // 0x7ffff7fbd065  pop    rax
-        // 0x7ffff7fbd066  ret
-
         // Transition from Unopt -> Opt
         if src_smid == ControlPointStackMapId::Opt && dst_smid == ControlPointStackMapId::UnOpt {
             dst_rbp = frameaddr as i64 - unopt_frame_size as i64 - REG64_BYTESIZE as i64;
@@ -201,7 +177,9 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
                 ; mov rbp, rsp
                 ; sub rsp, (opt_frame_size).try_into().unwrap() // Allocation optimised frame
             );
-        } else if src_smid == ControlPointStackMapId::UnOpt && dst_smid == ControlPointStackMapId::Opt {
+        } else if src_smid == ControlPointStackMapId::UnOpt
+            && dst_smid == ControlPointStackMapId::Opt
+        {
             dst_rbp = frameaddr as i64 + opt_frame_size as i64;
             dst_rbp_offset = opt_frame_size as i32;
 
@@ -215,7 +193,10 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
     }
     if CP_TRANSITION_DEBUG_MODE {
         println!("@@ src_rbp: 0x{:x}, dst_rbp: 0x{:x}", src_rbp, dst_rbp);
-        println!("@@ src_rbp_offset: 0x{:x}, dst_rbp_offset: 0x{:x}", src_rbp_offset, dst_rbp_offset);
+        println!(
+            "@@ src_rbp_offset: 0x{:x}, dst_rbp_offset: 0x{:x}",
+            src_rbp_offset, dst_rbp_offset
+        );
     }
     if !STACK_SANDWITCH {
         dynasm!(asm
@@ -347,20 +328,23 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
                         }
                     }
                     Direct(_dst_reg_num, dst_off, _dst_val_size) => {
+                        let src_offset =
+                            i32::try_from(src_rbp_offset - reg_val_rbp_offset).unwrap();
                         if CP_TRANSITION_DEBUG_MODE {
                             println!(
-                                "Reg2Direct src: {:?}, dst: {:?}",
-                                src_location, dst_location
+                                "Reg2Direct src: {:?}, dst: {:?}, src_rbp_offset: 0x{:x}",
+                                src_location,
+                                dst_location,
+                                src_rbp_offset
                             );
                         }
-                        let src_offset = i32::try_from(src_rbp_offset - reg_val_rbp_offset).unwrap();
                         match *src_val_size {
                             1 => todo!(),
                             2 => todo!(),
                             4 => todo!(),
                             8 => dynasm!(asm
-                                ; int3
-                                ; mov rax, QWORD [rbp + src_rbp_offset - src_offset]   // Load the pointer (e.g. 0x00007ffff6e4b020)
+                                // ; int3
+                                ; mov rax, QWORD [rbp + src_offset]   // Load the pointer (e.g. 0x00007ffff6e4b020)
                                 ; mov rax, QWORD [rax]              // Dereference the pointer to load the value (0x5)
                                 ; mov [rbp + *dst_off], rax         // Store the actual value (0x5) to the destination
                             ),
@@ -471,7 +455,7 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
                             2 => todo!(),
                             4 => todo!(),
                             8 => dynasm!(asm
-                                ; int3
+                                // ; int3
                                 ; mov rax, QWORD [rbp + src_offset]   // rbp + src_rbp_offset => the original rbp
                                 // ; mov rax, QWORD [rax]            // Dereference the pointer to load the value (0x5)
                                 ; mov [rbp + *dst_off], rax       // Store the actual value (0x5) to the destination
