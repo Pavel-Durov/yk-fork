@@ -9,7 +9,7 @@ use yksmp::Location::{Constant, Direct, Indirect, LargeConstant, Register};
 pub(crate) static REG64_BYTESIZE: u64 = 8;
 
 // Feature flags
-pub static CP_TRANSITION_DEBUG_MODE: bool = true;
+pub static CP_TRANSITION_DEBUG_MODE: bool = false;
 
 #[repr(usize)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

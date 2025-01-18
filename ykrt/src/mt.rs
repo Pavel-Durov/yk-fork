@@ -22,8 +22,7 @@ use parking_lot_core::SpinWait;
 
 #[cfg(tracer_swt)]
 use crate::trace::swt::cp::{
-    control_point_transition, ControlPointStackMapId, ControlPointTransition,
-    CP_TRANSITION_DEBUG_MODE,
+    control_point_transition, ControlPointStackMapId, ControlPointTransition
 };
 
 use crate::{
@@ -441,9 +440,6 @@ impl MT {
                 self.stats.timing_state(TimingState::JitExecuting);
                 #[cfg(tracer_swt)]
                 unsafe {
-                    if CP_TRANSITION_DEBUG_MODE {
-                        println!("jit.Execute - control_point_transition from Opt to UnOpt");
-                    }
                     // Transition to unopt before trace execution since
                     // the trace was collected un unopt version.
                     control_point_transition(ControlPointTransition {
@@ -502,9 +498,6 @@ impl MT {
                 }
                 #[cfg(tracer_swt)]
                 unsafe {
-                    if CP_TRANSITION_DEBUG_MODE {
-                        println!("jit.StartTracing - control_point_transition from Opt to UnOpt");
-                    }
                     // Transition to unopt before start tracing cause
                     // we need the intepreter version with tracing calls..
                     control_point_transition(ControlPointTransition {
@@ -552,9 +545,6 @@ impl MT {
                 }
                 #[cfg(tracer_swt)]
                 unsafe {
-                    if CP_TRANSITION_DEBUG_MODE {
-                        println!("StopTracing - control_point_transition from UnOpt to Opt");
-                    }
                     // Transition into opt interpreter version
                     // when we stop tracing.
                     control_point_transition(ControlPointTransition {
@@ -941,14 +931,13 @@ impl MT {
 #[cfg(target_arch = "x86_64")]
 #[naked]
 #[no_mangle]
-pub(crate) unsafe extern "C" fn __yk_exec_trace(
+unsafe extern "C" fn __yk_exec_trace(
     frameaddr: *const c_void,
     rsp: *const c_void,
     trace: *const c_void,
 ) -> ! {
     std::arch::naked_asm!(
         // Reset RBP
-        // "int3",
         "mov rbp, rdi",
         // Reset RSP to the end of the control point frame (this includes the registers we pushed
         // just before the control point)

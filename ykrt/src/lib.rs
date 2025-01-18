@@ -13,7 +13,7 @@ pub(crate) mod aotsmp;
 pub mod compile;
 mod location;
 mod log;
-pub mod mt;
+pub(crate) mod mt;
 pub mod promote;
 pub(crate) mod stack;
 pub(crate) mod thread_intercept;
