@@ -20,3 +20,4 @@ break *0x0000000000202b9d
 break ykrt/src/mt.rs:428
 
 # break ykcapi::__ykrt_control_point_real
+# break ykrt::mt::MT::control_point
