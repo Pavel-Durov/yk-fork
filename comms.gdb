@@ -21,3 +21,13 @@ break ykrt/src/mt.rs:428
 
 # break ykcapi::__ykrt_control_point_real
 # break ykrt::mt::MT::control_point
+
+
+define print_live_vars
+    p &mt
+    p *&mt
+    p &loc
+    p *&loc
+    p &i
+    p *&i
+end
