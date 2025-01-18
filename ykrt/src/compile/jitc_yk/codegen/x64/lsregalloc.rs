@@ -27,13 +27,9 @@
 //! where it has spilled an instruction's value: it guarantees to spill an instruction to at most
 //! one place on the stack.
 
-use super::rev_analyse::RevAnalyse;
+use super::{rev_analyse::RevAnalyse, Register, VarLocation};
 use crate::compile::jitc_yk::{
-    codegen::{
-        abs_stack::AbstractStack,
-        reg_alloc::{self, VarLocation},
-        x64::REG64_BYTESIZE,
-    },
+    codegen::{abs_stack::AbstractStack, x64::REG64_BYTESIZE},
     jit_ir::{Const, ConstIdx, FloatTy, Inst, InstIdx, Module, Operand, PtrAddInst, Ty},
 };
 use dynasmrt::{
@@ -41,7 +37,7 @@ use dynasmrt::{
     x64::{
         Assembler, {Rq, Rx},
     },
-    DynasmApi, Register,
+    DynasmApi, Register as dynasmrtRegister,
 };
 use std::{marker::PhantomData, mem};
 
@@ -107,7 +103,7 @@ static RESERVED_FP_REGS: [Rx; 0] = [];
 /// A linear scan register allocator.
 pub(crate) struct LSRegAlloc<'a> {
     m: &'a Module,
-    rev_an: RevAnalyse<'a>,
+    pub(super) rev_an: RevAnalyse<'a>,
     /// Which general purpose registers are active?
     gp_regset: RegSet<Rq>,
     /// In what state are the general purpose registers?
@@ -209,7 +205,7 @@ impl<'a> LSRegAlloc<'a> {
                 }
                 RegState::FromInst(reg_iidx) => {
                     debug_assert!(self.gp_regset.is_set(reg));
-                    if !self.is_inst_var_still_used_at(iidx, reg_iidx) {
+                    if !self.rev_an.is_inst_var_still_used_at(iidx, reg_iidx) {
                         self.gp_regset.unset(reg);
                         *self.gp_reg_states.get_mut(usize::from(reg.code())).unwrap() =
                             RegState::Empty;
@@ -234,7 +230,7 @@ impl<'a> LSRegAlloc<'a> {
                 }
                 RegState::FromInst(reg_iidx) => {
                     debug_assert!(self.fp_regset.is_set(reg));
-                    if !self.is_inst_var_still_used_at(iidx, reg_iidx) {
+                    if !self.rev_an.is_inst_var_still_used_at(iidx, reg_iidx) {
                         self.fp_regset.unset(reg);
                         *self.fp_reg_states.get_mut(usize::from(reg.code())).unwrap() =
                             RegState::Empty;
@@ -256,37 +252,23 @@ impl<'a> LSRegAlloc<'a> {
         self.stack.size()
     }
 
-    /// Is the instruction at [iidx] a tombstone or otherwise known to be dead (i.e. equivalent to
-    /// a tombstone)?
-    pub(crate) fn is_inst_tombstone(&self, iidx: InstIdx) -> bool {
-        self.rev_an.is_inst_tombstone(iidx)
-    }
-
-    /// Is the value produced by instruction `query_iidx` used after (but not including!)
-    /// instruction `cur_idx`?
-    pub(crate) fn is_inst_var_still_used_after(
-        &self,
-        cur_iidx: InstIdx,
-        query_iidx: InstIdx,
-    ) -> bool {
-        self.rev_an
-            .is_inst_var_still_used_after(cur_iidx, query_iidx)
-    }
-
-    /// Is the value produced by instruction `query_iidx` used at or after instruction `cur_idx`?
-    fn is_inst_var_still_used_at(&self, cur_iidx: InstIdx, query_iidx: InstIdx) -> bool {
-        usize::from(cur_iidx)
-            <= usize::from(self.rev_an.inst_vals_alive_until[usize::from(query_iidx)])
-    }
-
-    #[cfg(test)]
-    pub(crate) fn inst_vals_alive_until(&self) -> &Vec<InstIdx> {
-        &self.rev_an.inst_vals_alive_until
-    }
-
     /// Return the inline [PtrAddInst] for a load/store, if there is one.
     pub(crate) fn ptradd(&self, iidx: InstIdx) -> Option<PtrAddInst> {
         self.rev_an.ptradds[usize::from(iidx)]
+    }
+
+    /// Assign registers for the instruction at position `iidx`.
+    pub(crate) fn assign_regs<const NG: usize, const NF: usize>(
+        &mut self,
+        asm: &mut Assembler,
+        iidx: InstIdx,
+        gp_constraints: [RegConstraint<Rq>; NG],
+        fp_constraints: [RegConstraint<Rx>; NF],
+    ) -> ([Rq; NG], [Rx; NF]) {
+        (
+            self.assign_gp_regs(asm, iidx, gp_constraints),
+            self.assign_fp_regs(asm, iidx, fp_constraints),
+        )
     }
 }
 
@@ -296,26 +278,37 @@ impl LSRegAlloc<'_> {
     /// Note that if this register is already used, a spill will be generated instead.
     pub(crate) fn force_assign_inst_gp_reg(&mut self, asm: &mut Assembler, iidx: InstIdx, reg: Rq) {
         if self.gp_regset.is_set(reg) {
-            debug_assert_eq!(self.spills[usize::from(iidx)], SpillState::Empty);
             // Input values alias to a single register. To avoid the rest of the register allocator
             // having to think about this, we "dealias" the values by spilling.
-            let inst = self.m.inst(iidx);
-            let size = inst.def_byte_size(self.m);
-            self.stack.align(size); // FIXME
-            let frame_off = self.stack.grow(size);
-            let off = i32::try_from(frame_off).unwrap();
-            match size {
-                1 => dynasm!(asm; mov BYTE [rbp - off], Rb(reg.code())),
-                2 => dynasm!(asm; mov WORD [rbp - off], Rw(reg.code())),
-                4 => dynasm!(asm; mov DWORD [rbp - off], Rd(reg.code())),
-                8 => dynasm!(asm; mov QWORD [rbp - off], Rq(reg.code())),
-                _ => unreachable!(),
-            }
-            self.spills[usize::from(iidx)] = SpillState::Stack(off);
+            self.force_assign_and_spill_inst_gp_reg(asm, iidx, reg);
         } else {
             self.gp_regset.set(reg);
             self.gp_reg_states[usize::from(reg.code())] = RegState::FromInst(iidx);
         }
+    }
+
+    /// Forcibly spill the machine register `reg` and assign the spilled value as being produced by
+    /// instruction `iidx`.
+    pub(crate) fn force_assign_and_spill_inst_gp_reg(
+        &mut self,
+        asm: &mut Assembler,
+        iidx: InstIdx,
+        reg: Rq,
+    ) {
+        debug_assert_eq!(self.spills[usize::from(iidx)], SpillState::Empty);
+        let inst = self.m.inst(iidx);
+        let size = inst.def_byte_size(self.m);
+        self.stack.align(size); // FIXME
+        let frame_off = self.stack.grow(size);
+        let off = i32::try_from(frame_off).unwrap();
+        match size {
+            1 => dynasm!(asm; mov BYTE [rbp - off], Rb(reg.code())),
+            2 => dynasm!(asm; mov WORD [rbp - off], Rw(reg.code())),
+            4 => dynasm!(asm; mov DWORD [rbp - off], Rd(reg.code())),
+            8 => dynasm!(asm; mov QWORD [rbp - off], Rq(reg.code())),
+            _ => unreachable!(),
+        }
+        self.spills[usize::from(iidx)] = SpillState::Stack(off);
     }
 
     /// Forcibly assign the floating point register `reg`, which must be in the [RegState::Empty] state,
@@ -363,7 +356,7 @@ impl LSRegAlloc<'_> {
                     }
                 }) {
                     Some(reg_i) => {
-                        if self.is_inst_var_still_used_after(iidx, op_iidx) {
+                        if self.rev_an.is_inst_var_still_used_after(iidx, op_iidx) {
                             let mut avoid = RegSet::with_gp_reserved();
                             self.move_or_spill_gp(asm, iidx, &mut avoid, GP_REGS[reg_i]);
                         }
@@ -378,7 +371,9 @@ impl LSRegAlloc<'_> {
         }
     }
 
-    /// Assign registers for the instruction at position `iidx`.
+    /// Assign general purpose registers for the instruction at position `iidx`.
+    ///
+    /// This is a convenience function for [Self::assign_regs] when there are no FP registers.
     pub(crate) fn assign_gp_regs<const N: usize>(
         &mut self,
         asm: &mut Assembler,
@@ -445,13 +440,15 @@ impl LSRegAlloc<'_> {
         // Deal with `OutputCanBeSameAsInput`.
         for i in 0..constraints.len() {
             if let RegConstraint::OutputCanBeSameAsInput(search_op) = constraints[i].clone() {
-                if let Some(reg_alloc::Register::GP(reg)) = self.rev_an.reg_hints[usize::from(iidx)]
-                {
+                if let Some(Register::GP(reg)) = self.rev_an.reg_hints[usize::from(iidx)] {
                     if avoid.is_set(reg) {
                         continue;
                     }
                     if let Operand::Var(search_op_iidx) = search_op {
-                        if !self.is_inst_var_still_used_after(iidx, search_op_iidx) {
+                        if !self
+                            .rev_an
+                            .is_inst_var_still_used_after(iidx, search_op_iidx)
+                        {
                             for j in 0..constraints.len() {
                                 if let RegConstraint::Input(in_op) = constraints[j].clone() {
                                     if search_op == in_op {
@@ -475,9 +472,7 @@ impl LSRegAlloc<'_> {
                 RegConstraint::Output
                 | RegConstraint::OutputCanBeSameAsInput(_)
                 | RegConstraint::InputOutput(_) => {
-                    if let Some(reg_alloc::Register::GP(reg)) =
-                        self.rev_an.reg_hints[usize::from(iidx)]
-                    {
+                    if let Some(Register::GP(reg)) = self.rev_an.reg_hints[usize::from(iidx)] {
                         if !avoid.is_set(reg) {
                             *cnstr = match cnstr {
                                 RegConstraint::Output => RegConstraint::OutputFromReg(reg),
@@ -549,14 +544,16 @@ impl LSRegAlloc<'_> {
             let reg = match self.gp_regset.find_empty_avoiding(avoid) {
                 Some(reg) => reg,
                 None => {
-                    // We need to find a register to spill. Our heuristic is two-fold:
-                    //   1. Spill the register whose value is used furthest away in the trace. This
-                    //      is a proxy for "the value is less likely to be used soon".
-                    //   2. If (1) leads to a tie, spill the "highest" register (e.g. prefer to
-                    //      spill R15 over RAX) because "lower" registers are more likely to be
-                    //      clobbered by CALLS, and we assume that the more recently we've put a
-                    //      value into a register, the more likely it is to be used again soon.
-                    let mut furthest = None;
+                    // We need to find a register to spill. Our heuristic is (in order):
+                    //   1. If a register's value contains a constant, use that.
+                    //   2. If a register's value is already spilt use that.
+                    //   3. Spill the register whose value is used furthest away in the trace based
+                    //      on the reverse analyser's (def, use) analysis.
+                    //   4. If (1) or (2) leads to a tie, spill the register whose values is next
+                    //      used furthest away from the current instruction.
+                    let mut cnd_const = None;
+                    let mut cnd_spill = None;
+                    let mut cnd_furthest = None;
                     for reg in GP_REGS {
                         if avoid.is_set(reg) {
                             continue;
@@ -566,24 +563,54 @@ impl LSRegAlloc<'_> {
                             RegState::Empty => unreachable!(),
                             RegState::FromConst(_) => todo!(),
                             RegState::FromInst(from_iidx) => {
-                                debug_assert!(self.is_inst_var_still_used_at(iidx, from_iidx));
-                                if furthest.is_none() {
-                                    furthest = Some((reg, from_iidx));
-                                } else if let Some((_, furthest_iidx)) = furthest {
-                                    if self.rev_an.inst_vals_alive_until[usize::from(from_iidx)]
-                                        >= self.rev_an.inst_vals_alive_until
-                                            [usize::from(furthest_iidx)]
+                                match self.spills[usize::from(from_iidx)] {
+                                    SpillState::Empty => match cnd_furthest {
+                                        None => cnd_furthest = Some((reg, from_iidx)),
+                                        Some((_, furthest_iidx)) => {
+                                            if let Some(next_iidx) =
+                                                self.rev_an.next_use(iidx, from_iidx)
+                                            {
+                                                if next_iidx > furthest_iidx {
+                                                    cnd_furthest = Some((reg, from_iidx))
+                                                }
+                                            }
+                                        }
+                                    },
+                                    SpillState::Stack(_) | SpillState::Direct(_) => match cnd_spill
                                     {
-                                        furthest = Some((reg, from_iidx))
+                                        None => cnd_spill = Some((reg, from_iidx)),
+                                        Some((_, spill_iidx)) => {
+                                            if let Some(next_iidx) =
+                                                self.rev_an.next_use(iidx, from_iidx)
+                                            {
+                                                if next_iidx > spill_iidx {
+                                                    cnd_spill = Some((reg, from_iidx))
+                                                }
+                                            }
+                                        }
+                                    },
+                                    SpillState::ConstInt { .. } => {
+                                        // Should we encounter multiple constants in registers
+                                        // (which isn't very likely...), we want to spill the one
+                                        // in the lowest register, since that's more likely to be
+                                        // clobbered by a CALL.
+                                        if cnd_const.is_none() {
+                                            cnd_const = Some(reg);
+                                        }
                                     }
                                 }
                             }
                         }
                     }
 
-                    match furthest {
-                        Some((reg, _)) => reg,
-                        None => panic!("Cannot satisfy register constraints: no registers left"),
+                    if let Some(reg) = cnd_const {
+                        reg
+                    } else if let Some((reg, _)) = cnd_spill {
+                        reg
+                    } else if let Some((reg, _)) = cnd_furthest {
+                        reg
+                    } else {
+                        panic!("Cannot satisfy register constraints: no registers left");
                     }
                 }
             };
@@ -613,7 +640,7 @@ impl LSRegAlloc<'_> {
                                 }
                                 RegState::FromConst(_) => todo!(),
                                 RegState::FromInst(query_iidx) => {
-                                    if self.is_inst_var_still_used_at(iidx, query_iidx) {
+                                    if self.rev_an.is_inst_var_still_used_at(iidx, query_iidx) {
                                         self.swap_gp_reg(asm, old_reg, new_reg);
                                     } else {
                                         self.move_gp_reg(asm, old_reg, new_reg);
@@ -759,11 +786,13 @@ impl LSRegAlloc<'_> {
             RegState::Empty => (),
             RegState::FromConst(_) => (),
             RegState::FromInst(query_iidx) => {
-                if self.is_inst_var_still_used_after(cur_iidx, query_iidx) {
+                if self
+                    .rev_an
+                    .is_inst_var_still_used_after(cur_iidx, query_iidx)
+                {
                     let mut new_reg = None;
                     // Try to use `query_iidx`s hint, if there is one, and it's not in use...
-                    if let Some(reg_alloc::Register::GP(reg)) =
-                        self.rev_an.reg_hints[usize::from(query_iidx)]
+                    if let Some(Register::GP(reg)) = self.rev_an.reg_hints[usize::from(query_iidx)]
                     {
                         if !self.gp_regset.is_set(reg) && !avoid.is_set(reg) {
                             new_reg = Some(reg);
@@ -913,7 +942,7 @@ impl LSRegAlloc<'_> {
                 false
             }
         }) {
-            VarLocation::Register(reg_alloc::Register::GP(GP_REGS[reg_i]))
+            VarLocation::Register(Register::GP(GP_REGS[reg_i]))
         } else if let Some(reg_i) = self.fp_reg_states.iter().position(|x| {
             if let RegState::FromInst(y) = x {
                 *y == iidx
@@ -921,7 +950,7 @@ impl LSRegAlloc<'_> {
                 false
             }
         }) {
-            VarLocation::Register(reg_alloc::Register::FP(FP_REGS[reg_i]))
+            VarLocation::Register(Register::FP(FP_REGS[reg_i]))
         } else {
             let inst = self.m.inst(iidx);
             let size = inst.def_byte_size(self.m);
@@ -958,12 +987,14 @@ impl LSRegAlloc<'_> {
 }
 
 impl LSRegAlloc<'_> {
-    /// Assign registers for the instruction at position `iidx`.
+    /// Assign floating point registers for the instruction at position `iidx`.
+    ///
+    /// This is a convenience function for [Self::assign_regs] when there are no GP registers.
     pub(crate) fn assign_fp_regs<const N: usize>(
         &mut self,
         asm: &mut Assembler,
         iidx: InstIdx,
-        constraints: [RegConstraint<Rx>; N],
+        mut constraints: [RegConstraint<Rx>; N],
     ) -> [Rx; N] {
         // All constraint operands should be float-typed.
         #[cfg(debug_assertions)]
@@ -1031,6 +1062,33 @@ impl LSRegAlloc<'_> {
             }
         }
 
+        // If we have a hint for a constraint, use it.
+        for (i, cnstr) in constraints.iter_mut().enumerate() {
+            match cnstr {
+                RegConstraint::Output
+                | RegConstraint::OutputCanBeSameAsInput(_)
+                | RegConstraint::InputOutput(_) => {
+                    if let Some(Register::FP(reg)) = self.rev_an.reg_hints[usize::from(iidx)] {
+                        if !avoid.is_set(reg) {
+                            *cnstr = match cnstr {
+                                RegConstraint::Output => RegConstraint::OutputFromReg(reg),
+                                RegConstraint::OutputCanBeSameAsInput(_) => {
+                                    RegConstraint::OutputFromReg(reg)
+                                }
+                                RegConstraint::InputOutput(op) => {
+                                    RegConstraint::InputOutputIntoReg(op.clone(), reg)
+                                }
+                                _ => unreachable!(),
+                            };
+                            asgn[i] = Some(reg);
+                            avoid.set(reg);
+                        }
+                    }
+                }
+                _ => (),
+            }
+        }
+
         // If we already have the value in a register, don't assign a new register.
         for (i, cnstr) in constraints.iter().enumerate() {
             match cnstr {
@@ -1081,8 +1139,8 @@ impl LSRegAlloc<'_> {
                 Some(reg) => reg,
                 None => {
                     // We need to find a register to spill. Our heuristic is two-fold:
-                    //   1. Spill the register whose value is used furthest away in the trace. This
-                    //      is a proxy for "the value is less likely to be used soon".
+                    //   1. Spill the register whose value is used furthest away in the trace based
+                    //      on the reverse analyser's (def, use) analysis.
                     //   2. If (1) leads to a tie, spill the "highest" register (e.g. prefer to
                     //      spill XMM15 over XMM0) because "lower" registers are more likely to be
                     //      clobbered by CALLS, and we assume that the more recently we've put a
@@ -1097,15 +1155,16 @@ impl LSRegAlloc<'_> {
                             RegState::Empty => unreachable!(),
                             RegState::FromConst(_) => todo!(),
                             RegState::FromInst(from_iidx) => {
-                                debug_assert!(self.is_inst_var_still_used_at(iidx, from_iidx));
+                                debug_assert!(self
+                                    .rev_an
+                                    .is_inst_var_still_used_at(iidx, from_iidx));
                                 if furthest.is_none() {
                                     furthest = Some((reg, from_iidx));
                                 } else if let Some((_, furthest_iidx)) = furthest {
-                                    if self.rev_an.inst_vals_alive_until[usize::from(from_iidx)]
-                                        >= self.rev_an.inst_vals_alive_until
-                                            [usize::from(furthest_iidx)]
-                                    {
-                                        furthest = Some((reg, from_iidx))
+                                    if let Some(next_iidx) = self.rev_an.next_use(iidx, from_iidx) {
+                                        if next_iidx > furthest_iidx {
+                                            furthest = Some((reg, from_iidx))
+                                        }
                                     }
                                 }
                             }
@@ -1144,7 +1203,7 @@ impl LSRegAlloc<'_> {
                                 }
                                 RegState::FromConst(_) => todo!(),
                                 RegState::FromInst(query_iidx) => {
-                                    if self.is_inst_var_still_used_at(iidx, query_iidx) {
+                                    if self.rev_an.is_inst_var_still_used_at(iidx, query_iidx) {
                                         self.swap_fp_reg(asm, old_reg, new_reg);
                                     } else {
                                         self.move_fp_reg(asm, old_reg, new_reg);
@@ -1293,7 +1352,10 @@ impl LSRegAlloc<'_> {
             RegState::Empty => (),
             RegState::FromConst(_) => (),
             RegState::FromInst(query_iidx) => {
-                if self.is_inst_var_still_used_after(cur_iidx, query_iidx) {
+                if self
+                    .rev_an
+                    .is_inst_var_still_used_after(cur_iidx, query_iidx)
+                {
                     match self.fp_regset.find_empty_avoiding(*avoid) {
                         Some(new_reg) => {
                             dynasm!(asm; movsd Rx(new_reg.code()), Rx(old_reg.code()));
@@ -1417,7 +1479,7 @@ impl LSRegAlloc<'_> {
 /// In the following `R` is a fixed register specified inside the variant, whereas *x* is an
 /// unspecified register determined by the allocator.
 #[derive(Clone, Debug)]
-pub(crate) enum RegConstraint<R: Register> {
+pub(crate) enum RegConstraint<R: dynasmrt::Register> {
     /// Make sure `Operand` is loaded into a register *x* on entry; its value must be unchanged
     /// after the instruction is executed.
     Input(Operand),
@@ -1486,7 +1548,7 @@ enum RegState {
 #[derive(Clone, Copy, Debug)]
 struct RegSet<R>(u16, PhantomData<R>);
 
-impl<R: Register> RegSet<R> {
+impl<R: dynasmrt::Register> RegSet<R> {
     /// Create a [RegSet] with all registers unused.
     fn blank() -> Self {
         Self(0, PhantomData)

@@ -13,8 +13,9 @@ impl Module {
         let mut tombstone = Vob::from_elem(false, usize::from(self.last_inst_idx()) + 1);
         for (iidx, inst) in self.iter_skipping_insts().rev() {
             if used.get(usize::from(iidx)).unwrap()
+                || inst.is_internal_inst()
+                || inst.is_guard()
                 || inst.has_store_effect(self)
-                || inst.is_barrier(self)
             {
                 used.set(usize::from(iidx), true);
                 inst.map_operand_vars(self, &mut |x| {
@@ -37,25 +38,6 @@ mod test {
 
     #[test]
     fn basic() {
-        Module::assert_ir_transform_eq(
-            "
-          entry:
-            %0: i8 = param 0
-            %1: i8 = param 1
-            black_box %1
-        ",
-            |mut m| {
-                m.dead_code_elimination();
-                m
-            },
-            "
-          ...
-          entry:
-            %1: i8 = param ...
-            black_box %1
-        ",
-        );
-
         Module::assert_ir_transform_eq(
             "
           entry:
@@ -116,6 +98,7 @@ mod test {
             "
           ...
           entry:
+            %0: i8 = param ...
             %1: i8 = param ...
             %3: i1 = ult %1, %1
             black_box %3
@@ -160,6 +143,7 @@ mod test {
           ...
           entry:
             %0: i8 = param ...
+            %1: i8 = param ...
             call @f(%0)
         ",
         );
@@ -182,6 +166,7 @@ mod test {
           entry:
             %0: ptr = param ...
             %1: i8 = param ...
+            %2: i8 = param ...
             icall %0(%1)
         ",
         );

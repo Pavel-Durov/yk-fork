@@ -1,12 +1,5 @@
-use crate::{
-    aotsmp::AOT_STACKMAPS,
-    compile::{
-        jitc_yk::codegen::reg_alloc::{Register, VarLocation},
-        GuardIdx,
-    },
-    log::Verbosity,
-    mt::MTThread,
-};
+use super::{Register, VarLocation};
+use crate::{aotsmp::AOT_STACKMAPS, compile::GuardIdx, log::Verbosity, mt::MTThread};
 use dynasmrt::Register as _;
 use libc::c_void;
 #[cfg(debug_assertions)]
@@ -232,8 +225,12 @@ pub(crate) extern "C" fn __yk_deopt(
                 VarLocation::ConstInt { bits: _, v } => v,
                 VarLocation::ConstFloat(f) => f.to_bits(),
                 VarLocation::ConstPtr(v) => u64::try_from(v).unwrap(),
-                VarLocation::Direct { .. } => {
+                VarLocation::Direct { frame_off, size } => {
                     // See comment below: this case never needs to do anything.
+                    debug_assert_eq!(
+                        *aotvar.get(0).unwrap(),
+                        SMLocation::Direct(6, frame_off, u16::try_from(size).unwrap())
+                    );
                     varidx += 1;
                     continue;
                 }
@@ -267,8 +264,7 @@ pub(crate) extern "C" fn __yk_deopt(
                                 unsafe { rbp.offset(isize::from(*extra)) }
                             };
                             match size {
-                                // FIXME: Check that 16-byte writes are for float registers only.
-                                16 | 8 => unsafe { ptr::write::<u64>(temp as *mut u64, jitval) },
+                                8 => unsafe { ptr::write::<u64>(temp as *mut u64, jitval) },
                                 4 => unsafe { ptr::write::<u32>(temp as *mut u32, jitval as u32) },
                                 2 => unsafe { ptr::write::<u16>(temp as *mut u16, jitval as u16) },
                                 _ => todo!("{}", size),
