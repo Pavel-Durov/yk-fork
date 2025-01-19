@@ -91,12 +91,13 @@ pub extern "C" fn __ykrt_control_point(
             "push r13",
             "push r14",
             "push r15",
-            "int3",
+            // "int3",
             // Pass the interpreter frame's base pointer via the 4th argument register.
             "mov rcx, rbp",
             "call __ykrt_control_point_real",
             // "int3",
             // Restore the previously pushed registers.
+            // "int3",
             "pop r15",
             "pop r14",
             "pop r13",

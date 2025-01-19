@@ -22,7 +22,7 @@ use parking_lot_core::SpinWait;
 
 #[cfg(tracer_swt)]
 use crate::trace::swt::cp::{
-    control_point_transition, ControlPointStackMapId, ControlPointTransition
+    control_point_transition, ControlPointStackMapId, ControlPointTransition,
 };
 
 use crate::{
@@ -530,6 +530,20 @@ impl MT {
                             _ => unreachable!(),
                         },
                     );
+                #[cfg(tracer_swt)]
+                unsafe {
+                    // Transition into opt interpreter
+                    // when we stop tracing.
+                    control_point_transition(ControlPointTransition {
+                        src_smid: ControlPointStackMapId::UnOpt,
+                        dst_smid: ControlPointStackMapId::Opt,
+                        frameaddr,
+                        rsp: 0 as *const c_void,
+                        trace_addr: 0 as *const c_void,
+                        exec_trace: false,
+                        exec_trace_fn: __yk_exec_trace,
+                    });
+                }
                 match thread_tracer.stop() {
                     Ok(utrace) => {
                         self.stats.timing_state(TimingState::None);
@@ -542,20 +556,6 @@ impl MT {
                         self.log
                             .log(Verbosity::Warning, &format!("stop-tracing-aborted: {e}"));
                     }
-                }
-                #[cfg(tracer_swt)]
-                unsafe {
-                    // Transition into opt interpreter version
-                    // when we stop tracing.
-                    control_point_transition(ControlPointTransition {
-                        src_smid: ControlPointStackMapId::UnOpt,
-                        dst_smid: ControlPointStackMapId::Opt,
-                        frameaddr,
-                        rsp: 0 as *const c_void,
-                        trace_addr: 0 as *const c_void,
-                        exec_trace: false,
-                        exec_trace_fn: __yk_exec_trace,
-                    });
                 }
             }
             TransitionControlPoint::StopSideTracing {
