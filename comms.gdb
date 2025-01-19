@@ -10,6 +10,7 @@ break main
 
 break simple2.c:23.c:17
 break simple.c:44.c:17
+break simple.c:52
 # break buffered_vfprintf
 
 # break before cp
@@ -30,4 +31,23 @@ define print_live_vars
     p *&loc
     p &i
     p *&i
+    p &res
+    p *&res
+end
+
+
+define print_yk_registers
+    p/x $rax
+    p/x $rcx
+    p/x $rbx
+    p/x $rdi
+    p/x $rsi
+    p/x $r8
+    p/x $r9
+    p/x $r10
+    p/x $r11
+    p/x $r12
+    p/x $r13
+    p/x $r14
+    p/x $r15
 end
