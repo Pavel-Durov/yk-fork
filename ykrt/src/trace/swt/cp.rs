@@ -142,6 +142,7 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
     let mut rbp_offset_to_reg_store = src_frame_size as i64 + (14 * REG64_BYTESIZE) as i64;
     let src_rbp = frameaddr as i64;
 
+
     // Stack Diagram:
     // +---------------------------------+ <- Higher Memory Addresses
     // |       ... Previous ...          |
@@ -164,8 +165,10 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
             ; mov rbp, QWORD frameaddr as i64
             ; mov rsp, QWORD frameaddr as i64
             ; sub rsp, (src_frame_size).try_into().unwrap() // Allocation unoptimised frame
-            ; push rbp // Save rbp
+
+            ; push rbp // Save rbp - maybe we don't need it
             ; sub rsp, REG64_BYTESIZE as i32 // Sub rsp to make it aligned
+
             ; mov rbp, rsp
             ; sub rsp, (dst_frame_size).try_into().unwrap() // Allocation optimised frame
         );
@@ -175,8 +178,12 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
             src_frame_size as i32 + REG64_BYTESIZE as i32 + REG64_BYTESIZE as i32;
         dynasm!(asm
             ; .arch x64
-            ; add rsp, (src_frame_size).try_into().unwrap() // Deallocate src (unopt) frame
-            ; pop rbp
+            ; add rbp, (src_frame_size).try_into().unwrap() // rbp is set to unopt rbp
+            ; add rbp, REG64_BYTESIZE as i32
+            ; add rbp, REG64_BYTESIZE as i32
+            // ; pop rbp
+            ; mov rsp, rbp
+            ; sub rsp, (dst_frame_size).try_into().unwrap() // Allocation optimised frame
         );
     }
 
@@ -244,14 +251,12 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
             let src_location = &src_var.get(0).unwrap();
             println!("@@ src_var: {:?}", src_location);
         }
+        println!("--------------------------------");
         for (index, dst_var) in dst_rec.live_vars.iter().enumerate() {
             let dst_location = &dst_var.get(0).unwrap();
             println!("@@ dst_var: {:?}", dst_location);
         }
-        println!("--------------------------------");
     }
-
-    let mut dest_reg_nums = HashMap::new();
 
     // Step 4. Set destination live vars
     for (index, src_var) in src_rec.live_vars.iter().enumerate() {
@@ -287,7 +292,6 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
                             src_val_size,
                             dst_val_size
                         );
-                        dest_reg_nums.insert(*dst_reg_num, dst_val_size);
                         // skip copying to the same register with the same value size
                         if src_reg_num == dst_reg_num && src_val_size == dst_val_size {
                             continue;
@@ -428,7 +432,6 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
                                 src_location, dst_location
                             );
                         }
-                        dest_reg_nums.insert(*dst_reg_num, dst_val_size);
                         assert!(*src_reg_num == 6, "Indirect register is expected to be rbp");
                         let src_offset = i32::try_from(*src_off).unwrap();
                         let dst_reg = u8::try_from(*dst_reg_num).unwrap();
@@ -460,7 +463,6 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
                                 src_location, dst_location
                             );
                         }
-                        dest_reg_nums.insert(*dst_reg_num, dst_val_size);
                         let dst_reg = u8::try_from(*dst_reg_num).unwrap();
                         match *dst_val_size {
                             1 => todo!(),
