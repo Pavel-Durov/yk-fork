@@ -107,9 +107,6 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
         dst_frame_size -= REG64_BYTESIZE; // Note: this used to be minus - needed for RSP alignment
     }
 
-    // TODO: check that its correct for Unopt -> Opt
-    let src_reg_rbp_offset = src_frame_size as i32 + REG64_BYTESIZE as i32;
-
     if CP_TRANSITION_DEBUG_MODE {
         println!("@@ TRANSITION from: {:?} to: {:?}", src_smid, dst_smid);
         dynasm!(asm; .arch x64; int3);
@@ -157,9 +154,9 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
     // +---------------------------------+
     // |       Optimized Frame           |
     // +---------------------------------+
-    let mut src_rbp_offset = 0;
+    let mut transition_src_rbp_offset = 0;
     if src_smid == ControlPointStackMapId::Opt && dst_smid == ControlPointStackMapId::UnOpt {
-        src_rbp_offset = 8 as i32 + src_frame_size as i32;
+        transition_src_rbp_offset = 8 as i32 + src_frame_size as i32;
         dynasm!(asm
             ; .arch x64
             ; mov rbp, QWORD frameaddr as i64
@@ -170,7 +167,7 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
             ; sub rsp, (dst_frame_size).try_into().unwrap() // Allocation optimised frame
         );
     } else if src_smid == ControlPointStackMapId::UnOpt && dst_smid == ControlPointStackMapId::Opt {
-        src_rbp_offset = src_frame_size as i32 + 8 as i32;
+        transition_src_rbp_offset = src_frame_size as i32 + 8 as i32;
         dynasm!(asm
             ; .arch x64
             ; add rsp, (src_frame_size).try_into().unwrap() // Deallocate src (unopt) frame
@@ -229,15 +226,17 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
 
     if CP_TRANSITION_DEBUG_MODE {
         println!(
-            "@@ src_rbp: 0x{:x}, src_rsp: 0x{:x}, src_reg_rbp_offset: 0x{:x}, src_frame_size: 0x{:x}, dst_frame_size: 0x{:x}, rbp_offset_to_reg_store: 0x{:x}",
+            "@@ src_rbp: 0x{:x}, src_rsp: 0x{:x}, src_frame_size: 0x{:x}, dst_frame_size: 0x{:x}, rbp_offset_to_reg_store: 0x{:x}",
             frameaddr as i64,
             frameaddr as i64 - rbp_offset_to_reg_store,
-            src_reg_rbp_offset,
             src_frame_size,
             dst_frame_size,
             rbp_offset_to_reg_store
         );
-        println!("--------------------------------");
+        println!(
+            "@@ transition_src_rbp_offset: 0x{:x}",
+            transition_src_rbp_offset
+        );
         println!("@@ src live vars - smid: {:?}", src_smid);
         for (index, src_var) in src_rec.live_vars.iter().enumerate() {
             let src_location = &src_var.get(0).unwrap();
@@ -288,15 +287,15 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
                             dst_val_size
                         );
                         dest_reg_nums.insert(*dst_reg_num, dst_val_size);
+                        // skip copying to the same register with the same value size
+                        if src_reg_num == dst_reg_num && src_val_size == dst_val_size {
+                            continue;
+                        }
                         if CP_TRANSITION_DEBUG_MODE {
                             println!(
                                 "@@ Reg2Reg src: {:?}, dst: {:?}",
                                 src_location, dst_location
                             );
-                        }
-                        // skip copying to the same register with the same value size
-                        if src_reg_num == dst_reg_num && src_val_size == dst_val_size {
-                            continue;
                         }
                         let dest_reg = u8::try_from(*dst_reg_num).unwrap();
                         match *src_val_size {
@@ -443,8 +442,6 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
                 }
             }
             Direct(src_reg_num, src_off, src_val_size) => {
-                // Offset in temp buffer
-                // let temp_off = (index * REG64_BYTESIZE as usize) as i32;
                 match dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
                         if CP_TRANSITION_DEBUG_MODE {
@@ -460,34 +457,34 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
                             2 => todo!(),
                             4 => todo!(),
                             8 => dynasm!(asm
-                                ; lea Rq(dst_reg), [rsp + src_rbp_offset]
+                                ; lea Rq(dst_reg), [rbp + transition_src_rbp_offset + *src_off]
                             ),
                             _ => panic!("Unsupported source value size: {}", src_val_size),
                         }
                     }
-                    // Direct(_dst_reg_num, dst_off, _dst_val_size) => {
-                    //     if CP_TRANSITION_DEBUG_MODE {
-                    //         println!(
-                    //             "@@ Direct2Direct src: {:?}, dst: {:?}",
-                    //             src_location, dst_location
-                    //         );
-                    //     }
-                    //     // let temp_off = (index * REG64_BYTESIZE as usize) as i32;
+                    Direct(_dst_reg_num, dst_off, _dst_val_size) => {
+                        //     if CP_TRANSITION_DEBUG_MODE {
+                        //         println!(
+                        //             "@@ Direct2Direct src: {:?}, dst: {:?}",
+                        //             src_location, dst_location
+                        //         );
+                        //     }
+                        //     // let temp_off = (index * REG64_BYTESIZE as usize) as i32;
 
-                    //     match *src_val_size {
-                    //         1 => todo!(),
-                    //         2 => todo!(),
-                    //         4 => todo!(),
-                    //         8 => dynasm!(asm
-                    //             ; mov rax, QWORD [rsp + src_rbp_offset]  // Load value from temporary buffer
-                    //             ; mov [rbp + i32::try_from(*dst_off).unwrap()], rax // Store into destination slot
-                    //         ),
-                    //         _ => panic!(
-                    //             "Unexpected Indirect to Register value size: {}",
-                    //             src_val_size
-                    //         ),
-                    //     }
-                    // }
+                        //     match *src_val_size {
+                        //         1 => todo!(),
+                        //         2 => todo!(),
+                        //         4 => todo!(),
+                        //         8 => dynasm!(asm
+                        //             ; mov rax, QWORD [rsp + src_rbp_offset]  // Load value from temporary buffer
+                        //             ; mov [rbp + i32::try_from(*dst_off).unwrap()], rax // Store into destination slot
+                        //         ),
+                        //         _ => panic!(
+                        //             "Unexpected Indirect to Register value size: {}",
+                        //             src_val_size
+                        //         ),
+                        //     }
+                    }
                     _ => panic!("Unsupported dst location: {:?}", dst_location),
                 }
             }
@@ -541,8 +538,6 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
         }
         dynasm!(asm
             ; .arch x64
-            // NOTE: Do we need to restore rsp? Doing so will override the buffer source values are saved at
-            // ; add rsp, src_val_buffer_size
             ; sub rsp, 0x10 // reserves 16 bytes of space on the stack.
             ; mov [rsp], rax // save rsp
             ; mov rax, QWORD dst_target_addr // loads the target address into rax
