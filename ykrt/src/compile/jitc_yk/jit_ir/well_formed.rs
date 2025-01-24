@@ -154,6 +154,23 @@ impl Module {
                         );
                     }
                 }
+                Inst::Select(x) => {
+                    let Ty::Integer(bitsize) = self.type_(x.cond(self).tyidx(self)) else {
+                        panic!();
+                    };
+                    if *bitsize != 1 {
+                        panic!(
+                            "Instruction at position {iidx} trying to select on a non-i1\n  {}",
+                            self.inst(iidx).display(self, iidx)
+                        );
+                    }
+                    if x.trueval(self).tyidx(self) != x.falseval(self).tyidx(self) {
+                        panic!(
+                            "Instruction at position {iidx} has incompatible true/false types\n  {}",
+                            self.inst(iidx).display(self, iidx)
+                        );
+                    }
+                }
                 Inst::SExt(x) => {
                     let Ty::Integer(val_bitsize) = self.type_(x.val(self).tyidx(self)) else {
                         panic!();
@@ -176,7 +193,7 @@ impl Module {
                             self.inst(iidx).display(self, iidx)
                         );
                     }
-                    let val_bitsize = val_ty.bit_size().unwrap();
+                    let val_bitsize = val_ty.bitw().unwrap();
 
                     let dest_ty = self.type_(x.dest_tyidx());
                     if !matches!(dest_ty, Ty::Integer(_)) && !matches!(dest_ty, Ty::Ptr) {
@@ -185,7 +202,7 @@ impl Module {
                             self.inst(iidx).display(self, iidx)
                         );
                     }
-                    let dest_bitsize = dest_ty.bit_size().unwrap();
+                    let dest_bitsize = dest_ty.bitw().unwrap();
 
                     // FIXME: strictly this should be >= to be in line with LLVM semantics, but the
                     // way we lower LLVM `ptrtoint` to `zext` means that pointer to integer
@@ -211,8 +228,8 @@ impl Module {
                     }
                     // LLVM semantics: "The bit sizes of [source] value and the destination type
                     // must be identical"
-                    let val_bitsize = val_ty.bit_size().unwrap();
-                    let dest_bitsize = dest_ty.bit_size().unwrap();
+                    let val_bitsize = val_ty.bitw().unwrap();
+                    let dest_bitsize = dest_ty.bitw().unwrap();
                     if val_bitsize != dest_bitsize {
                         panic!(
                             "Instruction at position {iidx} trying to bitcast to a differently-sized type\n  {}",
@@ -391,6 +408,30 @@ mod tests {
                 %0: i8 = param 0
                 %1: i64 = param 1
                 %2: i1 = eq %0, %1
+            ",
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Instruction at position 1 trying to select on a non-i1")]
+    fn select_bad_width() {
+        Module::from_str(
+            "
+              entry:
+                %0: i32 = param 0
+                %1: i32 = %0 ? 1i32 : 2i32
+            ",
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Instruction at position 1 has incompatible true/false types")]
+    fn select_incompatible_types() {
+        Module::from_str(
+            "
+              entry:
+                %0: i1 = param 0
+                %1: i32 = %0 ? 1i16 : 2i32
             ",
         );
     }

@@ -11,14 +11,8 @@
 //!     partial register stalls in the CPU pipeline. Generally speaking we prefer to use 64-bit
 //!     operations, but sometimes we special-case 32-bit operations since they are so common.
 //!
-//!   * If an object occupies only part of a 64-bit register, then there are no guarantees about
-//!     the unused higher-order bits. Codegen routines must be mindful of this and, depending upon
-//!     the operation, may be required to (for example) "mask off" or "sign extend into" the
-//!     undefined bits in order to compute the correct result.
-//!
-//! FIXME: the code generator clobbers registers willy-nilly because at the time of writing we have
-//! a register allocator that doesn't actually use any registers. Later we will have to audit the
-//! backend and insert register save/restore for clobbered registers.
+//!   * When a value is in a register, we make no guarantees about what the upper bits are set to.
+//!     You must sign or zero extend at all points that these values are important.
 
 use super::{
     super::{
@@ -658,6 +652,7 @@ impl<'a> Assemble<'a> {
                 jit_ir::Inst::FCmp(i) => self.cg_fcmp(iidx, i),
                 jit_ir::Inst::FPToSI(i) => self.cg_fptosi(iidx, i),
                 jit_ir::Inst::FNeg(i) => self.cg_fneg(iidx, i),
+                jit_ir::Inst::DebugStr(..) => (),
             }
 
             next = iter.next();
@@ -757,21 +752,16 @@ impl<'a> Assemble<'a> {
     /// `from_bits` must be between 1 and 64.
     fn sign_extend_to_reg64(&mut self, reg: Rq, from_bits: u8) {
         debug_assert!(from_bits > 0 && from_bits <= 64);
-        // For "regularly-sized" integers, we can use movsx to achieve the sign extend and without
-        // fear of register stalls.
         match from_bits {
+            1 => dynasm!(self.asm
+                ; and Rq(reg.code()), 1
+                ; neg Rq(reg.code())
+            ),
             8 => dynasm!(self.asm; movsx Rq(reg.code()), Rb(reg.code())),
             16 => dynasm!(self.asm; movsx Rq(reg.code()), Rw(reg.code())),
             32 => dynasm!(self.asm; movsx Rq(reg.code()), Rd(reg.code())),
             64 => (), // nothing to do.
-            _ => {
-                // For "oddly-sized" integers we have to do the sign extend ourselves.
-                let shift = REG64_BITSIZE - usize::from(from_bits);
-                dynasm!(self.asm
-                    ; shl Rq(reg.code()), shift as i8 // shift all the way left.
-                    ; sar Rq(reg.code()), shift as i8 // shift back with the correct leading bits.
-                );
-            }
+            x => todo!("{x}"),
         }
     }
 
@@ -781,24 +771,14 @@ impl<'a> Assemble<'a> {
     /// `from_bits` must be between 1 and 64.
     fn zero_extend_to_reg64(&mut self, reg: Rq, from_bits: u8) {
         debug_assert!(from_bits > 0 && from_bits <= 64);
-        // For "regularly-sized" integers, we can use movzx to achieve the zero extend and without
-        // fear of register stalls.
         match from_bits {
-            8 => dynasm!(self.asm; movzx Rq(reg.code()), Rb(reg.code())),
-            16 => dynasm!(self.asm; movzx Rq(reg.code()), Rw(reg.code())),
+            1..=31 => dynasm!(self.asm; and Rq(reg.code()), ((1u64 << from_bits) - 1) as i32),
             32 => {
                 // mov into a 32-bit register sign-extends up to 64 already.
                 dynasm!(self.asm; mov Rd(reg.code()), Rd(reg.code()));
             }
             64 => (), // nothing to do.
-            _ => {
-                // For "oddly-sized" integers we have to do the zero extend ourselves.
-                let shift = REG64_BITSIZE - usize::from(from_bits);
-                dynasm!(self.asm
-                    ; shl Rq(reg.code()), shift as i8 // shift all the way left.
-                    ; shr Rq(reg.code()), shift as i8 // shift back with leading zeros.
-                );
-            }
+            x => todo!("{x}"),
         }
     }
 
@@ -834,21 +814,46 @@ impl<'a> Assemble<'a> {
         let rhs = inst.rhs(self.m);
 
         match inst.binop() {
-            BinOp::Add | BinOp::And | BinOp::Or | BinOp::Xor => {
+            BinOp::Add => {
                 let byte_size = lhs.byte_size(self.m);
                 // We only optimise the canonicalised case.
-                if let Some(v) = self.op_to_i32(&rhs) {
+                if let Some(v) = self.op_to_sign_ext_i32(&rhs) {
+                    let [lhs_reg] = self.ra.assign_gp_regs(
+                        &mut self.asm,
+                        iidx,
+                        [RegConstraint::InputOutput(lhs)],
+                    );
+                    match byte_size {
+                        8 => dynasm!(self.asm; add Rq(lhs_reg.code()), v),
+                        1..=4 => dynasm!(self.asm; add Rd(lhs_reg.code()), v),
+                        _ => unreachable!(),
+                    }
+                } else {
+                    let [lhs_reg, rhs_reg] = self.ra.assign_gp_regs(
+                        &mut self.asm,
+                        iidx,
+                        [RegConstraint::InputOutput(lhs), RegConstraint::Input(rhs)],
+                    );
+                    match byte_size {
+                        0 => unreachable!(),
+                        1..=8 => {
+                            // OK to ignore any undefined high-order bits here.
+                            dynasm!(self.asm; add Rq(lhs_reg.code()), Rq(rhs_reg.code()));
+                        }
+                        _ => todo!(),
+                    }
+                }
+            }
+            BinOp::And | BinOp::Or | BinOp::Xor => {
+                let byte_size = lhs.byte_size(self.m);
+                // We only optimise the canonicalised case.
+                if let Some(v) = self.op_to_zero_ext_i32(&rhs) {
                     let [lhs_reg] = self.ra.assign_gp_regs(
                         &mut self.asm,
                         iidx,
                         [RegConstraint::InputOutput(lhs)],
                     );
                     match inst.binop() {
-                        BinOp::Add => match byte_size {
-                            8 => dynasm!(self.asm; add Rq(lhs_reg.code()), v),
-                            1..=4 => dynasm!(self.asm; add Rd(lhs_reg.code()), v),
-                            _ => unreachable!(),
-                        },
                         BinOp::And => match byte_size {
                             8 => dynasm!(self.asm; and Rq(lhs_reg.code()), v),
                             1..=4 => dynasm!(self.asm; and Rd(lhs_reg.code()), v),
@@ -873,16 +878,6 @@ impl<'a> Assemble<'a> {
                         [RegConstraint::InputOutput(lhs), RegConstraint::Input(rhs)],
                     );
                     match inst.binop() {
-                        BinOp::Add => {
-                            match byte_size {
-                                0 => unreachable!(),
-                                1..=8 => {
-                                    // OK to ignore any undefined high-order bits here.
-                                    dynasm!(self.asm; add Rq(lhs_reg.code()), Rq(rhs_reg.code()));
-                                }
-                                _ => todo!(),
-                            }
-                        }
                         BinOp::And => {
                             match byte_size {
                                 0 => unreachable!(),
@@ -926,7 +921,7 @@ impl<'a> Assemble<'a> {
                 let Ty::Integer(bit_size) = self.m.type_(lhs.tyidx(self.m)) else {
                     unreachable!()
                 };
-                if let Some(v) = self.op_to_i8(&rhs) {
+                if let Some(v) = self.op_to_zero_ext_i8(&rhs) {
                     let [lhs_reg] = self.ra.assign_gp_regs(
                         &mut self.asm,
                         iidx,
@@ -1114,7 +1109,7 @@ impl<'a> Assemble<'a> {
                 let Ty::Integer(bit_size) = self.m.type_(lhs.tyidx(self.m)) else {
                     unreachable!()
                 };
-                if let Some(0) = self.op_to_i32(&lhs) {
+                if let Some(0) = self.op_to_sign_ext_i32(&lhs) {
                     let [rhs_reg] = self.ra.assign_gp_regs(
                         &mut self.asm,
                         iidx,
@@ -1299,18 +1294,17 @@ impl<'a> Assemble<'a> {
                         RegConstraint::OutputCanBeSameAsInput(ptr_op),
                     ],
                 );
-                let size = self.m.inst(iidx).def_byte_size(self.m);
-                debug_assert!(size <= REG64_BYTESIZE);
-                match size {
-                    1 => {
+                let bitw = self.m.inst(iidx).def_bitw(self.m);
+                match bitw {
+                    8 => {
                         dynasm!(self.asm ; movzx Rq(out_reg.code()), BYTE [Rq(in_reg.code()) + off])
                     }
-                    2 => {
+                    16 => {
                         dynasm!(self.asm ; movzx Rq(out_reg.code()), WORD [Rq(in_reg.code()) + off])
                     }
-                    4 => dynasm!(self.asm ; mov Rd(out_reg.code()), [Rq(in_reg.code()) + off]),
-                    8 => dynasm!(self.asm ; mov Rq(out_reg.code()), [Rq(in_reg.code()) + off]),
-                    _ => todo!("{}", size),
+                    32 => dynasm!(self.asm ; mov Rd(out_reg.code()), [Rq(in_reg.code()) + off]),
+                    64 => dynasm!(self.asm ; mov Rq(out_reg.code()), [Rq(in_reg.code()) + off]),
+                    _ => todo!("{bitw}"),
                 };
             }
             Ty::Float(fty) => {
@@ -1404,22 +1398,22 @@ impl<'a> Assemble<'a> {
         let val = inst.val(self.m);
         match self.m.type_(val.tyidx(self.m)) {
             Ty::Integer(_) | Ty::Ptr => {
-                let byte_size = val.byte_size(self.m);
-                if let Some(imm) = self.op_to_immediate(&val) {
+                let bitw = val.bitw(self.m);
+                if let Some(imm) = self.op_to_zero_ext_immediate(&val) {
                     let [tgt_reg] =
                         self.ra
                             .assign_gp_regs(&mut self.asm, iidx, [RegConstraint::Input(tgt_op)]);
-                    match (imm, byte_size) {
-                        (Immediate::I8(v), 1) => {
+                    match (imm, bitw) {
+                        (Immediate::I8(v), 8) => {
                             dynasm!(self.asm ; mov BYTE [Rq(tgt_reg.code()) + off], v)
                         }
-                        (Immediate::I16(v), 2) => {
+                        (Immediate::I16(v), 16) => {
                             dynasm!(self.asm ; mov WORD [Rq(tgt_reg.code()) + off], v)
                         }
-                        (Immediate::I32(v), 4) => {
+                        (Immediate::I32(v), 32) => {
                             dynasm!(self.asm ; mov DWORD [Rq(tgt_reg.code()) + off], v)
                         }
-                        (Immediate::I32(v), 8) => {
+                        (Immediate::I32(v), 64) => {
                             dynasm!(self.asm ; mov QWORD [Rq(tgt_reg.code()) + off], v)
                         }
                         _ => todo!(),
@@ -1430,11 +1424,17 @@ impl<'a> Assemble<'a> {
                         iidx,
                         [RegConstraint::Input(tgt_op), RegConstraint::Input(val)],
                     );
-                    match byte_size {
-                        1 => dynasm!(self.asm ; mov [Rq(tgt_reg.code()) + off], Rb(val_reg.code())),
-                        2 => dynasm!(self.asm ; mov [Rq(tgt_reg.code()) + off], Rw(val_reg.code())),
-                        4 => dynasm!(self.asm ; mov [Rq(tgt_reg.code()) + off], Rd(val_reg.code())),
-                        8 => dynasm!(self.asm ; mov [Rq(tgt_reg.code()) + off], Rq(val_reg.code())),
+                    match bitw {
+                        8 => dynasm!(self.asm ; mov [Rq(tgt_reg.code()) + off], Rb(val_reg.code())),
+                        16 => {
+                            dynasm!(self.asm ; mov [Rq(tgt_reg.code()) + off], Rw(val_reg.code()))
+                        }
+                        32 => {
+                            dynasm!(self.asm ; mov [Rq(tgt_reg.code()) + off], Rd(val_reg.code()))
+                        }
+                        64 => {
+                            dynasm!(self.asm ; mov [Rq(tgt_reg.code()) + off], Rq(val_reg.code()))
+                        }
                         _ => todo!(),
                     }
                 }
@@ -1601,9 +1601,10 @@ impl<'a> Assemble<'a> {
                     let _: ([Rq; CALLER_CLOBBER_REGS.len()], [Rx; 16]) = self.ra.assign_regs(
                         &mut self.asm,
                         iidx,
-                        gp_cnstrs.try_into().unwrap(),
+                        gp_cnstrs.clone().try_into().unwrap(),
                         fp_cnstrs,
                     );
+                    self.clear_bits_for_call(&gp_cnstrs);
                     // rax is considered clobbered, but isn't used to pass an argument, so we can
                     // safely use it for the function pointer.
                     dynasm!(self.asm
@@ -1616,9 +1617,10 @@ impl<'a> Assemble<'a> {
                         self.ra.assign_regs(
                             &mut self.asm,
                             iidx,
-                            gp_cnstrs.try_into().unwrap(),
+                            gp_cnstrs.clone().try_into().unwrap(),
                             fp_cnstrs,
                         );
+                    self.clear_bits_for_call(&gp_cnstrs);
                     dynasm!(self.asm
                         ; mov rax, num_float_args
                         ; mov Rq(tmp_reg.code()), QWORD p as i64
@@ -1633,9 +1635,10 @@ impl<'a> Assemble<'a> {
                     self.ra.assign_regs(
                         &mut self.asm,
                         iidx,
-                        gp_cnstrs.try_into().unwrap(),
+                        gp_cnstrs.clone().try_into().unwrap(),
                         fp_cnstrs,
                     );
+                self.clear_bits_for_call(&gp_cnstrs[..gp_cnstrs.len() - 1]);
                 if fty.is_vararg() {
                     dynasm!(self.asm; mov rax, num_float_args); // SysV x64 ABI
                 }
@@ -1645,6 +1648,29 @@ impl<'a> Assemble<'a> {
         }
 
         Ok(())
+    }
+
+    /// When we're about to make a call, we need to clear upper bits in registers.
+    ///
+    /// This function clears those bits in a manner that is compatible with the SysV ABI. Note:
+    /// we're a little bit OTT here, and we could do less work if we become more clever about it.
+    fn clear_bits_for_call(&mut self, gp_cnstrs: &[RegConstraint<Rq>]) {
+        for gp_cnstr in gp_cnstrs {
+            match gp_cnstr {
+                RegConstraint::InputIntoReg(op, reg)
+                | RegConstraint::InputIntoRegAndClobber(op, reg)
+                | RegConstraint::InputOutputIntoReg(op, reg) => {
+                    self.zero_extend_to_reg64(*reg, u8::try_from(op.bitw(self.m)).unwrap())
+                }
+                RegConstraint::Input(_) | RegConstraint::InputOutput(_) => unreachable!(),
+                RegConstraint::OutputCanBeSameAsInput(_) => (),
+                RegConstraint::Output
+                | RegConstraint::OutputFromReg(_)
+                | RegConstraint::Clobber(_)
+                | RegConstraint::Temporary
+                | RegConstraint::None => (),
+            }
+        }
     }
 
     /// Return the [VarLocation] an [Operand] relates to.
@@ -1669,7 +1695,7 @@ impl<'a> Assemble<'a> {
 
     /// If an `Operand` refers to a constant integer that can be represented as an `i8`, return
     /// it, otherwise return `None`.
-    fn op_to_i8(&self, op: &Operand) -> Option<i8> {
+    fn op_to_sign_ext_i8(&self, op: &Operand) -> Option<i8> {
         if let Operand::Const(cidx) = op {
             if let Const::Int(tyidx, v) = self.m.const_(*cidx) {
                 let Ty::Integer(bit_size) = self.m.type_(*tyidx) else {
@@ -1684,18 +1710,38 @@ impl<'a> Assemble<'a> {
         }
         None
     }
-    ///
+
+    /// If an `Operand` refers to a constant integer that can be represented as an `i8`, return
+    /// it zero-extended to 8 bits, otherwise return `None`.
+    fn op_to_zero_ext_i8(&self, op: &Operand) -> Option<i8> {
+        if let Operand::Const(cidx) = op {
+            if let Const::Int(tyidx, v) = self.m.const_(*cidx) {
+                let Ty::Integer(bit_size) = self.m.type_(*tyidx) else {
+                    panic!()
+                };
+                if *bit_size <= 8 {
+                    debug_assert_eq!(v.truncate(*bit_size), *v);
+                    return Some(*v as i8);
+                } else if v.truncate(8) == *v {
+                    return Some(v.truncate(8) as i8);
+                }
+            }
+        }
+        None
+    }
+
     /// If an `Operand` refers to a constant integer that can be represented as an `i16`, return
-    /// it, otherwise return `None`.
-    fn op_to_i16(&self, op: &Operand) -> Option<i16> {
+    /// it zero extended to 16 bits, otherwise return `None`.
+    fn op_to_zero_ext_i16(&self, op: &Operand) -> Option<i16> {
         if let Operand::Const(cidx) = op {
             if let Const::Int(tyidx, v) = self.m.const_(*cidx) {
                 let Ty::Integer(bit_size) = self.m.type_(*tyidx) else {
                     panic!()
                 };
                 if *bit_size <= 16 {
-                    return Some(v.sign_extend(*bit_size, 16) as i16);
-                } else if v.truncate(16).sign_extend(16, 64) == *v {
+                    debug_assert_eq!(v.truncate(*bit_size), *v);
+                    return Some(*v as i16);
+                } else if v.truncate(16) == *v {
                     return Some(v.truncate(16) as i16);
                 }
             }
@@ -1703,9 +1749,9 @@ impl<'a> Assemble<'a> {
         None
     }
 
-    /// If an `Operand` refers to a constant integer that can be represented as an `i32`, return
-    /// it, otherwise return `None`.
-    fn op_to_i32(&self, op: &Operand) -> Option<i32> {
+    /// If an `Operand` refers to a constant integer that can be represented as an `i32`, return it
+    /// sign-extended to 32 bits, otherwise return `None`.
+    fn op_to_sign_ext_i32(&self, op: &Operand) -> Option<i32> {
         if let Operand::Const(cidx) = op {
             if let Const::Int(tyidx, v) = self.m.const_(*cidx) {
                 let Ty::Integer(bit_size) = self.m.type_(*tyidx) else {
@@ -1721,25 +1767,44 @@ impl<'a> Assemble<'a> {
         None
     }
 
-    /// Return an [Immediate] if `op` is a constant and is representable as an x64 immediate. Note
-    /// this embeds the follow assumptions:
+    /// If an `Operand` refers to a constant integer that can be represented as an `i32`, return it
+    /// zero-extended to 32 bits, otherwise return `None`.
+    fn op_to_zero_ext_i32(&self, op: &Operand) -> Option<i32> {
+        if let Operand::Const(cidx) = op {
+            if let Const::Int(tyidx, v) = self.m.const_(*cidx) {
+                let Ty::Integer(bit_size) = self.m.type_(*tyidx) else {
+                    panic!()
+                };
+                if *bit_size <= 32 {
+                    debug_assert_eq!(v.truncate(*bit_size), *v);
+                    return Some(*v as i32);
+                } else if v.truncate(32) == *v {
+                    return Some(v.truncate(32) as i32);
+                }
+            }
+        }
+        None
+    }
+
+    /// Return a zero-extended [Immediate] if `op` is a constant and is representable as an x64
+    /// immediate. Note this embeds the follow assumptions:
     ///   1. 1 byte constants map to Immediate::I8.
     ///   2. 2 byte constants map to Immediate::I16.
     ///   3. 3 byte constants map to Immediate::I32.
     ///   4. 4 byte constants map to Immediate::I32.
     ///
     /// Note that number (4) breaks the pattern of the (1-3)!
-    fn op_to_immediate(&self, op: &Operand) -> Option<Immediate> {
+    fn op_to_zero_ext_immediate(&self, op: &Operand) -> Option<Immediate> {
         match op {
             Operand::Const(cidx) => match self.m.const_(*cidx) {
                 Const::Float(_, _) => todo!(),
                 Const::Int(_, _) => match op.byte_size(self.m) {
-                    1 => self.op_to_i8(op).map(Immediate::I8),
-                    2 => self.op_to_i16(op).map(Immediate::I16),
-                    4 | 8 => self.op_to_i32(op).map(Immediate::I32),
+                    1 => self.op_to_zero_ext_i8(op).map(Immediate::I8),
+                    2 => self.op_to_zero_ext_i16(op).map(Immediate::I16),
+                    4 | 8 => self.op_to_zero_ext_i32(op).map(Immediate::I32),
                     _ => todo!(),
                 },
-                Const::Ptr(_) => self.op_to_i32(op).map(Immediate::I32),
+                Const::Ptr(_) => self.op_to_zero_ext_i32(op).map(Immediate::I32),
             },
             Operand::Var(_) => None,
         }
@@ -1749,7 +1814,7 @@ impl<'a> Assemble<'a> {
         match bit_size {
             0 => unreachable!(),
             32 => dynasm!(self.asm; cmp Rd(lhs_reg.code()), rhs),
-            1..=64 => {
+            8 | 16 | 64 => {
                 if pred.signed() {
                     self.sign_extend_to_reg64(lhs_reg, u8::try_from(bit_size).unwrap());
                 } else {
@@ -1765,7 +1830,7 @@ impl<'a> Assemble<'a> {
         match bit_size {
             0 => unreachable!(),
             32 => dynasm!(self.asm; cmp Rd(lhs_reg.code()), Rd(rhs_reg.code())),
-            1..=64 => {
+            8 | 16 | 64 => {
                 if pred.signed() {
                     self.sign_extend_to_reg64(lhs_reg, u8::try_from(bit_size).unwrap());
                     self.sign_extend_to_reg64(rhs_reg, u8::try_from(bit_size).unwrap());
@@ -1775,7 +1840,7 @@ impl<'a> Assemble<'a> {
                 }
                 dynasm!(self.asm; cmp Rq(lhs_reg.code()), Rq(rhs_reg.code()));
             }
-            _ => todo!(),
+            _ => todo!("{bit_size}"),
         }
     }
 
@@ -1796,8 +1861,13 @@ impl<'a> Assemble<'a> {
             ic_inst.predicate(),
             ic_inst.rhs(self.m),
         );
-        let bit_size = self.m.type_(lhs.tyidx(self.m)).bit_size().unwrap();
-        if let Some(v) = self.op_to_i32(&rhs) {
+        let bit_size = self.m.type_(lhs.tyidx(self.m)).bitw().unwrap();
+        let imm = if pred.signed() {
+            self.op_to_sign_ext_i32(&rhs)
+        } else {
+            self.op_to_zero_ext_i32(&rhs)
+        };
+        if let Some(v) = imm {
             let [lhs_reg] =
                 self.ra
                     .assign_gp_regs(&mut self.asm, ic_iidx, [RegConstraint::Input(lhs)]);
@@ -1850,8 +1920,13 @@ impl<'a> Assemble<'a> {
 
     fn cg_icmp(&mut self, iidx: InstIdx, inst: &jit_ir::ICmpInst) {
         let (lhs, pred, rhs) = (inst.lhs(self.m), inst.predicate(), inst.rhs(self.m));
-        let bit_size = self.m.type_(lhs.tyidx(self.m)).bit_size().unwrap();
-        let lhs_reg = if let Some(v) = self.op_to_i32(&rhs) {
+        let bit_size = self.m.type_(lhs.tyidx(self.m)).bitw().unwrap();
+        let imm = if pred.signed() {
+            self.op_to_sign_ext_i32(&rhs)
+        } else {
+            self.op_to_zero_ext_i32(&rhs)
+        };
+        let lhs_reg = if let Some(v) = imm {
             let [lhs_reg] =
                 self.ra
                     .assign_gp_regs(&mut self.asm, iidx, [RegConstraint::InputOutput(lhs)]);
@@ -2271,9 +2346,9 @@ impl<'a> Assemble<'a> {
 
     fn cg_zext(&mut self, iidx: InstIdx, zinst: &jit_ir::ZExtInst) {
         let src_type = self.m.type_(zinst.val(self.m).tyidx(self.m));
-        let src_bitsize = src_type.bit_size().unwrap();
+        let src_bitsize = src_type.bitw().unwrap();
         let dest_type = self.m.type_(zinst.dest_tyidx());
-        let dest_bitsize = dest_type.bit_size().unwrap();
+        let dest_bitsize = dest_type.bitw().unwrap();
 
         if dest_bitsize <= REG64_BITSIZE {
             if src_bitsize == 32 || src_bitsize == 64 {
@@ -2428,8 +2503,16 @@ impl<'a> Assemble<'a> {
                 RegConstraint::Input(inst.falseval(self.m)),
             ],
         );
-        dynasm!(self.asm ; cmp Rb(cond_reg.code()), 0);
-        dynasm!(self.asm ; cmove Rq(true_reg.code()), Rq(false_reg.code()));
+        debug_assert_eq!(
+            self.m
+                .type_(inst.cond(self.m).tyidx(self.m))
+                .bitw()
+                .unwrap(),
+            1
+        );
+
+        dynasm!(self.asm ; bt Rq(cond_reg.code()), 0);
+        dynasm!(self.asm ; cmovnc Rq(true_reg.code()), Rq(false_reg.code()));
     }
 
     fn guard_to_deopt(&mut self, inst: &jit_ir::GuardInst) -> DynamicLabel {
@@ -2516,15 +2599,15 @@ impl<'a> Assemble<'a> {
     fn cg_guard(&mut self, iidx: jit_ir::InstIdx, inst: &jit_ir::GuardInst) {
         let fail_label = self.guard_to_deopt(inst);
         let cond = inst.cond(self.m);
-        // ICmp instructions evaluate to a one-byte zero/one value.
-        debug_assert_eq!(cond.byte_size(self.m), 1);
         let [reg] = self
             .ra
             .assign_gp_regs(&mut self.asm, iidx, [RegConstraint::Input(cond)]);
-        dynasm!(self.asm
-            ; cmp Rb(reg.code()), inst.expect() as i8 // `as` intentional.
-            ; jne =>fail_label
-        );
+        dynasm!(self.asm ; bt Rq(reg.code()), 0);
+        if inst.expect() {
+            dynasm!(self.asm ; jnb =>fail_label);
+        } else {
+            dynasm!(self.asm ; jb =>fail_label);
+        }
     }
 }
 
@@ -2699,6 +2782,9 @@ impl<'a> AsmPrinter<'a> {
 }
 
 /// A representation of an x64 immediate, suitable for use in x64 instructions.
+///
+/// Note that the integer values inside may be zero or sign-extended depending on the construction
+/// of an instance of this enum.
 enum Immediate {
     I8(i8),
     I16(i16),
@@ -3395,23 +3481,22 @@ mod tests {
                 %1: i16 = param 1
                 %2: i32 = param 2
                 %3: i32 = param 3
-                %4: i63 = param 4
-                %5: i63 = param 5
-                %6: i16 = and %0, %1
-                %7: i32 = and %2, %3
-                %8: i63 = and %4, %5
+                %4: i1 = param 4
+                %5: i16 = and %0, %1
+                %6: i32 = and %2, %3
+                %7: i1 = and %4, 1i1
+                black_box %5
                 black_box %6
                 black_box %7
-                black_box %8
             ",
             "
                 ...
-                ; %6: i16 = and %0, %1
+                ; %5: i16 = and %0, %1
                 and r.64.a, r.64.b
-                ; %7: i32 = and %2, %3
+                ; %6: i32 = and %2, %3
                 and r.64.c, r.64.d
-                ; %8: i63 = and %4, %5
-                and r.64.e, r.64.f
+                ; %7: i1 = and %4, 1i1
+                and r.32._, 0x01
                 ...
                 ",
             false,
@@ -3425,28 +3510,20 @@ mod tests {
               entry:
                 %0: i16 = param 0
                 %1: i32 = param 1
-                %2: i63 = param 2
-                %3: i16 = ashr %0, 1i16
-                %4: i32 = ashr %1, 2i32
-                %5: i63 = ashr %2, 3i63
+                %2: i16 = ashr %0, 1i16
+                %3: i32 = ashr %1, 2i32
+                black_box %2
                 black_box %3
-                black_box %4
-                black_box %5
             ",
             "
                 ...
-                ; %3: i16 = ashr %0, 1i16
+                ; %2: i16 = ashr %0, 1i16
                 ...
                 movsx r.64.a, r.16.a
                 sar r.64.a, 0x01
-                ; %4: i32 = ashr %1, 2i32
+                ; %3: i32 = ashr %1, 2i32
                 ...
                 sar r.32.c, 0x02
-                ; %5: i63 = ashr %2, 3i63
-                ...
-                shl r.64.e, 0x01
-                sar r.64.e, 0x01
-                sar r.64.e, 0x03
                 ...
                 ",
             false,
@@ -3460,28 +3537,18 @@ mod tests {
               entry:
                 %0: i16 = param 0
                 %1: i32 = param 1
-                %2: i63 = param 2
-                %3: i16 = lshr %0, 1i16
-                %4: i32 = lshr %1, 2i32
-                %5: i63 = lshr %2, 3i63
+                %2: i16 = lshr %0, 1i16
+                %3: i32 = lshr %1, 2i32
+                black_box %2
                 black_box %3
-                black_box %4
-                black_box %5
             ",
             "
                 ...
-                ; %3: i16 = lshr %0, 1i16
-                ...
-                movzx r.64.a, r.16.a
+                ; %2: i16 = lshr %0, 1i16
+                and r.64.a, 0xffff
                 shr r.64.a, 0x01
-                ; %4: i32 = lshr %1, 2i32
-                ...
+                ; %3: i32 = lshr %1, 2i32
                 shr r.32.c, 0x02
-                ; %5: i63 = lshr %2, 3i63
-                ...
-                shl r.64.e, 0x01
-                shr r.64.e, 0x01
-                shr r.64.e, 0x03
                 ...
                 ",
             false,
@@ -3495,27 +3562,22 @@ mod tests {
               entry:
                 %0: i16 = param 0
                 %1: i32 = param 1
-                %2: i63 = param 2
-                %3: i16 = shl %0, 1i16
-                %4: i32 = shl %1, 2i32
-                %5: i63 = shl %2, 3i63
-                %6: i32 = shl %1, %4
+                %2: i16 = shl %0, 1i16
+                %3: i32 = shl %1, 2i32
+                %4: i32 = shl %1, %3
+                black_box %2
                 black_box %3
                 black_box %4
-                black_box %5
-                black_box %6
             ",
             "
                 ...
-                ; %3: i16 = shl %0, 1i16
+                ; %2: i16 = shl %0, 1i16
                 ...
                 shl r.64.a, 0x01
-                ; %4: i32 = shl %1, 2i32
+                ; %3: i32 = shl %1, 2i32
                 ...
                 shl r.32.a, 0x02
-                ; %5: i63 = shl %2, 3i63
-                shl r.64.b, 0x03
-                ; %6: i32 = shl %1, %4
+                ; %4: i32 = shl %1, %3
                 shl r.32.b, cl
                 ...
                 ",
@@ -3532,26 +3594,19 @@ mod tests {
                 %1: i16 = param 1
                 %2: i32 = param 2
                 %3: i32 = param 3
-                %4: i63 = param 4
-                %5: i63 = param 5
-                %6: i16 = mul %0, %1
-                %7: i32 = mul %2, %3
-                %8: i63 = mul %4, %5
-                black_box %6
-                black_box %7
-                black_box %8
+                %4: i16 = mul %0, %1
+                %5: i32 = mul %2, %3
+                black_box %4
+                black_box %5
             ",
             "
                 ...
-                ; %6: i16 = mul %0, %1
+                ; %4: i16 = mul %0, %1
                 mov rax, ...
                 mul r.64.a
-                ; %7: i32 = mul %2, %3
+                ; %5: i32 = mul %2, %3
                 ......
                 mul r.64.b
-                ; %8: i63 = mul %4, %5
-                ......
-                mul r.64.c
                 ...
                 ",
             false,
@@ -3567,23 +3622,22 @@ mod tests {
                 %1: i16 = param 1
                 %2: i32 = param 2
                 %3: i32 = param 3
-                %4: i63 = param 4
-                %5: i63 = param 5
-                %6: i16 = or %0, %1
-                %7: i32 = or %2, %3
-                %8: i63 = or %4, %5
+                %4: i1 = param 4
+                %5: i16 = or %0, %1
+                %6: i32 = or %2, %3
+                %7: i1 = or %4, 1i1
+                black_box %5
                 black_box %6
                 black_box %7
-                black_box %8
             ",
             "
                 ...
-                ; %6: i16 = or %0, %1
+                ; %5: i16 = or %0, %1
                 or r.64.a, r.64.b
-                ; %7: i32 = or %2, %3
+                ; %6: i32 = or %2, %3
                 or r.64.c, r.64.d
-                ; %8: i63 = or %4, %5
-                or r.64.e, r.64.f
+                ; %7: i1 = or %4, 1i1
+                or r.32._, 0x01
                 ...
                 ",
             false,
@@ -3599,35 +3653,23 @@ mod tests {
                 %1: i16 = param 1
                 %2: i32 = param 2
                 %3: i32 = param 3
-                %4: i63 = param 4
-                %5: i63 = param 5
-                %6: i16 = sdiv %0, %1
-                %7: i32 = sdiv %2, %3
-                %8: i63 = sdiv %4, %5
-                black_box %6
-                black_box %7
-                black_box %8
+                %4: i16 = sdiv %0, %1
+                %5: i32 = sdiv %2, %3
+                black_box %4
+                black_box %5
             ",
             "
                 ...
-                ; %6: i16 = sdiv %0, %1
+                ; %4: i16 = sdiv %0, %1
                 ...
                 movsx rax, ax
                 movsx r.64.a, r.16.a
                 cqo
                 idiv r.64.a
-                ; %7: i32 = sdiv %2, %3
+                ; %5: i32 = sdiv %2, %3
                 ...
                 cdq
                 idiv r.32.b
-                ; %8: i63 = sdiv %4, %5
-                ...
-                shl rax, 0x01
-                sar rax, 0x01
-                shl r.64.c, 0x01
-                sar r.64.c, 0x01
-                cqo
-                idiv r.64.c
                 ...
                 ",
             false,
@@ -3643,35 +3685,23 @@ mod tests {
                 %1: i16 = param 1
                 %2: i32 = param 2
                 %3: i32 = param 3
-                %4: i63 = param 4
-                %5: i63 = param 5
-                %6: i16 = srem %0, %1
-                %7: i32 = srem %2, %3
-                %8: i63 = srem %4, %5
-                black_box %6
-                black_box %7
-                black_box %8
+                %4: i16 = srem %0, %1
+                %5: i32 = srem %2, %3
+                black_box %4
+                black_box %5
             ",
             "
                 ...
-                ; %6: i16 = srem %0, %1
+                ; %4: i16 = srem %0, %1
                 ...
                 movsx rax, ax
                 movsx r.64.a, r.16.a
                 cqo
                 idiv r.64.a
-                ; %7: i32 = srem %2, %3
+                ; %5: i32 = srem %2, %3
                 ...
                 cdq
                 idiv r.32.b
-                ; %8: i63 = srem %4, %5
-                ...
-                shl rax, 0x01
-                sar rax, 0x01
-                shl r.64.c, 0x01
-                sar r.64.c, 0x01
-                cqo
-                idiv r.64.c
                 ...
                 ",
             false,
@@ -3687,32 +3717,22 @@ mod tests {
                 %1: i16 = param 1
                 %2: i32 = param 2
                 %3: i32 = param 3
-                %4: i63 = param 4
-                %5: i63 = param 5
-                %6: i16 = sub %0, %1
-                %7: i32 = sub %2, %3
-                %8: i63 = sub %4, %5
-                %9: i32 = sub 0i32, %7
+                %4: i16 = sub %0, %1
+                %5: i32 = sub %2, %3
+                %6: i32 = sub 0i32, %5
+                black_box %4
+                black_box %5
                 black_box %6
-                black_box %7
-                black_box %8
-                black_box %9
             ",
             "
                 ...
-                ; %6: i16 = sub %0, %1
+                ; %4: i16 = sub %0, %1
                 movsx r.64.a, r.16.a
                 movsx r.64.b, r.16.b
                 sub r.64.a, r.64.b
-                ; %7: i32 = sub %2, %3
+                ; %5: i32 = sub %2, %3
                 sub r.32.c, r.32.d
-                ; %8: i63 = sub %4, %5
-                shl r.64.e, 0x01
-                sar r.64.e, 0x01
-                shl r.64.f, 0x01
-                sar r.64.f, 0x01
-                sub r.64.e, r.64.f
-                ; %9: i32 = sub 0i32, %7
+                ; %6: i32 = sub 0i32, %5
                 ......
                 neg r.32.c
                 ...
@@ -3730,23 +3750,22 @@ mod tests {
                 %1: i16 = param 1
                 %2: i32 = param 2
                 %3: i32 = param 3
-                %4: i63 = param 4
-                %5: i63 = param 5
-                %6: i16 = xor %0, %1
-                %7: i32 = xor %2, %3
-                %8: i63 = xor %4, %5
+                %4: i1 = param 4
+                %5: i16 = xor %0, %1
+                %6: i32 = xor %2, %3
+                %7: i1 = xor %4, 1i1
+                black_box %5
                 black_box %6
                 black_box %7
-                black_box %8
             ",
             "
                 ...
-                ; %6: i16 = xor %0, %1
+                ; %5: i16 = xor %0, %1
                 xor r.64.a, r.64.b
-                ; %7: i32 = xor %2, %3
+                ; %6: i32 = xor %2, %3
                 xor r.64.c, r.64.d
-                ; %8: i63 = xor %4, %5
-                xor r.64.e, r.64.f
+                ; %7: i1 = xor %4, 1i1
+                xor r.32._, 0x01
                 ...
                 ",
             false,
@@ -3762,35 +3781,23 @@ mod tests {
                 %1: i16 = param 1
                 %2: i32 = param 2
                 %3: i32 = param 3
-                %4: i63 = param 4
-                %5: i63 = param 5
-                %6: i16 = udiv %0, %1
-                %7: i32 = udiv %2, %3
-                %8: i63 = udiv %4, %5
-                black_box %6
-                black_box %7
-                black_box %8
+                %4: i16 = udiv %0, %1
+                %5: i32 = udiv %2, %3
+                black_box %4
+                black_box %5
             ",
             "
                 ...
-                ; %6: i16 = udiv %0, %1
-                ...
-                movzx rax, ax
-                movzx r.64.a, r.16.a
+                ; %4: i16 = udiv %0, %1
+                mov rax, r.64.a
+                and rax, 0xffff
+                and r.64.b, 0xffff
                 xor rdx, rdx
-                div r.64.a
-                ; %7: i32 = udiv %2, %3
+                div r.64.b
+                ; %5: i32 = udiv %2, %3
                 ...
                 xor edx, edx
                 div r.32.b
-                ; %8: i63 = udiv %4, %5
-                ...
-                shl rax, 0x01
-                shr rax, 0x01
-                shl r.64.c, 0x01
-                shr r.64.c, 0x01
-                xor rdx, rdx
-                div r.64.c
                 ...
                 ",
             false,
@@ -3840,6 +3847,9 @@ mod tests {
                 ...
                 mov rdx, r.64.x
                 mov rdi, r.64.y
+                mov edx, edx
+                mov esi, esi
+                mov edi, edi
                 mov r.64.tgt, 0x{sym_addr:X}
                 call r.64.tgt
                 ...
@@ -3854,21 +3864,26 @@ mod tests {
         let sym_addr = symbol_to_ptr("puts").unwrap().addr();
         codegen_and_test(
             "
-              func_decl puts (i8, i16, ptr)
+              func_decl puts(i8, i16, ptr, i1)
 
               entry:
                 %0: i8 = param 0
                 %1: i16 = param 1
                 %2: ptr = param 2
-                call @puts(%0, %1, %2)
+                %3: i1 = param 3
+                call @puts(%0, %1, %2, %3)
             ",
             &format!(
                 "
                 ...
-                ; call @puts(%0, %1, %2)
+                ; call @puts(%0, %1, %2, %3)
                 ...
-                mov rdx, r.64.x
-                mov rdi, r.64.y
+                mov rcx, r.64.x
+                mov rdx, r.64.y
+                mov rdi, r.64.z
+                and rcx, 0x01
+                and rsi, 0xffff
+                and rdi, 0xff
                 mov r.64.tgt, 0x{sym_addr:X}
                 call r.64.tgt
                 ...
@@ -3918,40 +3933,29 @@ mod tests {
               entry:
                 %0: i16 = param 0
                 %1: i32 = param 1
-                %2: i63 = param 2
-                header_start [%0, %1, %2]
-                %4: i1 = eq %0, %0
-                %5: i1 = eq %1, %1
-                %6: i1 = eq %2, %2
+                header_start [%0, %1]
+                %3: i1 = eq %0, %0
+                %4: i1 = eq %1, %1
+                black_box %3
                 black_box %4
-                black_box %5
-                black_box %6
-                header_end [%0, %1, %2]
+                header_end [%0, %1]
             ",
             "
                 ...
-                ; %4: i1 = eq %0, %0
+                ; %3: i1 = eq %0, %0
                 ......
                 ......
-                movzx r.64.a, r.16.a
-                movzx r.64.b, r.16.b
+                and r.64.a, 0xffff
+                and r.64.b, 0xffff
                 cmp r.64.a, r.64.b
                 setz r.8._
                 ...
-                ; %5: i1 = eq %1, %1
+                ; %4: i1 = eq %1, %1
                 ......
                 ......
                 cmp r.32.c, r.32.d
                 setz r.8._
-                ; %6: i1 = eq %2, %2
-                ......
-                ......
-                shl r.64.e, 0x01
-                shr r.64.e, 0x01
-                shl r.64.f, 0x01
-                shr r.64.f, 0x01
-                cmp r.64.e, r.64.f
-                setz r.8._
+                ; black_box %3
                 ...
             ",
             false,
@@ -3965,23 +3969,17 @@ mod tests {
               entry:
                 %0: i16 = param 0
                 %1: i32 = param 1
-                %2: i63 = param 2
-                %3: i32 = sext %0
-                %4: i64 = sext %1
-                %5: i64 = sext %2
+                %2: i32 = sext %0
+                %3: i64 = sext %1
+                black_box %2
                 black_box %3
-                black_box %4
-                black_box %5
                 ",
             "
                 ...
-                ; %3: i32 = sext %0
+                ; %2: i32 = sext %0
                 movsx r.64.a, r.16.a
-                ; %4: i64 = sext %1
+                ; %3: i64 = sext %1
                 movsxd r.64.b, r.32.b
-                ; %5: i64 = sext %2
-                shl r.64.c, 0x01
-                sar r.64.c, 0x01
                 ...
                 ",
             false,
@@ -3995,24 +3993,15 @@ mod tests {
               entry:
                 %0: i16 = param 0
                 %1: i32 = param 1
-                %2: i63 = param 2
-                %3: i32 = zext %0
-                %4: i64 = zext %1
-                %5: i64 = zext %2
+                %2: i32 = zext %0
+                %3: i64 = zext %1
+                black_box %2
                 black_box %3
-                black_box %4
-                black_box %5
                 ",
             "
                 ...
-                ; %3: i32 = zext %0
-                movzx r.64.a, r.16.a
-                ; %4: i64 = zext %1
-                ...
-                ; %5: i64 = zext %2
-                shl r.64.c, 0x01
-                shr r.64.c, 0x01
-                ...
+                ; %2: i32 = zext %0
+                and r.64.a, 0xffff
                 ",
             false,
         );
@@ -4054,8 +4043,8 @@ mod tests {
                 ...
                 ; guard true, %0, [] ; ...
                 movzx r.64._, byte ptr ...
-                cmp r.8.b, 0x01
-                jnz 0x...
+                bt r.64._, 0x00
+                jnb 0x...
                 ...
                 ; deopt id for guard 0
                 push rsi
@@ -4084,8 +4073,8 @@ mod tests {
                 ...
                 ; guard false, %0, [] ; ...
                 movzx r.64._, byte ptr ...
-                cmp r.8.b, 0x00
-                jnz 0x...
+                bt r.64._, 0x00
+                jb 0x...
                 ...
                 ; deopt id for guard 0
                 push rsi
@@ -4117,8 +4106,8 @@ mod tests {
                 ...
                 ; guard false, %0, [0:%0_0: %0, 0:%0_1: 10i8, 0:%0_2: 32i8, 0:%0_3: 42i8] ; trace_gidx 0 safepoint_id 0
                 movzx r.64._, byte ptr ...
-                cmp r.8.b, 0x00
-                jnz 0x...
+                bt r.64._, 0x00
+                jb 0x...
                 ...
                 ; deopt id for guard 0
                 push rsi
@@ -4148,7 +4137,7 @@ mod tests {
                 ...
                 ; %1: i1 = eq %0, 3i8
                 ...
-                movzx r.64.x, r.8._
+                and r.64.x, 0xff
                 cmp r.64.x, 0x03
                 setz r.8.x
                 ...
@@ -4169,7 +4158,7 @@ mod tests {
             "
                 ...
                 ; %1: i1 = eq %0, 3i8
-                movzx r.64.x, r.8._
+                and r.64.x, 0xff
                 cmp r.64.x, 0x03
                 ; guard true, %1, [] ; ...
                 jnz 0x...
@@ -4194,15 +4183,15 @@ mod tests {
             "
                 ...
                 ; %1: i1 = eq %0, 3i8
-                movzx r.64.x, r.8._
+                and r.64.x, 0xff
                 cmp r.64.x, 0x03
                 setz bl
                 ; guard true, %1, [] ; ...
-                cmp bl, 0x01
-                jnz 0x...
+                bt r.64._, 0x00
+                jnb 0x...
                 ; %3: i8 = sext %1
-                shl rbx, 0x3f
-                sar rbx, 0x3f
+                and r.64.x, 0x01
+                neg r.64.x
                 ; black_box %3
                 ...
             ",
@@ -4298,32 +4287,6 @@ mod tests {
     }
 
     #[test]
-    fn cg_srem_i56() {
-        codegen_and_test(
-            "
-              entry:
-                %0: i56 = param 0
-                %1: i56 = param 1
-                %2: i56 = srem %0, %1
-                black_box %2
-            ",
-            "
-                ...
-                ; %2: i56 = srem %0, %1
-                mov rax, r.64.y
-                shl rax, 0x08
-                sar rax, 0x08
-                shl rsi, 0x08
-                sar rsi, 0x08
-                cqo
-                idiv r.64.x
-                ...
-            ",
-            false,
-        );
-    }
-
-    #[test]
     fn cg_trunc() {
         codegen_and_test(
             "
@@ -4351,7 +4314,7 @@ mod tests {
         codegen_and_test(
             "
               entry:
-                %0: i32 = param 0
+                %0: i1 = param 0
                 %1: i32 = %0 ? 1i32 : 2i32
                 black_box %1
             ",
@@ -4360,8 +4323,8 @@ mod tests {
                 ; %1: i32 = %0 ? 1i32 : 2i32
                 mov r.64.x, 0x01
                 mov r.64.y, 0x02
-                cmp r.8.z, 0x00
-                cmovz r.64.x, r.64.y
+                bt r.64.z, 0x00
+                cmovnb r.64.x, r.64.y
                 ...
             ",
             false,

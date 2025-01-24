@@ -270,7 +270,7 @@ impl MT {
     /// job is related to.
     fn queue_root_compile_job(
         self: &Arc<Self>,
-        trace_iter: (Box<dyn AOTTraceIterator>, Box<[u8]>),
+        trace_iter: (Box<dyn AOTTraceIterator>, Box<[u8]>, Vec<String>),
         hl_arc: Arc<Mutex<HotLocation>>,
     ) {
         self.stats.trace_recorded_ok();
@@ -286,6 +286,7 @@ impl MT {
                 trace_iter.0,
                 Arc::clone(&hl_arc),
                 trace_iter.1,
+                trace_iter.2,
             ) {
                 Ok(ct) => {
                     let mut hl = hl_arc.lock();
@@ -341,7 +342,7 @@ impl MT {
     ///   * `guardid` is the ID of the guard in `parent_ctr` which failed.
     fn queue_sidetrace_compile_job(
         self: &Arc<Self>,
-        trace_iter: (Box<dyn AOTTraceIterator>, Box<[u8]>),
+        trace_iter: (Box<dyn AOTTraceIterator>, Box<[u8]>, Vec<String>),
         hl_arc: Arc<Mutex<HotLocation>>,
         root_ctr: Arc<dyn CompiledTrace>,
         parent_ctr: Arc<dyn CompiledTrace>,
@@ -365,6 +366,7 @@ impl MT {
                 sti,
                 Arc::clone(&hl_arc),
                 trace_iter.1,
+                trace_iter.2,
             ) {
                 Ok(ct) => {
                     parent_ctr.guard(guardid).set_ctr(ct);
@@ -470,6 +472,7 @@ impl MT {
                             hl,
                             thread_tracer: tt,
                             promotions: Vec::new(),
+                            debug_strs: Vec::new(),
                             frameaddr,
                         };
                     }),
@@ -515,17 +518,18 @@ impl MT {
             TransitionControlPoint::StopTracing => {
                 // Assuming no bugs elsewhere, the `unwrap`s cannot fail, because `StartTracing`
                 // will have put a `Some` in the `Rc`.
-                let (hl, thread_tracer, promotions) =
+                let (hl, thread_tracer, promotions, debug_strs) =
                     MTThread::with(
                         |mtt| match mtt.tstate.replace(MTThreadState::Interpreting) {
                             MTThreadState::Tracing {
                                 hl,
                                 thread_tracer,
                                 promotions,
+                                debug_strs,
                                 frameaddr: tracing_frameaddr,
                             } => {
                                 assert_eq!(frameaddr, tracing_frameaddr);
-                                (hl, thread_tracer, promotions)
+                                (hl, thread_tracer, promotions, debug_strs)
                             }
                             _ => unreachable!(),
                         },
@@ -548,7 +552,10 @@ impl MT {
                     Ok(utrace) => {
                         self.stats.timing_state(TimingState::None);
                         self.log.log(Verbosity::JITEvent, "stop-tracing");
-                        self.queue_root_compile_job((utrace, promotions.into_boxed_slice()), hl);
+                        self.queue_root_compile_job(
+                            (utrace, promotions.into_boxed_slice(), debug_strs),
+                            hl,
+                        );
                     }
                     Err(e) => {
                         self.stats.timing_state(TimingState::None);
@@ -565,17 +572,18 @@ impl MT {
             } => {
                 // Assuming no bugs elsewhere, the `unwrap`s cannot fail, because
                 // `StartSideTracing` will have put a `Some` in the `Rc`.
-                let (hl, thread_tracer, promotions) =
+                let (hl, thread_tracer, promotions, debug_strs) =
                     MTThread::with(
                         |mtt| match mtt.tstate.replace(MTThreadState::Interpreting) {
                             MTThreadState::Tracing {
                                 hl,
                                 thread_tracer,
                                 promotions,
+                                debug_strs,
                                 frameaddr: tracing_frameaddr,
                             } => {
                                 assert_eq!(frameaddr, tracing_frameaddr);
-                                (hl, thread_tracer, promotions)
+                                (hl, thread_tracer, promotions, debug_strs)
                             }
                             _ => unreachable!(),
                         },
@@ -586,7 +594,7 @@ impl MT {
                         self.stats.timing_state(TimingState::None);
                         self.log.log(Verbosity::JITEvent, "stop-tracing");
                         self.queue_sidetrace_compile_job(
-                            (utrace, promotions.into_boxed_slice()),
+                            (utrace, promotions.into_boxed_slice(), debug_strs),
                             hl,
                             root_ctr,
                             parent_ctr,
@@ -918,6 +926,7 @@ impl MT {
                             hl,
                             thread_tracer: tt,
                             promotions: Vec::new(),
+                            debug_strs: Vec::new(),
                             frameaddr,
                         };
                     }),
@@ -981,6 +990,8 @@ enum MTThreadState {
         thread_tracer: Box<dyn TraceRecorder>,
         /// Records the content of data recorded via `yk_promote`.
         promotions: Vec<u8>,
+        /// Records the content of data recorded via `yk_debug_str`.
+        debug_strs: Vec<String>,
         /// The `frameaddr` when tracing started. This allows us to tell if we're finishing tracing
         /// at the same point that we started.
         frameaddr: *mut c_void,
@@ -1007,7 +1018,7 @@ enum MTThreadState {
 
 /// Meta-tracer per-thread state. Note that this struct is neither `Send` nor `Sync`: it can only
 /// be accessed from within a single thread.
-pub(crate) struct MTThread {
+pub struct MTThread {
     /// Where in the "interpreting/tracing/executing" is this thread?
     tstate: RefCell<MTThreadState>,
     // Raw pointers are neither send nor sync.
@@ -1130,6 +1141,17 @@ impl MTThread {
         }
         true
     }
+
+    /// Record a debug string.
+    pub fn insert_debug_str(&self, msg: String) -> bool {
+        if let MTThreadState::Tracing {
+            ref mut debug_strs, ..
+        } = *self.tstate.borrow_mut()
+        {
+            debug_strs.push(msg);
+        }
+        true
+    }
 }
 
 /// What action should a caller of [MT::transition_control_point] take?
@@ -1202,6 +1224,7 @@ mod tests {
                 hl,
                 thread_tracer: Box::new(DummyTraceRecorder),
                 promotions: Vec::new(),
+                debug_strs: Vec::new(),
                 frameaddr: ptr::null_mut(),
             };
         });
@@ -1228,6 +1251,7 @@ mod tests {
                 hl,
                 thread_tracer: Box::new(DummyTraceRecorder),
                 promotions: Vec::new(),
+                debug_strs: Vec::new(),
                 frameaddr: ptr::null_mut(),
             };
         });
@@ -1350,6 +1374,7 @@ mod tests {
                             hl,
                             thread_tracer: Box::new(DummyTraceRecorder),
                             promotions: Vec::new(),
+                            debug_strs: Vec::new(),
                             frameaddr: ptr::null_mut(),
                         };
                     });
@@ -1544,6 +1569,7 @@ mod tests {
                                     hl,
                                     thread_tracer: Box::new(DummyTraceRecorder),
                                     promotions: Vec::new(),
+                                    debug_strs: Vec::new(),
                                     frameaddr: ptr::null_mut(),
                                 };
                             });
