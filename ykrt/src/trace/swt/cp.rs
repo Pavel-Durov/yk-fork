@@ -9,7 +9,7 @@ use yksmp::Location::{Constant, Direct, Indirect, LargeConstant, Register};
 pub(crate) static REG64_BYTESIZE: u64 = 8;
 
 // Feature flags
-pub static CP_TRANSITION_DEBUG_MODE: bool = true;
+pub static CP_TRANSITION_DEBUG_MODE: bool = false;
 
 #[repr(usize)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -266,15 +266,15 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
                             dst_val_size
                         );
                         dest_reg_nums.insert(*dst_reg_num, dst_val_size);
+                        // skip copying to the same register with the same value size
+                        if src_reg_num == dst_reg_num && src_val_size == dst_val_size {
+                            continue;
+                        }
                         if CP_TRANSITION_DEBUG_MODE {
                             println!(
                                 "@@ Reg2Reg src: {:?}, dst: {:?}",
                                 src_location, dst_location
                             );
-                        }
-                        // skip copying to the same register with the same value size
-                        if src_reg_num == dst_reg_num && src_val_size == dst_val_size {
-                            continue;
                         }
                         let dest_reg = u8::try_from(*dst_reg_num).unwrap();
                         match *src_val_size {
@@ -442,13 +442,16 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
                         }
                     }
                     Direct(_dst_reg_num, dst_off, _dst_val_size) => {
+                        let temp_off = (index * REG64_BYTESIZE as usize) as i32;
+                        if *src_off == *dst_off {
+                            continue;
+                        }
                         if CP_TRANSITION_DEBUG_MODE {
                             println!(
                                 "@@ Direct2Direct src: {:?}, dst: {:?}",
                                 src_location, dst_location
                             );
                         }
-                        let temp_off = (index * REG64_BYTESIZE as usize) as i32;
 
                         match *src_val_size {
                             1 => todo!(),
@@ -469,13 +472,6 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
             }
             _ => panic!("Unsupported source location: {:?}", src_location),
         }
-    }
-
-    if CP_TRANSITION_DEBUG_MODE {
-        println!(
-            "@@ dst_size: 0x{:x}, dst_rbp: 0x{:x}, dst_addr: 0x{:x}",
-            dst_rec.size as i64, frameaddr as i64, dst_rec.offset
-        );
     }
 
     // TODO: Restore all registers as they were saved by __ykrt_control_point_real
@@ -519,8 +515,7 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
         }
         dynasm!(asm
             ; .arch x64
-            // NOTE: Do we need to restore rsp? Doing so will override the buffer source values are saved at
-            // ; add rsp, src_val_buffer_size  
+            ; add rsp, src_val_buffer_size // remove the buffer from the stack
             ; sub rsp, 0x10 // reserves 16 bytes of space on the stack.
             ; mov [rsp], rax // save rsp
             ; mov rax, QWORD dst_target_addr // loads the target address into rax
