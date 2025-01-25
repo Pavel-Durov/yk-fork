@@ -1,5 +1,6 @@
 use crate::aotsmp::AOT_STACKMAPS;
 use capstone::prelude::*;
+use yksmp::{Record};
 use dynasmrt::{dynasm, x64::Assembler, DynasmApi};
 use std::collections::HashMap;
 use std::env;
@@ -87,52 +88,11 @@ fn reg_num_to_ykrt_control_point_stack_offset(dwarf_reg_num: u16) -> i32 {
         .unwrap_or_else(|| panic!("Unsupported register {}", dwarf_reg_num))
 }
 
-/*
-General stack layout:
-+---------------------------------------------+  <-- RBP (frameaddr, source frame)
-|  RSP - frame size                           |
-+---------------------------------------------+  <--- RSP
-| __ykrt_control_point - Saved Registers      |  (rax, rcx, rbx, rdi, rsi, r8-r15)
-+---------------------------------------------+
-|  Temporary buffer for Source Live Vars      |
-+---------------------------------------------+  <-- RSP
-
-*/
-pub unsafe fn control_point_transition(transition: ControlPointTransition) {
-    let ControlPointTransition {
-        src_smid,
-        dst_smid,
-        frameaddr,
-        rsp,
-        trace_addr,
-        exec_trace,
-        exec_trace_fn,
-    } = transition;
-    let frameaddr = frameaddr as usize;
-    let mut asm = Assembler::new().unwrap();
-
-    let (src_rec, src_pinfo) = AOT_STACKMAPS.as_ref().unwrap().get(src_smid as usize);
-    let (dst_rec, dst_pinfo) = AOT_STACKMAPS.as_ref().unwrap().get(dst_smid as usize);
-
-    let mut src_frame_size: u64 = src_rec.size;
-    if src_pinfo.hasfp {
-        src_frame_size -= REG64_BYTESIZE;
-    }
-    let mut dst_frame_size: u64 = dst_rec.size;
-    if dst_pinfo.hasfp {
-        dst_frame_size -= REG64_BYTESIZE;
-    }
-
-    let src_rbp_offset = src_frame_size as i32 + REG64_BYTESIZE as i32;
-    if *CP_TRANSITION_DEBUG_MODE {
-        println!("@@ TRANSITION from: {:?} to: {:?}", src_smid, dst_smid);
-        dynasm!(asm; .arch x64; int3);
-    }
-
-    // Step 1. Calculate the size of the buffer for source live vars
+fn calculate_live_vars_buffer_size(src_rec: &Record) -> i32 {
     let mut src_val_buffer_size: i32 = 0;
     for (_, src_var) in src_rec.live_vars.iter().enumerate() {
         match src_var.get(0).unwrap() {
+            // TODO: do we need to store direct values?
             Direct(_, _, src_val_size) => {
                 src_val_buffer_size += *src_val_size as i32;
             }
@@ -142,26 +102,13 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
             _ => { /* DO NOTHING */ }
         }
     }
+    src_val_buffer_size
+}
 
-    // Calculate the offset from the RBP to the RSP where __ykrt_control_point_real stored the registers.
-    let rbp_offset_to_ykrt_control_point_reg_store =
-        src_frame_size as i64 + (14 * REG64_BYTESIZE) as i64;
-
-    // Step 2. Set RBP and RSP
-    // +-------------------------------------------+ <- RBP
-    // |       Destination frame                   |
-    // +-------------------------------------------+
-    // |       Temporary Src Live Vars Buffer      |
-    // +-------------------------------------------+ <- RSP
-    dynasm!(asm
-        ; .arch x64
-        ; mov rbp, QWORD frameaddr as i64
-        ; mov rsp, QWORD frameaddr as i64
-        ; sub rsp, (dst_frame_size).try_into().unwrap() // adjust rsp
-        ; sub rsp, src_val_buffer_size // Reserve buffer to store Direct and Indirect values
-    );
-
-    // Step 3. Copy src live vars into the buffer
+fn copy_live_vars_to_temp_buffer(
+    asm: &mut Assembler,
+    src_rec: &Record
+) {
     for (index, src_var) in src_rec.live_vars.iter().enumerate() {
         let temp_off = (index * REG64_BYTESIZE as usize) as i32; // assuming each value is 8 bytes
         let src_location = src_var.get(0).unwrap();
@@ -195,6 +142,81 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
             ),
         }
     }
+}
+
+
+
+/*
+General stack layout:
++---------------------------------------------+  <-- RBP (frameaddr, source frame)
+|  RSP - frame size                           |
++---------------------------------------------+  <--- RSP
+| __ykrt_control_point - Saved Registers      |  (rax, rcx, rbx, rdi, rsi, r8-r15)
++---------------------------------------------+
+|  Temporary buffer for Source Live Vars      |
++---------------------------------------------+  <-- RSP
+*/
+pub unsafe fn control_point_transition(transition: ControlPointTransition) {
+    let ControlPointTransition {
+        src_smid,
+        dst_smid,
+        frameaddr,
+        rsp,
+        trace_addr,
+        exec_trace,
+        exec_trace_fn,
+    } = transition;
+    let frameaddr = frameaddr as usize;
+    let mut asm = Assembler::new().unwrap();
+
+    let (src_rec, src_pinfo) = AOT_STACKMAPS.as_ref().unwrap().get(src_smid as usize);
+    let (dst_rec, dst_pinfo) = AOT_STACKMAPS.as_ref().unwrap().get(dst_smid as usize);
+
+    let mut src_frame_size: u64 = src_rec.size;
+    if src_pinfo.hasfp {
+        src_frame_size -= REG64_BYTESIZE;
+    }
+    let mut dst_frame_size: u64 = dst_rec.size;
+    if dst_pinfo.hasfp {
+        dst_frame_size -= REG64_BYTESIZE;
+    }
+
+    let src_rbp_offset = src_frame_size as i32 + REG64_BYTESIZE as i32;
+    if *CP_TRANSITION_DEBUG_MODE {
+        println!("@@ TRANSITION from: {:?} to: {:?}", src_smid, dst_smid);
+        dynasm!(asm; .arch x64; int3);
+    }
+
+    // Step 1. Calculate the size of the buffer for source live vars
+    let src_val_buffer_size = calculate_live_vars_buffer_size(src_rec);
+
+    // Calculate the offset from the RBP to the RSP where __ykrt_control_point_real stored the registers.
+    let rbp_offset_to_ykrt_control_point_reg_store =
+        src_frame_size as i64 + (14 * REG64_BYTESIZE) as i64;
+
+    // Step 2. Set RBP and RSP
+    // +-------------------------------------------+ <- RBP
+    // |       Destination frame                   |
+    // +-------------------------------------------+
+    // |       Temporary Src Live Vars Buffer      |
+    // +-------------------------------------------+ <- RSP
+    dynasm!(asm
+        ; .arch x64
+        ; mov rbp, QWORD frameaddr as i64
+        ; mov rsp, QWORD frameaddr as i64
+        ; sub rsp, (dst_frame_size).try_into().unwrap() // adjust rsp
+        ; sub rsp, src_val_buffer_size // Reserve buffer to store Direct and Indirect values
+    );
+    // Ensure that RSP remains 16-byte aligned throughout transitions to comply with the x86-64 ABI.
+    assert_eq!(
+        (frameaddr as i64 - dst_frame_size as i64) % 16,
+        0,
+        "RSP is not aligned to 16 bytes"
+    );
+
+    // Step 3. Copy src live vars into the buffer
+    copy_live_vars_to_temp_buffer(&mut asm, src_rec);
+
     if *CP_TRANSITION_DEBUG_MODE {
         println!(
             "@@ src_rbp: 0x{:x}, src_rsp: 0x{:x}, src_rbp_offset: 0x{:x}, src_frame_size: 0x{:x}, dst_frame_size: 0x{:x}, rbp_offset_to_ykrt_control_point_reg_store: 0x{:x}",
@@ -491,7 +513,7 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
             ; mov rsi, QWORD rsp as i64    // Second argument
             ; mov rdx, QWORD trace_addr as i64          // Third argument
             ; mov rcx, QWORD exec_trace_fn as i64         // Move function pointer to rcx
-            ; call rcx // Call the function - we don't care about rcx because its overriden in the exec_trace_fn
+            ; call rcx // Call the function - we don't care about rcx because its overridden in the exec_trace_fn
         );
     } else {
         let call_offset = calc_after_cp_offset(dst_rec.offset).unwrap();
@@ -551,6 +573,7 @@ mod tests {
     use super::*;
     use dynasmrt::{dynasm, x64::Assembler};
     use std::error::Error;
+    use yksmp::{Record, Location, LiveVar};
 
     #[test]
     fn test_calc_after_cp_offset_with_call_instruction() -> Result<(), Box<dyn Error>> {
@@ -589,5 +612,27 @@ mod tests {
         // Assert: The offset should be 13 bytes
         assert_eq!(offset, 11, "The call offset should be 11 bytes");
         Ok(())
+    }
+
+    #[test]
+    fn test_calculate_live_vars_buffer_size() {
+        let mock_record = Record {
+            offset: 0,
+            size: 0,
+            id: 0,
+            live_vars: vec![
+               LiveVar::new(vec![Location::Indirect(0, 0, 16)]),
+               LiveVar::new(vec![Location::Indirect(0, 0, 8)]),
+               LiveVar::new(vec![Location::Indirect(0, 0, 4)]),
+               LiveVar::new(vec![Location::Direct(0, 0, 8)]),
+            ],
+        };
+
+        let buffer_size = calculate_live_vars_buffer_size(&mock_record);
+        assert_eq!(
+            buffer_size,
+            16 + 8 + 4 + 8,
+            "Buffer size should equal the sum of all live variable sizes"
+        );
     }
 }

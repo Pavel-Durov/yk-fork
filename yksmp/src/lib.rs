@@ -113,6 +113,10 @@ pub struct LiveVar {
 }
 
 impl LiveVar {
+    pub fn new(locs: Vec<Location>) -> LiveVar {
+        LiveVar { locs }
+    }
+
     pub fn len(&self) -> usize {
         self.locs.len()
     }
