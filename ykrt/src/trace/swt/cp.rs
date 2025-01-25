@@ -14,9 +14,10 @@ pub(crate) static REG64_BYTESIZE: u64 = 8;
 
 // Feature flags
 pub static CP_TRANSITION_DEBUG_MODE: LazyLock<bool> = LazyLock::new(|| {
-    env::var("YKRT_CP_TRANSITION_DEBUG")
-        .map(|v| v.parse().unwrap_or(false))
-        .unwrap_or(false)
+    // env::var("YKRT_CP_TRANSITION_DEBUG")
+    //     .map(|v| v.parse().unwrap_or(false))
+    //     .unwrap_or(false)
+    true
 });
 
 #[repr(usize)]
@@ -145,105 +146,8 @@ fn copy_live_vars_to_temp_buffer(
 }
 
 
-
-/*
-General stack layout:
-+---------------------------------------------+  <-- RBP (frameaddr, source frame)
-|  RSP - frame size                           |
-+---------------------------------------------+  <--- RSP
-| __ykrt_control_point - Saved Registers      |  (rax, rcx, rbx, rdi, rsi, r8-r15)
-+---------------------------------------------+
-|  Temporary buffer for Source Live Vars      |
-+---------------------------------------------+  <-- RSP
-*/
-pub unsafe fn control_point_transition(transition: ControlPointTransition) {
-    let ControlPointTransition {
-        src_smid,
-        dst_smid,
-        frameaddr,
-        rsp,
-        trace_addr,
-        exec_trace,
-        exec_trace_fn,
-    } = transition;
-    let frameaddr = frameaddr as usize;
-    let mut asm = Assembler::new().unwrap();
-
-    let (src_rec, src_pinfo) = AOT_STACKMAPS.as_ref().unwrap().get(src_smid as usize);
-    let (dst_rec, dst_pinfo) = AOT_STACKMAPS.as_ref().unwrap().get(dst_smid as usize);
-
-    let mut src_frame_size: u64 = src_rec.size;
-    if src_pinfo.hasfp {
-        src_frame_size -= REG64_BYTESIZE;
-    }
-    let mut dst_frame_size: u64 = dst_rec.size;
-    if dst_pinfo.hasfp {
-        dst_frame_size -= REG64_BYTESIZE;
-    }
-
-    let src_rbp_offset = src_frame_size as i32 + REG64_BYTESIZE as i32;
-    if *CP_TRANSITION_DEBUG_MODE {
-        println!("@@ TRANSITION from: {:?} to: {:?}", src_smid, dst_smid);
-        dynasm!(asm; .arch x64; int3);
-    }
-
-    // Step 1. Calculate the size of the buffer for source live vars
-    let src_val_buffer_size = calculate_live_vars_buffer_size(src_rec);
-
-    // Calculate the offset from the RBP to the RSP where __ykrt_control_point_real stored the registers.
-    let rbp_offset_to_ykrt_control_point_reg_store =
-        src_frame_size as i64 + (14 * REG64_BYTESIZE) as i64;
-
-    // Step 2. Set RBP and RSP
-    // +-------------------------------------------+ <- RBP
-    // |       Destination frame                   |
-    // +-------------------------------------------+
-    // |       Temporary Src Live Vars Buffer      |
-    // +-------------------------------------------+ <- RSP
-    dynasm!(asm
-        ; .arch x64
-        ; mov rbp, QWORD frameaddr as i64
-        ; mov rsp, QWORD frameaddr as i64
-        ; sub rsp, (dst_frame_size).try_into().unwrap() // adjust rsp
-        ; sub rsp, src_val_buffer_size // Reserve buffer to store Direct and Indirect values
-    );
-    // Ensure that RSP remains 16-byte aligned throughout transitions to comply with the x86-64 ABI.
-    assert_eq!(
-        (frameaddr as i64 - dst_frame_size as i64) % 16,
-        0,
-        "RSP is not aligned to 16 bytes"
-    );
-
-    // Step 3. Copy src live vars into the buffer
-    copy_live_vars_to_temp_buffer(&mut asm, src_rec);
-
-    if *CP_TRANSITION_DEBUG_MODE {
-        println!(
-            "@@ src_rbp: 0x{:x}, src_rsp: 0x{:x}, src_rbp_offset: 0x{:x}, src_frame_size: 0x{:x}, dst_frame_size: 0x{:x}, rbp_offset_to_ykrt_control_point_reg_store: 0x{:x}",
-            frameaddr as i64,
-            frameaddr as i64 - rbp_offset_to_ykrt_control_point_reg_store,
-            src_rbp_offset,
-            src_frame_size,
-            dst_frame_size,
-            rbp_offset_to_ykrt_control_point_reg_store
-        );
-        println!("--------------------------------");
-        println!("@@ src live vars - smid: {:?}", src_smid);
-        for (index, src_var) in src_rec.live_vars.iter().enumerate() {
-            let src_location = &src_var.get(0).unwrap();
-            println!("{} - {:?}", index, src_location);
-        }
-        println!("@@ dst live vars - smid: {:?}", dst_smid);
-        for (index, dst_var) in dst_rec.live_vars.iter().enumerate() {
-            let dst_location = &dst_var.get(0).unwrap();
-            println!("{} - {:?}", index, dst_location);
-        }
-        println!("--------------------------------");
-    }
-
+fn set_destination_live_vars(asm: &mut Assembler, src_rec: &Record, dst_rec: &Record, rbp_offset_to_ykrt_control_point_reg_store: i64) -> HashMap<u16, u16> {
     let mut dest_reg_nums = HashMap::new();
-
-    // Step 4. Set destination live vars
     for (index, src_var) in src_rec.live_vars.iter().enumerate() {
         let dst_var = &dst_rec.live_vars[index];
         if src_var.len() > 1 || dst_var.len() > 1 {
@@ -279,7 +183,7 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
                             src_val_size,
                             dst_val_size
                         );
-                        dest_reg_nums.insert(*dst_reg_num, dst_val_size);
+                        dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
                         // skip copying to the same register with the same value size
                         if src_reg_num == dst_reg_num && src_val_size == dst_val_size {
                             continue;
@@ -414,7 +318,7 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
                                 src_location, dst_location
                             );
                         }
-                        dest_reg_nums.insert(*dst_reg_num, dst_val_size);
+                        dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
                         assert!(*src_reg_num == 6, "Indirect register is expected to be rbp");
                         let dst_reg = u8::try_from(*dst_reg_num).unwrap();
                         let temp_buffer_off = (index * REG64_BYTESIZE as usize) as i32;
@@ -439,7 +343,7 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
                                 src_location, dst_location
                             );
                         }
-                        dest_reg_nums.insert(*dst_reg_num, dst_val_size);
+                        dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
                         let dst_reg = u8::try_from(*dst_reg_num).unwrap();
                         match *dst_val_size {
                             1 => todo!(),
@@ -483,6 +387,107 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
             _ => panic!("Unsupported source location: {:?}", src_location),
         }
     }
+    dest_reg_nums
+}
+
+/*
+General stack layout:
+    +---------------------------------------------+  <-- RBP (frameaddr, source frame)
+    |  RSP - frame size                           |
+    +---------------------------------------------+  <--- RSP
+    | __ykrt_control_point - Saved Registers      |  (rax, rcx, rbx, rdi, rsi, r8-r15)
+    +---------------------------------------------+
+    |  Temporary buffer for Source Live Vars      |
+    +---------------------------------------------+  <-- RSP
+*/
+pub unsafe fn control_point_transition(transition: ControlPointTransition) {
+    let ControlPointTransition {
+        src_smid,
+        dst_smid,
+        frameaddr,
+        rsp,
+        trace_addr,
+        exec_trace,
+        exec_trace_fn,
+    } = transition;
+    let frameaddr = frameaddr as usize;
+    let mut asm = Assembler::new().unwrap();
+
+    let (src_rec, src_pinfo) = AOT_STACKMAPS.as_ref().unwrap().get(src_smid as usize);
+    let (dst_rec, dst_pinfo) = AOT_STACKMAPS.as_ref().unwrap().get(dst_smid as usize);
+
+    let mut src_frame_size: u64 = src_rec.size;
+    if src_pinfo.hasfp {
+        src_frame_size -= REG64_BYTESIZE;
+    }
+    let mut dst_frame_size: u64 = dst_rec.size;
+    if dst_pinfo.hasfp {
+        dst_frame_size -= REG64_BYTESIZE;
+    }
+
+    let src_rbp_offset = src_frame_size as i32 + REG64_BYTESIZE as i32;
+    if *CP_TRANSITION_DEBUG_MODE {
+        println!("@@ TRANSITION from: {:?} to: {:?}", src_smid, dst_smid);
+        dynasm!(asm; .arch x64; int3);
+    }
+
+    // Step 1. Calculate the size of the buffer for source live vars
+    let src_val_buffer_size = calculate_live_vars_buffer_size(src_rec);
+
+    // Calculate the offset from the RBP to the RSP where __ykrt_control_point_real stored the registers.
+    let rbp_offset_to_ykrt_control_point_reg_store =
+        src_frame_size as i64 + (14 * REG64_BYTESIZE) as i64;
+
+    // Step 2. Set RBP and RSP
+    // +-------------------------------------------+ <- RBP
+    // |       Destination frame                   |
+    // +-------------------------------------------+
+    // |       Temporary Src Live Vars Buffer      |
+    // +-------------------------------------------+ <- RSP
+    dynasm!(asm
+        ; .arch x64
+        ; mov rbp, QWORD frameaddr as i64
+        ; mov rsp, QWORD frameaddr as i64
+        ; sub rsp, (dst_frame_size).try_into().unwrap() // adjust rsp
+        ; sub rsp, src_val_buffer_size // Reserve buffer to store Direct and Indirect values
+    );
+    // Ensure that RSP remains 16-byte aligned throughout transitions to comply with the x86-64 ABI.
+    assert_eq!(
+        (frameaddr as i64 - dst_frame_size as i64) % 16,
+        0,
+        "RSP is not aligned to 16 bytes"
+    );
+
+    // Step 3. Copy src live vars into the buffer
+    copy_live_vars_to_temp_buffer(&mut asm, src_rec);
+
+    if *CP_TRANSITION_DEBUG_MODE {
+        println!(
+            "@@ src_rbp: 0x{:x}, src_rsp: 0x{:x}, src_rbp_offset: 0x{:x}, src_frame_size: 0x{:x}, dst_frame_size: 0x{:x}, rbp_offset_to_ykrt_control_point_reg_store: 0x{:x}",
+            frameaddr as i64,
+            frameaddr as i64 - rbp_offset_to_ykrt_control_point_reg_store,
+            src_rbp_offset,
+            src_frame_size,
+            dst_frame_size,
+            rbp_offset_to_ykrt_control_point_reg_store
+        );
+        println!("--------------------------------");
+        println!("@@ src live vars - smid: {:?}", src_smid);
+        for (index, src_var) in src_rec.live_vars.iter().enumerate() {
+            let src_location = &src_var.get(0).unwrap();
+            println!("{} - {:?}", index, src_location);
+        }
+        println!("@@ dst live vars - smid: {:?}", dst_smid);
+        for (index, dst_var) in dst_rec.live_vars.iter().enumerate() {
+            let dst_location = &dst_var.get(0).unwrap();
+            println!("{} - {:?}", index, dst_location);
+        }
+        println!("--------------------------------");
+    }
+
+
+    // Step 4. Set destination live vars
+    let dest_reg_nums = set_destination_live_vars(&mut asm, src_rec, dst_rec, rbp_offset_to_ykrt_control_point_reg_store);
 
     // TODO: Restore all registers as they were saved by __ykrt_control_point_real
     // Issue: saved values are seems to be overridden by the values in the stack
@@ -493,9 +498,9 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
     //                 "@@ Restoring reg: {:?}, reg_offset: {:?}",
     //                 reg_num, reg_offset
     //             );
+    //             // dynasm!(asm; int3);
     //         }
     //         dynasm!(asm
-    //             ; int3
     //             ; mov Rq(u8::try_from(*reg_num).unwrap()), QWORD [rbp - rbp_offset_to_ykrt_control_point_reg_store as i32 + *reg_offset]
     //         );
     //     }

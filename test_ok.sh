@@ -3,7 +3,7 @@
 set -e -pipefail
 
 export YKB_TRACER=swt
-export CP_TRANSITION_DEBUG_MODE=true
+export CP_TRANSITION_DEBUG_MODE=false
 
 ARGS=""
 
