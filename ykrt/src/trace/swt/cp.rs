@@ -375,7 +375,7 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
                     }
                 }
             }
-            Indirect(src_reg_num, src_off, src_val_size) => {
+            Indirect(src_reg_num, _src_off, src_val_size) => {
                 match dst_location {
                     Indirect(_dst_reg_num, dst_off, dst_val_size) => {
                         if *CP_TRANSITION_DEBUG_MODE {
