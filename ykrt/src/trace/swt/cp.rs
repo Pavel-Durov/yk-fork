@@ -14,10 +14,9 @@ pub(crate) static REG64_BYTESIZE: u64 = 8;
 
 // Feature flags
 pub static CP_TRANSITION_DEBUG_MODE: LazyLock<bool> = LazyLock::new(|| {
-    // env::var("YKRT_CP_TRANSITION_DEBUG")
-    //     .map(|v| v.parse().unwrap_or(false))
-    //     .unwrap_or(false)
-    true
+    env::var("CP_TRANSITION_DEBUG_MODE")
+        .map(|v| v.parse().unwrap_or(false))
+        .unwrap_or(false)
 });
 
 #[repr(usize)]
@@ -29,9 +28,15 @@ pub enum ControlPointStackMapId {
     UnOpt = 1,
 }
 
-pub struct ControlPointTransition {
-    pub src_smid: ControlPointStackMapId,
-    pub dst_smid: ControlPointStackMapId,
+#[repr(usize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CPTransitionDirection {
+    UnoptToOpt = 0,
+    OptToUnopt = 1,
+}
+
+pub struct CPTransition {
+    pub direction: CPTransitionDirection,
     pub frameaddr: *const c_void,
     pub rsp: *const c_void,
     pub trace_addr: *const c_void,
@@ -316,6 +321,9 @@ fn set_destination_live_vars(
                     ),
                 }
             }
+            Direct(_, _, _) => {
+                // Do nothing
+            }
             _ => panic!("Unexpected source location: {:?}", src_location),
         }
     }
@@ -332,10 +340,9 @@ General stack layout:
     |  Temporary buffer for Source Live Vars      |
     +---------------------------------------------+  <-- RSP
 */
-pub unsafe fn control_point_transition(transition: ControlPointTransition) {
-    let ControlPointTransition {
-        src_smid,
-        dst_smid,
+pub unsafe fn control_point_transition(transition: CPTransition) {
+    let CPTransition {
+        direction,
         frameaddr,
         rsp,
         trace_addr,
@@ -344,6 +351,14 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
     } = transition;
     let frameaddr = frameaddr as usize;
     let mut asm = Assembler::new().unwrap();
+
+    let mut src_smid = ControlPointStackMapId::Opt;
+    let mut dst_smid = ControlPointStackMapId::UnOpt;
+
+    if direction == CPTransitionDirection::UnoptToOpt {
+        src_smid = ControlPointStackMapId::UnOpt;
+        dst_smid = ControlPointStackMapId::Opt;
+    }
 
     let (src_rec, src_pinfo) = AOT_STACKMAPS.as_ref().unwrap().get(src_smid as usize);
     let (dst_rec, dst_pinfo) = AOT_STACKMAPS.as_ref().unwrap().get(dst_smid as usize);
@@ -431,8 +446,8 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
     //     if !dest_reg_nums.contains_key(reg_num) {
     //         if *CP_TRANSITION_DEBUG_MODE {
     //             println!(
-    //                 "@@ Restoring reg: {:?}, reg_offset: {:?}",
-    //                 reg_num, reg_offset
+    //                 "@@ Restoring reg: {:?}, reg_offset: 0x{:x}, total_offset: 0x{:x}",
+    //                 reg_num, reg_offset, rbp_offset_to_ykrt_control_point_reg_store as i32 + *reg_offset
     //             );
     //             // dynasm!(asm; int3);
     //         }
@@ -473,6 +488,7 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
     let func: unsafe fn() = std::mem::transmute(buffer.as_ptr());
     func();
 }
+
 
 // Example:
 //  CP Record offset points to 0x00000000002023a4, we want to find the
@@ -600,12 +616,7 @@ mod swt_cp_transition_tests {
 
         let mut asm = Assembler::new().unwrap();
         // Act: Call the function to test Register-to-Register copy
-        let dest_reg_nums = set_destination_live_vars(
-            &mut asm,
-            &src_rec,
-            &dst_rec,
-            0x10,
-        );
+        let dest_reg_nums = set_destination_live_vars(&mut asm, &src_rec, &dst_rec, 0x10);
         // Finalize the assembly and disassemble the instructions
         let buffer = asm.finalize().unwrap();
         let code_ptr = buffer.ptr(dynasmrt::AssemblyOffset(0)) as *const u8;
@@ -634,8 +645,7 @@ mod swt_cp_transition_tests {
         );
         // Assert that the instruction matches the expected format
         assert_eq!(
-            inst_string,
-            "mov rcx, qword ptr [rbp - 0x10]",
+            inst_string, "mov rcx, qword ptr [rbp - 0x10]",
             "The generated instruction should match the expected format"
         );
 
