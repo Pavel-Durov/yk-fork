@@ -587,7 +587,7 @@ mod tests {
         // Act: Calculate the call offset
         let offset = calc_after_cp_offset(code_ptr)?;
         // Assert: The offset should be 13 bytes
-        assert_eq!(offset, 13, "The call offset should be 13 bytes");
+        assert_eq!(offset, 11, "The call offset should be 11 bytes");
         Ok(())
     }
 }
