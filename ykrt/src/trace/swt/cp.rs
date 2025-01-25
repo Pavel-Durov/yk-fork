@@ -1,6 +1,5 @@
 use crate::aotsmp::AOT_STACKMAPS;
 use capstone::prelude::*;
-use yksmp::{Record};
 use dynasmrt::{dynasm, x64::Assembler, DynasmApi};
 use std::collections::HashMap;
 use std::env;
@@ -8,6 +7,7 @@ use std::error::Error;
 use std::ffi::c_void;
 use std::sync::LazyLock;
 use yksmp::Location::{Constant, Direct, Indirect, LargeConstant, Register};
+use yksmp::Record;
 
 /// The size of a 64-bit register in bytes.
 pub(crate) static REG64_BYTESIZE: u64 = 8;
@@ -106,10 +106,7 @@ fn calculate_live_vars_buffer_size(src_rec: &Record) -> i32 {
     src_val_buffer_size
 }
 
-fn copy_live_vars_to_temp_buffer(
-    asm: &mut Assembler,
-    src_rec: &Record
-) {
+fn copy_live_vars_to_temp_buffer(asm: &mut Assembler, src_rec: &Record) {
     for (index, src_var) in src_rec.live_vars.iter().enumerate() {
         let temp_off = (index * REG64_BYTESIZE as usize) as i32; // assuming each value is 8 bytes
         let src_location = src_var.get(0).unwrap();
@@ -145,8 +142,12 @@ fn copy_live_vars_to_temp_buffer(
     }
 }
 
-
-fn set_destination_live_vars(asm: &mut Assembler, src_rec: &Record, dst_rec: &Record, rbp_offset_to_ykrt_control_point_reg_store: i64) -> HashMap<u16, u16> {
+fn set_destination_live_vars(
+    asm: &mut Assembler,
+    src_rec: &Record,
+    dst_rec: &Record,
+    rbp_offset_to_ykrt_control_point_reg_store: i64,
+) -> HashMap<u16, u16> {
     let mut dest_reg_nums = HashMap::new();
     for (index, src_var) in src_rec.live_vars.iter().enumerate() {
         let dst_var = &dst_rec.live_vars[index];
@@ -249,34 +250,10 @@ fn set_destination_live_vars(asm: &mut Assembler, src_rec: &Record, dst_rec: &Re
                             ),
                         }
                     }
-                    Direct(_dst_reg_num, dst_off, _dst_val_size) => {
-                        if *CP_TRANSITION_DEBUG_MODE {
-                            println!(
-                                "Register2Direct - src: {:?} dst: {:?}",
-                                src_location, dst_location
-                            );
-                        }
-                        match *src_val_size {
-                            1 => todo!(),
-                            2 => todo!(),
-                            4 => todo!(),
-                            8 => dynasm!(asm
-                                ; mov rax, QWORD [rbp - src_reg_val_rbp_offset]
-                                ; mov rax, QWORD [rax]
-                                ; mov [rbp + *dst_off], rax
-                            ),
-                            _ => panic!(
-                                "Unexpected Indirect to Register value size: {}",
-                                src_val_size
-                            ),
-                        }
-                    }
-                    Constant(_val) => {
-                        todo!("implement Indirect to Constant")
-                    }
-                    LargeConstant(_val) => {
-                        todo!("implement Indirect to LargeConstant")
-                    }
+                    _ => panic!(
+                        "Unexpected target for Register source location - src: {:?}, dst: {:?}",
+                        src_location, dst_location
+                    ),
                 }
             }
             Indirect(src_reg_num, _src_off, src_val_size) => {
@@ -327,64 +304,19 @@ fn set_destination_live_vars(asm: &mut Assembler, src_rec: &Record, dst_rec: &Re
                             2 => dynasm!(asm; mov Rw(dst_reg), WORD [rsp + temp_buffer_off]),
                             4 => dynasm!(asm; mov Rd(dst_reg), DWORD [rsp + temp_buffer_off]),
                             8 => dynasm!(asm; mov Rq(dst_reg), QWORD [rsp + temp_buffer_off]),
-                            _ => panic!("Unsupported source value size: {}", src_val_size),
-                        }
-                    }
-                    _ => panic!("Unsupported dst location: {:?}", dst_location),
-                }
-            }
-            Direct(_src_reg_num, src_off, src_val_size) => {
-                let temp_buffer_off = (index * REG64_BYTESIZE as usize) as i32;
-                match dst_location {
-                    Register(dst_reg_num, dst_val_size, _dst_add_locs) => {
-                        if *CP_TRANSITION_DEBUG_MODE {
-                            println!(
-                                "Direct2Register - src: {:?} dst: {:?}",
-                                src_location, dst_location
-                            );
-                        }
-                        dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
-                        let dst_reg = u8::try_from(*dst_reg_num).unwrap();
-                        match *dst_val_size {
-                            1 => todo!(),
-                            2 => todo!(),
-                            4 => todo!(),
-                            8 => dynasm!(asm
-                                ; lea Rq(dst_reg), [rsp + temp_buffer_off]
-                            ),
-                            _ => panic!("Unsupported source value size: {}", src_val_size),
-                        }
-                    }
-                    Direct(_dst_reg_num, dst_off, _dst_val_size) => {
-                        // skip copying the same offset cause both variables reuse the same shadowstack.
-                        if *src_off == *dst_off {
-                            continue;
-                        }
-                        if *CP_TRANSITION_DEBUG_MODE {
-                            println!(
-                                "@@ Direct2Direct src: {:?}, dst: {:?}",
-                                src_location, dst_location
-                            );
-                        }
-
-                        match *src_val_size {
-                            1 => todo!(),
-                            2 => todo!(),
-                            4 => todo!(),
-                            8 => dynasm!(asm
-                                ; mov rax, QWORD [rsp + temp_buffer_off]
-                                ; mov [rbp + i32::try_from(*dst_off).unwrap()], rax
-                            ),
                             _ => panic!(
                                 "Unexpected Indirect to Register value size: {}",
                                 src_val_size
                             ),
                         }
                     }
-                    _ => panic!("Unsupported dst location: {:?}", dst_location),
+                    _ => panic!(
+                        "Unexpected target for Indirect source location - src: {:?}, dst: {:?}",
+                        src_location, dst_location
+                    ),
                 }
             }
-            _ => panic!("Unsupported source location: {:?}", src_location),
+            _ => panic!("Unexpected source location: {:?}", src_location),
         }
     }
     dest_reg_nums
@@ -485,9 +417,13 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
         println!("--------------------------------");
     }
 
-
     // Step 4. Set destination live vars
-    let dest_reg_nums = set_destination_live_vars(&mut asm, src_rec, dst_rec, rbp_offset_to_ykrt_control_point_reg_store);
+    let dest_reg_nums = set_destination_live_vars(
+        &mut asm,
+        src_rec,
+        dst_rec,
+        rbp_offset_to_ykrt_control_point_reg_store,
+    );
 
     // TODO: Restore all registers as they were saved by __ykrt_control_point_real
     // Issue: saved values are seems to be overridden by the values in the stack
@@ -513,7 +449,6 @@ pub unsafe fn control_point_transition(transition: ControlPointTransition) {
         // Move the arguments into the appropriate registers
         dynasm!(asm
             ; .arch x64
-            ; int3
             ; mov rdi, QWORD frameaddr as i64                   // First argument
             ; mov rsi, QWORD rsp as i64    // Second argument
             ; mov rdx, QWORD trace_addr as i64          // Third argument
@@ -574,11 +509,11 @@ fn calc_after_cp_offset(rec_offset: u64) -> Result<i64, Box<dyn Error>> {
 }
 
 #[cfg(test)]
-mod tests {
+mod swt_cp_transition_tests {
     use super::*;
     use dynasmrt::{dynasm, x64::Assembler};
     use std::error::Error;
-    use yksmp::{Record, Location, LiveVar};
+    use yksmp::{LiveVar, Location, Record};
 
     #[test]
     fn test_calc_after_cp_offset_with_call_instruction() -> Result<(), Box<dyn Error>> {
@@ -599,6 +534,7 @@ mod tests {
         assert_eq!(offset, 6, "The call offset should be 6 bytes");
         Ok(())
     }
+
     #[test]
     fn test_calc_after_cp_offset_with_movabs_and_nops() -> Result<(), Box<dyn Error>> {
         // Arrange: Create a buffer with movabs, multiple nops, and call instruction
@@ -626,10 +562,10 @@ mod tests {
             size: 0,
             id: 0,
             live_vars: vec![
-               LiveVar::new(vec![Location::Indirect(0, 0, 16)]),
-               LiveVar::new(vec![Location::Indirect(0, 0, 8)]),
-               LiveVar::new(vec![Location::Indirect(0, 0, 4)]),
-               LiveVar::new(vec![Location::Direct(0, 0, 8)]),
+                LiveVar::new(vec![Location::Indirect(0, 0, 16)]),
+                LiveVar::new(vec![Location::Indirect(0, 0, 8)]),
+                LiveVar::new(vec![Location::Indirect(0, 0, 4)]),
+                LiveVar::new(vec![Location::Direct(0, 0, 8)]),
             ],
         };
 
@@ -640,4 +576,77 @@ mod tests {
             "Buffer size should equal the sum of all live variable sizes"
         );
     }
+
+    #[test]
+    fn test_set_destination_live_vars_register_to_register() {
+        // Arrange: Create mock `src_rec` and `dst_rec` for Register-to-Register live vars
+        let src_rec = Record {
+            offset: 0,
+            size: 0,
+            id: 0,
+            live_vars: vec![
+                LiveVar::new(vec![Location::Register(15, 8, vec![])]), // r15, size 8
+            ],
+        };
+
+        let dst_rec = Record {
+            offset: 0,
+            size: 0,
+            id: 0,
+            live_vars: vec![
+                LiveVar::new(vec![Location::Register(1, 8, vec![])]), // rcx, size 8
+            ],
+        };
+
+        let mut asm = Assembler::new().unwrap();
+        // Act: Call the function to test Register-to-Register copy
+        let dest_reg_nums = set_destination_live_vars(
+            &mut asm,
+            &src_rec,
+            &dst_rec,
+            0x10,
+        );
+        // Finalize the assembly and disassemble the instructions
+        let buffer = asm.finalize().unwrap();
+        let code_ptr = buffer.ptr(dynasmrt::AssemblyOffset(0)) as *const u8;
+        let code_size = buffer.len();
+
+        // Use Capstone to disassemble and check the generated instructions
+        let capstone = Capstone::new()
+            .x86()
+            .mode(arch::x86::ArchMode::Mode64)
+            .build()
+            .unwrap();
+
+        let instructions = capstone
+            .disasm_all(
+                unsafe { std::slice::from_raw_parts(code_ptr, code_size) },
+                code_ptr as u64,
+            )
+            .expect("Failed to disassemble code");
+
+        // Check the first instruction
+        let first_inst = instructions.first().unwrap();
+        let inst_string = format!(
+            "{} {}",
+            first_inst.mnemonic().unwrap_or(""),
+            first_inst.op_str().unwrap_or("")
+        );
+        // Assert that the instruction matches the expected format
+        assert_eq!(
+            inst_string,
+            "mov rcx, qword ptr [rbp - 0x10]",
+            "The generated instruction should match the expected format"
+        );
+
+        // Verify dest_reg_nums maps rcx to its value size
+        assert_eq!(
+            dest_reg_nums.get(&1),
+            Some(&8),
+            "The destination register (rcx) should be recorded with its size"
+        );
+    }
+    // TODO: test register to indirect
+    // TODO: test indirect to register
+    // TODO: test indirect to indirect
 }
