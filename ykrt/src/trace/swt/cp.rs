@@ -229,19 +229,19 @@ fn set_destination_live_vars(
                                 src_location, dst_location
                             );
                         }
-                        let dest_reg = u8::try_from(*dst_reg_num).unwrap();
+                        let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
                         match *src_val_size {
                             1 => {
-                                dynasm!(asm; mov Rb(dest_reg), BYTE [rbp - src_reg_val_rbp_offset])
+                                dynasm!(asm; mov Rb(dst_reg), BYTE [rbp - src_reg_val_rbp_offset])
                             }
                             2 => {
-                                dynasm!(asm; mov Rw(dest_reg), WORD [rbp - src_reg_val_rbp_offset])
+                                dynasm!(asm; mov Rw(dst_reg), WORD [rbp - src_reg_val_rbp_offset])
                             }
                             4 => {
-                                dynasm!(asm; mov Rd(dest_reg), DWORD [rbp - src_reg_val_rbp_offset])
+                                dynasm!(asm; mov Rd(dst_reg), DWORD [rbp - src_reg_val_rbp_offset])
                             }
                             8 => {
-                                dynasm!(asm; mov Rq(dest_reg), QWORD [rbp - src_reg_val_rbp_offset])
+                                dynasm!(asm; mov Rq(dst_reg), QWORD [rbp - src_reg_val_rbp_offset])
                             }
                             _ => {
                                 todo!("unexpect Register to Register value size {}", src_val_size)
@@ -301,7 +301,7 @@ fn set_destination_live_vars(
                         }
                         dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
                         assert!(*src_reg_num == 6, "Indirect register is expected to be rbp");
-                        let dst_reg = u8::try_from(*dst_reg_num).unwrap();
+                        let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
                         let temp_buffer_off = (index * REG64_BYTESIZE as usize) as i32;
                         match *dst_val_size {
                             1 => dynasm!(asm; mov Rb(dst_reg), BYTE [rsp + temp_buffer_off]),
