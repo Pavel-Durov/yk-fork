@@ -83,7 +83,8 @@
         "cinttypes": "cpp",
         "*.inc": "cpp",
         "yk_testing.h": "c",
-        "stdio.h": "c"
+        "stdio.h": "c",
+        "stdlib.h": "c"
     },
     "rust-analyzer.server.path": null,
     "rust-analyzer.trace.server": "verbose",
