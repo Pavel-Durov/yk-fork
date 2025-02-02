@@ -80,6 +80,15 @@
         "utility": "cpp",
         "stop_token": "cpp",
         "thread": "cpp",
-        "cinttypes": "cpp"
-    }
+        "cinttypes": "cpp",
+        "*.inc": "cpp",
+        "yk_testing.h": "c",
+        "stdio.h": "c"
+    },
+    "rust-analyzer.server.path": null,
+    "rust-analyzer.trace.server": "verbose",
+    "rust-analyzer.diagnostics.disabled": [
+        "unreachable_code",
+        "unused_variables"
+    ]
 }

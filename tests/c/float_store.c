@@ -1,3 +1,4 @@
+// ignore-if: test $SWT_MODULE_CLONE_SKIP_FAILING_TEST=true
 // Run-time:
 //   env-var: YKD_LOG_IR=aot,jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
@@ -23,7 +24,7 @@
 //     %{{10}}: float = si_to_fp %{{_}}
 //     %{{_}}: float = fdiv %{{10}}, 1.23float
 //     ...
-//     --- End jit-pre-opt ---
+//     --- End jit-plang_testsre-opt ---
 //     3 -> 2.439024
 //     3 -> 2.439024
 //     3 -> 2.439024

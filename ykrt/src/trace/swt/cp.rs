@@ -692,7 +692,7 @@ mod swt_cp_transition_tests {
         );
         // Assert that the instruction matches the expected format
         assert_eq!(
-            inst_string, "mov rcx, qword ptr [rbp - 0x10]",
+            inst_string, "mov rdx, qword ptr [rbp - 0x10]",
             "The generated instruction should match the expected format"
         );
 

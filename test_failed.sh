@@ -3,7 +3,6 @@
 # set -eu
 
 export YKB_TRACER=swt
-export CP_TRANSITION_DEBUG_MODE=false
 
 ARGS=""
 
@@ -11,17 +10,69 @@ if [ "$1" = "verbose" ]; then
     ARGS="-- --nocapture"
 fi
 
+export SWT_MODULE_CLONE=false
 
 # Tests that are currently failing
 echo "Running failing tests..."
-~/.cargo/bin/cargo test ::outline_recursion.c $ARGS
-~/.cargo/bin/cargo test ::floats_return.c $ARGS
-~/.cargo/bin/cargo test ::yk_unroll_safe_vs_yk_outline.c $ARGS
-~/.cargo/bin/cargo test ::strarray.c $ARGS
-~/.cargo/bin/cargo test ::ykd_opt_off.c $ARGS
-~/.cargo/bin/cargo test ::no_trace_annotation.c $ARGS
-~/.cargo/bin/cargo test ::simple_inline.c $ARGS
-~/.cargo/bin/cargo test ::nested_writetoptr.c $ARGS
-~/.cargo/bin/cargo test ::nested_sidetrace.c $ARGS
-~/.cargo/bin/cargo test ::udiv.c $ARGS
-~/.cargo/bin/cargo test ::internal_linkage_same_obj.c $ARGS
+
+# find ./tests/c -type f -name "*.c" -exec grep -l "SWT_MODULE_CLONE_SKIP_FAILING_TEST" {} \; | xargs -n 1 basename
+run_test() {
+    local test_name=$1
+    echo "Running test: $test_name"
+    export SWT_MODULE_CLONE_SKIP_FAILING_TEST=false
+    export YKB_TRACER=swt
+    ~/.cargo/bin/cargo test lang_tests::$test_name $ARGS
+    if [ $? -eq 0 ]; then
+        echo "❌ WARNING: Test $test_name unexpectedly PASSED"s
+        return 1
+    else
+        echo "✓ Test $test_name failed as expected"
+        return 0
+    fi
+}
+
+# Run each test and count failures
+for test in \
+    floats_return.c \
+    ptradd.c \
+    simplecall.c \
+    simple_inline2.c \
+    fcmp_float.c \
+    arithmetic.c \
+    phi3.c \
+    float_store.c \
+    promote_many.c \
+    phi1.c \
+    no_trace_annotation2.c \
+    simple_binop.c \
+    bf.O0.c \
+    bigloop.c \
+    loopy_funcs_not_inlined_by_default.c \
+    srem.c \
+    peel1.c \
+    bf.O2.c \
+    simple_inline.c \
+    bf.O3.c \
+    fcmp_double.c \
+    bf.O1.c \
+    sdiv.c \
+    guard_consting.c \
+    phi2.c \
+    doubleinline.c \
+    udiv.c \
+    fp_to_si.c \
+    outline_recursion_indirect.c
+do
+    total_count=$((total_count + 1))
+    if run_test "$test"; then
+        failed_count=$((failed_count + 1))
+    fi
+done
+
+echo "Summary: $failed_count/$total_count tests failed as expected"
+
+# If any test passed unexpectedly, exit with error
+if [ $failed_count -ne $total_count ]; then
+    echo "Error: Some tests passed unexpectedly!"
+    exit 1
+fi
