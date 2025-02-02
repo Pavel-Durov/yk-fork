@@ -8,6 +8,7 @@ use crate::compile::jitc_yk::aot_ir;
 
 use super::super::{
     aot_ir::{BinOp, FloatPredicate, InstID, Predicate},
+    arbbitint::ArbBitInt,
     jit_ir::{
         BinOpInst, BitCastInst, BlackBoxInst, Const, DirectCallInst, DynPtrAddInst, FCmpInst,
         FNegInst, FPExtInst, FPToSIInst, FloatTy, FuncDecl, FuncTy, GuardInfo, GuardInst, ICmpInst,
@@ -148,7 +149,7 @@ impl<'lexer, 'input: 'lexer> JITIRParser<'lexer, 'input, '_> {
                             Operand::Var(iidx) => Inst::Copy(iidx),
                             Operand::Const(cidx) => Inst::Const(cidx),
                         };
-                        self.push_assign(inst.into(), assign)?;
+                        self.push_assign(inst, assign)?;
                     }
                     ASTInst::BinOp {
                         assign,
@@ -316,7 +317,7 @@ impl<'lexer, 'input: 'lexer> JITIRParser<'lexer, 'input, '_> {
                             .span_str(tiidx)
                             .parse::<usize>()
                             .map_err(|e| self.error_at_span(tiidx, &e.to_string()))?;
-                        assert_eq!(self.m.params.len(), usize::try_from(off).unwrap());
+                        assert_eq!(self.m.params.len(), off);
                         let type_ = self.process_type(type_)?;
                         let size = self.m.type_(type_).byte_size().ok_or_else(|| {
                             self.error_at_span(
@@ -505,7 +506,7 @@ impl<'lexer, 'input: 'lexer> JITIRParser<'lexer, 'input, '_> {
         } in func_types
         {
             let name = self.lexer.span_str(name_span).to_owned();
-            if self.func_types_map.get(&name).is_some() {
+            if self.func_types_map.contains_key(&name) {
                 return Err(format!("Duplicate function type '{name}'").into());
             }
             let arg_tys = {
@@ -534,7 +535,7 @@ impl<'lexer, 'input: 'lexer> JITIRParser<'lexer, 'input, '_> {
         } in func_decls
         {
             let name = self.lexer.span_str(name_span).to_owned();
-            if self.func_types_map.get(&name).is_some() {
+            if self.func_types_map.contains_key(&name) {
                 todo!();
             }
             let arg_tys = {
@@ -569,34 +570,34 @@ impl<'lexer, 'input: 'lexer> JITIRParser<'lexer, 'input, '_> {
             ASTOperand::ConstInt(span) => {
                 let s = self.lexer.span_str(span);
                 let [val, width] = <[&str; 2]>::try_from(s.split('i').collect::<Vec<_>>()).unwrap();
-                let width = width
+                let bitw = width
                     .parse::<u32>()
                     .map_err(|e| self.error_at_span(span, &e.to_string()))?;
                 let val = if val.starts_with("-") {
                     let val = val
                         .parse::<i64>()
                         .map_err(|e| self.error_at_span(span, &e.to_string()))?;
-                    if width < 64
-                        && (val < -((1 << width) - 1) / 2 - 1 || val >= ((1 << width) - 1) / 2)
+                    if bitw < 64
+                        && (val < -((1 << bitw) - 1) / 2 - 1 || val >= ((1 << bitw) - 1) / 2)
                     {
                         return Err(self.error_at_span(span,
-                          &format!("Signed constant {val} exceeds the bit width {width} of the integer type")));
+                          &format!("Signed constant {val} exceeds the bit width {bitw} of the integer type")));
                     }
                     val as u64
                 } else {
                     let val = val
                         .parse::<u64>()
                         .map_err(|e| self.error_at_span(span, &e.to_string()))?;
-                    if width < 64 && val > (1 << width) - 1 {
+                    if bitw < 64 && val > (1 << bitw) - 1 {
                         return Err(self.error_at_span(span,
-                          &format!("Unsigned constant {val} exceeds the bit width {width} of the integer type")));
+                          &format!("Unsigned constant {val} exceeds the bit width {bitw} of the integer type")));
                     }
                     val
                 };
-                let tyidx = self.m.insert_ty(Ty::Integer(width)).unwrap();
+                let tyidx = self.m.insert_ty(Ty::Integer(bitw)).unwrap();
                 Ok(Operand::Const(
                     self.m
-                        .insert_const(Const::Int(tyidx, val))
+                        .insert_const(Const::Int(tyidx, ArbBitInt::from_u64(bitw, val)))
                         .map_err(|e| self.error_at_span(span, &e.to_string()))?,
                 ))
             }
@@ -693,7 +694,7 @@ impl<'lexer, 'input: 'lexer> JITIRParser<'lexer, 'input, '_> {
         }
 
         self.m.push(inst).unwrap();
-        debug_assert!(self.inst_idx_map.get(&iidx).is_none());
+        debug_assert!(!self.inst_idx_map.contains_key(&iidx));
         self.inst_idx_map.insert(iidx, self.m.last_inst_idx());
         Ok(())
     }

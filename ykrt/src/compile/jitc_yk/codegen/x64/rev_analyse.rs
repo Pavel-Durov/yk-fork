@@ -355,7 +355,7 @@ impl<'a> RevAnalyse<'a> {
     /// Analyse a [LoadInst]. Returns `true` if it has been inlined and should not go through the
     /// normal "calculate `inst_vals_alive_until`" phase.
     fn an_load(&mut self, iidx: InstIdx, inst: LoadInst) -> bool {
-        if let Operand::Var(op_iidx) = inst.operand(self.m) {
+        if let Operand::Var(op_iidx) = inst.ptr(self.m) {
             if let Inst::PtrAdd(pa_inst) = self.m.inst(op_iidx) {
                 self.ptradds[usize::from(iidx)] = Some(pa_inst);
                 if let Operand::Var(y) = pa_inst.ptr(self.m) {
@@ -375,7 +375,7 @@ impl<'a> RevAnalyse<'a> {
     /// Analyse a [StoreInst]. Returns `true` if it has been inlined and should not go through the
     /// normal "calculate `inst_vals_alive_until`" phase.
     fn an_store(&mut self, iidx: InstIdx, inst: StoreInst) -> bool {
-        if let Operand::Var(op_iidx) = inst.tgt(self.m) {
+        if let Operand::Var(op_iidx) = inst.ptr(self.m) {
             if let Inst::PtrAdd(pa_inst) = self.m.inst(op_iidx) {
                 self.ptradds[usize::from(iidx)] = Some(pa_inst);
                 if let Operand::Var(y) = pa_inst.ptr(self.m) {
@@ -421,7 +421,7 @@ mod test {
     use std::assert_matches::assert_matches;
     use vob::vob;
 
-    fn rev_analyse_header<'a>(m: &'a Module) -> RevAnalyse<'a> {
+    fn rev_analyse_header(m: &Module) -> RevAnalyse<'_> {
         let mut rev_an = RevAnalyse::new(m);
         rev_an.analyse_header();
         rev_an
@@ -441,7 +441,7 @@ mod test {
         let rev_an = rev_analyse_header(&m);
         assert_eq!(
             rev_an.inst_vals_alive_until,
-            vec![3, 0, 0, 0]
+            [3, 0, 0, 0]
                 .iter()
                 .map(|x: &usize| InstIdx::try_from(*x).unwrap())
                 .collect::<Vec<_>>()
@@ -461,7 +461,7 @@ mod test {
         let rev_an = rev_analyse_header(&m);
         assert_eq!(
             rev_an.inst_vals_alive_until,
-            vec![2, 0, 5, 0, 0, 0]
+            [2, 0, 5, 0, 0, 0]
                 .iter()
                 .map(|x: &usize| InstIdx::try_from(*x).unwrap())
                 .collect::<Vec<_>>()

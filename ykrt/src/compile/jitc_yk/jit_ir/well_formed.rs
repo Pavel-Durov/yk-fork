@@ -134,11 +134,14 @@ impl Module {
                             self.inst(iidx).display(self, iidx)
                         )
                     };
-                    if let Operand::Const(x) = cond {
-                        let Const::Int(_, v) = self.const_(x) else {
+                    if let Operand::Const(cidx) = cond {
+                        let Const::Int(_, x) = self.const_(cidx) else {
                             unreachable!()
                         };
-                        if (expect && *v == 0) || (!expect && *v == 1) {
+                        debug_assert_eq!(x.bitw(), 1);
+                        if (expect && x.to_zero_ext_u8().unwrap() == 0)
+                            || (!expect && x.to_zero_ext_u8().unwrap() == 1)
+                        {
                             panic!(
                                 "Guard at position {iidx} references a constant that is at odds with the guard itself\n  {}",
                                 inst.display(self, iidx)
@@ -152,6 +155,15 @@ impl Module {
                             "Instruction at position {iidx} has different types on lhs and rhs\n  {}",
                             self.inst(iidx).display(self, iidx)
                         );
+                    }
+
+                    if let Ty::Ptr = self.type_(x.lhs(self).tyidx(self)) {
+                        if x.predicate().signed() {
+                            panic!(
+                                "Instruction at position {iidx} compares pointers using a signed predicate\n  {}",
+                                self.inst(iidx).display(self, iidx)
+                            );
+                        }
                     }
                 }
                 Inst::Select(x) => {
@@ -316,7 +328,10 @@ impl Module {
 
 #[cfg(test)]
 mod tests {
-    use super::{super::TraceKind, BinOp, BinOpInst, Const, Inst, Module, Operand};
+    use super::{
+        super::{ArbBitInt, TraceKind},
+        BinOp, BinOpInst, Const, Inst, Module, Operand,
+    };
 
     #[should_panic(expected = "Instruction at position 0 passing too few arguments")]
     #[test]
@@ -388,8 +403,12 @@ mod tests {
         // The parser will reject a binop with a result type different from either operand, so to
         // get the test we want, we can't use the parser.
         let mut m = Module::new(TraceKind::HeaderOnly, 0, 0).unwrap();
-        let c1 = m.insert_const(Const::Int(m.int1_tyidx(), 0)).unwrap();
-        let c2 = m.insert_const(Const::Int(m.int8_tyidx(), 0)).unwrap();
+        let c1 = m
+            .insert_const(Const::Int(m.int1_tyidx(), ArbBitInt::from_u64(1, 0)))
+            .unwrap();
+        let c2 = m
+            .insert_const(Const::Int(m.int8_tyidx(), ArbBitInt::from_u64(8, 0)))
+            .unwrap();
         m.push(Inst::BinOp(BinOpInst::new(
             Operand::Const(c1),
             BinOp::Add,
@@ -408,6 +427,22 @@ mod tests {
                 %0: i8 = param 0
                 %1: i64 = param 1
                 %2: i1 = eq %0, %1
+            ",
+        );
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Instruction at position 2 compares pointers using a signed predicate"
+    )]
+    fn cg_icmp_ptr_signed() {
+        Module::from_str(
+            "
+              entry:
+                %0: ptr = param 0
+                %1: ptr = param 1
+                %2: i1 = slt %0, %1
+                black_box %2
             ",
         );
     }
