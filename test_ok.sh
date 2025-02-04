@@ -131,3 +131,4 @@ export SWT_MODULE_CLONE_SKIP_FAILING_TEST=true
 ~/.cargo/bin/cargo test ::ptr_global.c $ARGS
 ~/.cargo/bin/cargo test ::float_mul.c $ARGS
 ~/.cargo/bin/cargo test ::stats1.c $ARGS
+~/.cargo/bin/cargo test ::bf.O0.c $ARGS

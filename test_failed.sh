@@ -45,7 +45,6 @@ for test in \
     phi1.c \
     no_trace_annotation2.c \
     simple_binop.c \
-    bf.O0.c \
     bigloop.c \
     loopy_funcs_not_inlined_by_default.c \
     srem.c \
