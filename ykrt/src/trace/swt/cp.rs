@@ -404,7 +404,7 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
     let src_rbp_offset = src_frame_size as i32 + REG64_BYTESIZE as i32;
     if *CP_TRANSITION_DEBUG_MODE {
         println!("@@ TRANSITION from: {:?} to: {:?}", src_smid, dst_smid);
-        dynasm!(asm; .arch x64; int3);
+        // dynasm!(asm; .arch x64; int3);
     }
 
     // Step 1. Calculate the size of the buffer for source live vars
