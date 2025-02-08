@@ -69,3 +69,6 @@ printf "RSP Offsets and Values:\n"
     printf "R14 (0x08): %016x\n", *((unsigned long *)($rsp + 0x08))
     printf "R15 (0x00): %016x\n", *((unsigned long *)($rsp + 0x00))
 end
+
+dashboard assembly -style height 30
+

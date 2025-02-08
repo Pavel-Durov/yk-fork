@@ -133,3 +133,4 @@ export SWT_MODULE_CLONE_SKIP_FAILING_TEST=false
 ~/.cargo/bin/cargo test ::stats1.c $ARGS
 ~/.cargo/bin/cargo test ::bf.O0.c $ARGS
 ~/.cargo/bin/cargo test ::loopy_funcs_not_inlined_by_default.c $ARGS
+~/.cargo/bin/cargo test ::simplecall.c $ARGS

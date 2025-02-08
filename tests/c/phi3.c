@@ -1,4 +1,4 @@
-// ignore-if: test $SWT_MODULE_CLONE_SKIP_FAILING_TEST=true
+// ignore-if: test $SWT_MODULE_CLONE_SKIP_FAILING_TEST=false
 // Compiler:
 //   env-var: YKB_EXTRA_CC_FLAGS=-O0 -Xclang -disable-O0-optnone -Xlinker --lto-newpm-passes=instcombine<max-iterations=1;no-use-loop-info;no-verify-fixpoint>
 // Run-time:

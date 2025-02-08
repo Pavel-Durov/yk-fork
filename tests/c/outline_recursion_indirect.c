@@ -1,4 +1,4 @@
-// ignore-if: test $SWT_MODULE_CLONE_SKIP_FAILING_TEST=true
+// ignore-if: test $SWT_MODULE_CLONE_SKIP_FAILING_TEST=false
 // Run-time:
 //   env-var: YKD_LOG_IR=aot,jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1

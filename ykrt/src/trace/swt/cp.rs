@@ -128,9 +128,9 @@ fn calculate_live_vars_buffer_size(src_rec: &Record) -> i32 {
     for (_, src_var) in src_rec.live_vars.iter().enumerate() {
         match src_var.get(0).unwrap() {
             // TODO: do we need to store direct values?
-            Direct(_, _, src_val_size) => {
-                src_val_buffer_size += *src_val_size as i32;
-            }
+            // Direct(_, _, src_val_size) => {
+            //     src_val_buffer_size += *src_val_size as i32;
+            // }
             Indirect(_, _, src_val_size) => {
                 src_val_buffer_size += *src_val_size as i32;
             }
@@ -141,29 +141,28 @@ fn calculate_live_vars_buffer_size(src_rec: &Record) -> i32 {
 }
 
 fn copy_live_vars_to_temp_buffer(asm: &mut Assembler, src_rec: &Record) {
+    let mut src_var_indirect_index = 0;
     for (index, src_var) in src_rec.live_vars.iter().enumerate() {
-        let temp_off = (index * REG64_BYTESIZE as usize) as i32; // assuming each value is 8 bytes
         let src_location = src_var.get(0).unwrap();
         match src_location {
             Direct(_, src_off, src_val_size) => {
-                assert!(
-                    *src_val_size == 8,
-                    "Only 8-byte Direct values supported in this example"
-                );
-                dynasm!(asm
-                    ; mov rax, QWORD [rbp + i32::try_from(*src_off).unwrap()]
-                    ; mov [rsp + temp_off], rax
-                );
+                // DO NOTHING
             }
             Indirect(_, src_off, src_val_size) => {
                 assert!(
                     *src_val_size == 8,
                     "Only 8-byte Indirect values supported in this example"
                 );
+                let temp_buffer_offset = (src_var_indirect_index * REG64_BYTESIZE as usize) as i32; // assuming each value is 8 bytes
+                // println!(
+                //     "copy_live_vars_to_temp_buffer - save value to temp buffer offset: {:?}",
+                //     temp_buffer_offset
+                // );
                 dynasm!(asm
                     ; mov rax, QWORD [rbp + i32::try_from(*src_off).unwrap()]
-                    ; mov QWORD [rsp + temp_off], rax
+                    ; mov QWORD [rsp + temp_buffer_offset], rax
                 );
+                src_var_indirect_index += 1;
             }
             Register(_reg_num, _val_size, _add_locs) => {
                 // DO NOTHING
@@ -174,6 +173,12 @@ fn copy_live_vars_to_temp_buffer(asm: &mut Assembler, src_rec: &Record) {
             ),
         }
     }
+    // if *CP_TRANSITION_DEBUG_MODE {
+    //     println!(
+    //         "copy_live_vars_to_temp_buffer - indirect variables count: {:?}",
+    //         src_var_indirect_index
+    //     );
+    // }
 }
 
 fn set_destination_live_vars(
@@ -183,6 +188,7 @@ fn set_destination_live_vars(
     rbp_offset_to_ykrt_control_point_reg_store: i64,
 ) -> HashMap<u16, u16> {
     let mut dest_reg_nums = HashMap::new();
+    let mut src_var_indirect_index = 0;
     for (index, src_var) in src_rec.live_vars.iter().enumerate() {
         let dst_var = &dst_rec.live_vars[index];
         if src_var.len() > 1 || dst_var.len() > 1 {
@@ -251,7 +257,7 @@ fn set_destination_live_vars(
                     Indirect(_dst_reg_num, dst_off, dst_val_size) => {
                         assert!(
                             dst_val_size == src_val_size,
-                            "Indirect2Register - src and dst val size must match. got src: {} and dst: {}",
+                            "Register2Indirect - src and dst val size must match. got src: {} and dst: {}",
                             src_val_size, dst_val_size
                         );
                         assert!(src_add_locs.len() == 0, "deal with additional info");
@@ -274,10 +280,17 @@ fn set_destination_live_vars(
                                 ; mov eax, DWORD [rbp - src_reg_val_rbp_offset]
                                 ; mov DWORD [rbp + *dst_off], eax
                             ),
-                            8 => dynasm!(asm
-                                ; mov rax, QWORD [rbp - src_reg_val_rbp_offset]
-                                ; mov QWORD [rbp + *dst_off], rax
-                            ),
+                            8 => {
+                                dynasm!(asm
+                                    ; mov rax, QWORD [rbp - src_reg_val_rbp_offset]
+                                    ; mov QWORD [rbp + *dst_off], rax
+                                );
+                                // restore_register(
+                                //     asm,
+                                //     0, // rax dwarf reg num
+                                //     rbp_offset_to_ykrt_control_point_reg_store as i32,
+                                // );
+                            }
                             _ => panic!(
                                 "Unexpected Indirect to Register value size: {}",
                                 src_val_size
@@ -291,6 +304,10 @@ fn set_destination_live_vars(
                 }
             }
             Indirect(src_reg_num, _src_off, src_val_size) => {
+                let temp_buffer_offset = (src_var_indirect_index * REG64_BYTESIZE as usize) as i32; // assuming each value is 8 bytes
+                // if *CP_TRANSITION_DEBUG_MODE {
+                //     println!("Indirect - temp_buffer_offset: {:?} src_var_indirect_index: {:?}", temp_buffer_offset, src_var_indirect_index);
+                // }
                 match dst_location {
                     Register(dst_reg_num, dst_val_size, _dst_add_locs) => {
                         if *CP_TRANSITION_DEBUG_MODE {
@@ -302,12 +319,11 @@ fn set_destination_live_vars(
                         dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
                         assert!(*src_reg_num == 6, "Indirect register is expected to be rbp");
                         let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
-                        let temp_buffer_off = (index * REG64_BYTESIZE as usize) as i32;
                         match *dst_val_size {
-                            1 => dynasm!(asm; mov Rb(dst_reg), BYTE [rsp + temp_buffer_off]),
-                            2 => dynasm!(asm; mov Rw(dst_reg), WORD [rsp + temp_buffer_off]),
-                            4 => dynasm!(asm; mov Rd(dst_reg), DWORD [rsp + temp_buffer_off]),
-                            8 => dynasm!(asm; mov Rq(dst_reg), QWORD [rsp + temp_buffer_off]),
+                            1 => dynasm!(asm; mov Rb(dst_reg), BYTE [rsp + temp_buffer_offset]),
+                            2 => dynasm!(asm; mov Rw(dst_reg), WORD [rsp + temp_buffer_offset]),
+                            4 => dynasm!(asm; mov Rd(dst_reg), DWORD [rsp + temp_buffer_offset]),
+                            8 => dynasm!(asm; mov Rq(dst_reg), QWORD [rsp + temp_buffer_offset]),
                             _ => panic!(
                                 "Unexpected Indirect to Register value size: {}",
                                 src_val_size
@@ -321,26 +337,32 @@ fn set_destination_live_vars(
                                 src_location, dst_location
                             );
                         }
-                        let temp_buffer_off = (index * REG64_BYTESIZE as usize) as i32;
                         // TODO: understand what to do where the size value is different
                         let min_size = src_val_size.min(dst_val_size);
                         match min_size {
                             1 => dynasm!(asm
-                                ; mov al, BYTE [rsp + temp_buffer_off]
+                                ; mov al, BYTE [rsp + temp_buffer_offset]
                                 ; mov BYTE [rbp + i32::try_from(*dst_off).unwrap()], al
                             ),
                             2 => dynasm!(asm
-                                ; mov ax, WORD [rsp + temp_buffer_off]
+                                ; mov ax, WORD [rsp + temp_buffer_offset]
                                 ; mov WORD [rbp + i32::try_from(*dst_off).unwrap()], ax
                             ),
                             4 => dynasm!(asm
-                                ; mov eax, DWORD [rsp + temp_buffer_off]
+                                ; mov eax, DWORD [rsp + temp_buffer_offset]
                                 ; mov DWORD [rbp + i32::try_from(*dst_off).unwrap()], eax
                             ),
-                            8 => dynasm!(asm
-                                ; mov rax, QWORD [rsp + temp_buffer_off]
-                                ; mov QWORD [rbp + i32::try_from(*dst_off).unwrap()], rax
-                            ),
+                            8 => {
+                                dynasm!(asm
+                                    ; mov rax, QWORD [rsp + temp_buffer_offset]
+                                    ; mov QWORD [rbp + i32::try_from(*dst_off).unwrap()], rax
+                                );
+                                // restore_register(
+                                //     asm,
+                                //     0, // rax dwarf reg num
+                                //     rbp_offset_to_ykrt_control_point_reg_store as i32,
+                                // );
+                            }
                             _ => panic!("Unexpected Indirect to Indirect value size: {}", min_size),
                         }
                     }
@@ -349,6 +371,7 @@ fn set_destination_live_vars(
                         src_location, dst_location
                     ),
                 }
+                src_var_indirect_index += 1;
             }
             Direct(_, _, _) => {
                 // Do nothing
@@ -404,7 +427,7 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
     let src_rbp_offset = src_frame_size as i32 + REG64_BYTESIZE as i32;
     if *CP_TRANSITION_DEBUG_MODE {
         println!("@@ TRANSITION from: {:?} to: {:?}", src_smid, dst_smid);
-        // dynasm!(asm; .arch x64; int3);
+        dynasm!(asm; .arch x64; int3);
     }
 
     // Step 1. Calculate the size of the buffer for source live vars
@@ -418,7 +441,6 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
     // +-------------------------------------------+ <- RBP
     // |       Destination frame                   |
     // +-------------------------------------------+
-    // |       Temporary Src Live Vars Buffer      |
     // +-------------------------------------------+ <- RSP
     dynasm!(asm
         ; .arch x64
@@ -516,24 +538,35 @@ fn restore_registers(
 
     for (reg_num, _) in sorted_offsets.iter() {
         if !exclude_registers.contains_key(reg_num) {
-            let reg_offset = reg_num_to_ykrt_control_point_rsp_offset(**reg_num);
-            let reg_val_rbp_offset =
-                i32::try_from(rbp_offset_to_ykrt_control_point_reg_store - reg_offset as i32)
-                    .unwrap();
-            let dest_reg = dwarf_to_dynasm_reg((**reg_num).try_into().unwrap());
-            if *CP_TRANSITION_DEBUG_MODE {
-                println!(
-                    "@@ Restoring reg_num: {:?}, dest_reg: {:?}, reg_offset: 0x{:x}, reg_val_rbp_offset: 0x{:x}",
-                    reg_num,
-                    dest_reg,
-                    reg_offset,
-                    reg_val_rbp_offset
-                );
-            }
-            dynasm!(asm
-                ; mov Rq(dest_reg), QWORD [rbp - reg_val_rbp_offset]
+            restore_register(
+                asm,
+                (**reg_num).try_into().unwrap(),
+                rbp_offset_to_ykrt_control_point_reg_store,
             );
         }
+    }
+}
+
+fn restore_register(
+    asm: &mut Assembler,
+    dwarf_reg_num: u16,
+    rbp_offset_to_ykrt_control_point_reg_store: i32,
+) {
+    let reg_offset = reg_num_to_ykrt_control_point_rsp_offset(dwarf_reg_num);
+    let reg_val_rbp_offset =
+        i32::try_from(rbp_offset_to_ykrt_control_point_reg_store - reg_offset as i32).unwrap();
+    let dest_reg = dwarf_to_dynasm_reg(dwarf_reg_num.try_into().unwrap());
+    dynasm!(asm
+        ; mov Rq(dest_reg), QWORD [rbp - reg_val_rbp_offset]
+    );
+    if *CP_TRANSITION_DEBUG_MODE {
+        println!(
+            "@@ Restoring reg_num: {:?}, dest_reg: {:?}, reg_offset: 0x{:x}, reg_val_rbp_offset: 0x{:x}",
+            dwarf_reg_num,
+            dest_reg,
+            reg_offset,
+            reg_val_rbp_offset
+        );
     }
 }
 
