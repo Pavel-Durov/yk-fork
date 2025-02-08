@@ -1,4 +1,5 @@
 // ignore-if: test $SWT_MODULE_CLONE_SKIP_FAILING_TEST=true
+// # Note: Signal 11 - not reproducible with gdb
 // Compiler:
 //   env-var: YKB_EXTRA_CC_FLAGS=-O1
 // Run-time:

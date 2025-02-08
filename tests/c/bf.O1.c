@@ -1,9 +1,8 @@
-// ignore-if: test $SWT_MODULE_CLONE_SKIP_FAILING_TEST=true
 // Compiler:
 //   env-var: YKB_EXTRA_CC_FLAGS=-O1
 // Run-time:
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YK_LOG=4
+//   env-var: YKD_LOG=4
 //   stderr:
 //     ...
 //     yk-jit-event: enter-jit-code
