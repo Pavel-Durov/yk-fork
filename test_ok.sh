@@ -11,7 +11,7 @@ if [ "$1" = "verbose" ]; then
     ARGS="-- --nocapture"
 fi
 
-export SWT_MODULE_CLONE_SKIP_FAILING_TEST=true
+export SWT_MODULE_CLONE_SKIP_FAILING_TEST=false
 
 # find ./tests/c -type f -name "*.c" -exec grep -L "SWT_MODULE_CLONE_SKIP_FAILING_TEST" {} \; | xargs -n 1 basename
 ~/.cargo/bin/cargo test ::ptrtoint.c $ARGS
@@ -132,3 +132,4 @@ export SWT_MODULE_CLONE_SKIP_FAILING_TEST=true
 ~/.cargo/bin/cargo test ::float_mul.c $ARGS
 ~/.cargo/bin/cargo test ::stats1.c $ARGS
 ~/.cargo/bin/cargo test ::bf.O0.c $ARGS
+~/.cargo/bin/cargo test ::loopy_funcs_not_inlined_by_default.c $ARGS
