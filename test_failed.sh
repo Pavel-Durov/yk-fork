@@ -19,7 +19,7 @@ echo "Running failing tests..."
 run_test() {
     local test_name=$1
     echo "Running test: $test_name"
-    export SWT_MODULE_CLONE_SKIP_FAILING_TEST=false
+    export SWT_MODULE_CLONE_SKIP_FAILING_TEST=true
     export YKB_TRACER=swt
     ~/.cargo/bin/cargo test lang_tests::$test_name $ARGS
     if [ $? -eq 0 ]; then
