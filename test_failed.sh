@@ -33,33 +33,22 @@ run_test() {
 
 # Run each test and count failures
 for test in \
-    floats_return.c \
-    ptradd.c \
-    simplecall.c \
-    simple_inline2.c \
-    fcmp_float.c \
+    ptradd.c
     arithmetic.c \
     phi3.c \
     float_store.c \
-    promote_many.c \
     phi1.c \
     no_trace_annotation2.c \
     simple_binop.c \
-    loopy_funcs_not_inlined_by_default.c \
-    srem.c \
     peel1.c \
     bf.O2.c \
     simple_inline.c \
     bf.O3.c \
-    fcmp_double.c \
-    bf.O1.c \
     sdiv.c \
-    guard_consting.c \
     phi2.c \
     doubleinline.c \
     udiv.c \
-    fp_to_si.c \
-    outline_recursion_indirect.c
+    outline_recursion_indirect.c \
 do
     total_count=$((total_count + 1))
     if run_test "$test"; then

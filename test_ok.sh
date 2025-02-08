@@ -132,10 +132,14 @@ export SWT_MODULE_CLONE_SKIP_FAILING_TEST=true
 ~/.cargo/bin/cargo test ::ptr_global.c $ARGS
 ~/.cargo/bin/cargo test ::float_mul.c $ARGS
 ~/.cargo/bin/cargo test ::stats1.c $ARGS
-# ~/.cargo/bin/cargo test ::bf.O0.c $ARGS
+
 ~/.cargo/bin/cargo test ::loopy_funcs_not_inlined_by_default.c $ARGS
 ~/.cargo/bin/cargo test ::guard_consting.c $ARGS
 ~/.cargo/bin/cargo test ::promote_many.c $ARGS
 ~/.cargo/bin/cargo test ::fp_to_si.c $ARGS
 ~/.cargo/bin/cargo test ::fcmp_float.c $ARGS
 ~/.cargo/bin/cargo test ::fcmp_double.c $ARGS
+# ~/.cargo/bin/cargo test ::bf.O0.c $ARGS  # -- weird encoding..
+~/.cargo/bin/cargo test ::bf.O1.c $ARGS
+~/.cargo/bin/cargo test ::bf.O2.c $ARGS
+# ~/.cargo/bin/cargo test ::bf.O3.c $ARGS
