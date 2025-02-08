@@ -1,4 +1,4 @@
-// ignore-if: test $SWT_MODULE_CLONE_SKIP_FAILING_TEST=false
+// ignore-if: test $SWT_MODULE_CLONE_SKIP_FAILING_TEST=true
 // Compiler:
 //   env-var: YKB_EXTRA_CC_FLAGS=-O2
 // Run-time:
