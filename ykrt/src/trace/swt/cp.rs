@@ -12,11 +12,18 @@ use yksmp::Record;
 /// The size of a 64-bit register in bytes.
 pub(crate) static REG64_BYTESIZE: u64 = 8;
 
-// Feature flags
-pub static CP_TRANSITION_DEBUG_MODE: LazyLock<bool> = LazyLock::new(|| {
-    env::var("CP_TRANSITION_DEBUG_MODE")
-        .map(|v| v.parse().unwrap_or(false))
+// Flag for verbose logging
+pub static CP_VERBOSE: LazyLock<bool> = LazyLock::new(|| {
+    env::var("CP_VERBOSE")
+        .map(|v| v == "1")
         .unwrap_or(false)
+});
+
+// Flag for asm breakpoints
+pub static CP_BREAK: LazyLock<bool> = LazyLock::new(|| {
+    env::var("CP_BREAK")
+    .map(|v| v == "1")
+    .unwrap_or(false)
 });
 
 #[repr(usize)]
@@ -154,10 +161,10 @@ fn copy_live_vars_to_temp_buffer(asm: &mut Assembler, src_rec: &Record) {
                     "Only 8-byte Indirect values supported in this example"
                 );
                 let temp_buffer_offset = (src_var_indirect_index * REG64_BYTESIZE as usize) as i32; // assuming each value is 8 bytes
-                // println!(
-                //     "copy_live_vars_to_temp_buffer - save value to temp buffer offset: {:?}",
-                //     temp_buffer_offset
-                // );
+                                                                                                    // println!(
+                                                                                                    //     "copy_live_vars_to_temp_buffer - save value to temp buffer offset: {:?}",
+                                                                                                    //     temp_buffer_offset
+                                                                                                    // );
                 dynasm!(asm
                     ; mov rax, QWORD [rbp + i32::try_from(*src_off).unwrap()]
                     ; mov QWORD [rsp + temp_buffer_offset], rax
@@ -173,7 +180,7 @@ fn copy_live_vars_to_temp_buffer(asm: &mut Assembler, src_rec: &Record) {
             ),
         }
     }
-    // if *CP_TRANSITION_DEBUG_MODE {
+    // if *CP_VERBOSE {
     //     println!(
     //         "copy_live_vars_to_temp_buffer - indirect variables count: {:?}",
     //         src_var_indirect_index
@@ -229,7 +236,7 @@ fn set_destination_live_vars(
                         if src_reg_num == dst_reg_num && src_val_size == dst_val_size {
                             continue;
                         }
-                        if *CP_TRANSITION_DEBUG_MODE {
+                        if *CP_VERBOSE {
                             println!(
                                 "Register2Register - src: {:?} dst: {:?}",
                                 src_location, dst_location
@@ -261,7 +268,7 @@ fn set_destination_live_vars(
                             src_val_size, dst_val_size
                         );
                         assert!(src_add_locs.len() == 0, "deal with additional info");
-                        if *CP_TRANSITION_DEBUG_MODE {
+                        if *CP_VERBOSE {
                             println!(
                                 "Register2Indirect - src: {:?} dst: {:?}",
                                 src_location, dst_location
@@ -305,12 +312,12 @@ fn set_destination_live_vars(
             }
             Indirect(src_reg_num, _src_off, src_val_size) => {
                 let temp_buffer_offset = (src_var_indirect_index * REG64_BYTESIZE as usize) as i32; // assuming each value is 8 bytes
-                // if *CP_TRANSITION_DEBUG_MODE {
-                //     println!("Indirect - temp_buffer_offset: {:?} src_var_indirect_index: {:?}", temp_buffer_offset, src_var_indirect_index);
-                // }
+                                                                                                    // if *CP_VERBOSE {
+                                                                                                    //     println!("Indirect - temp_buffer_offset: {:?} src_var_indirect_index: {:?}", temp_buffer_offset, src_var_indirect_index);
+                                                                                                    // }
                 match dst_location {
                     Register(dst_reg_num, dst_val_size, _dst_add_locs) => {
-                        if *CP_TRANSITION_DEBUG_MODE {
+                        if *CP_VERBOSE {
                             println!(
                                 "Indirect2Register - src: {:?} dst: {:?}",
                                 src_location, dst_location
@@ -331,7 +338,7 @@ fn set_destination_live_vars(
                         }
                     }
                     Indirect(_dst_reg_num, dst_off, dst_val_size) => {
-                        if *CP_TRANSITION_DEBUG_MODE {
+                        if *CP_VERBOSE {
                             println!(
                                 "Indirect2Indirect - src: {:?} dst: {:?}",
                                 src_location, dst_location
@@ -393,21 +400,13 @@ General stack layout:
     +---------------------------------------------+  <-- RSP
 */
 pub unsafe fn control_point_transition(transition: CPTransition) {
-    let CPTransition {
-        direction,
-        frameaddr,
-        rsp,
-        trace_addr,
-        exec_trace,
-        exec_trace_fn,
-    } = transition;
-    let frameaddr = frameaddr as usize;
+    let frameaddr = transition.frameaddr as usize;
     let mut asm = Assembler::new().unwrap();
 
     let mut src_smid = ControlPointStackMapId::Opt;
     let mut dst_smid = ControlPointStackMapId::UnOpt;
 
-    if direction == CPTransitionDirection::UnoptToOpt {
+    if transition.direction == CPTransitionDirection::UnoptToOpt {
         src_smid = ControlPointStackMapId::UnOpt;
         dst_smid = ControlPointStackMapId::Opt;
     }
@@ -425,8 +424,10 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
     }
 
     let src_rbp_offset = src_frame_size as i32 + REG64_BYTESIZE as i32;
-    if *CP_TRANSITION_DEBUG_MODE {
+    if *CP_VERBOSE {
         println!("@@ TRANSITION from: {:?} to: {:?}", src_smid, dst_smid);
+    }
+    if *CP_BREAK {
         dynasm!(asm; .arch x64; int3);
     }
 
@@ -459,7 +460,7 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
     // Step 3. Copy src live vars into the buffer
     copy_live_vars_to_temp_buffer(&mut asm, src_rec);
 
-    if *CP_TRANSITION_DEBUG_MODE {
+    if *CP_VERBOSE {
         println!(
             "@@ src_rbp: 0x{:x}, src_rsp: 0x{:x}, src_rbp_offset: 0x{:x}, src_frame_size: 0x{:x}, dst_frame_size: 0x{:x}, rbp_offset_to_ykrt_control_point_reg_store: 0x{:x}",
             frameaddr as i64,
@@ -496,17 +497,21 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
         rbp_offset_to_ykrt_control_point_reg_store as i32,
     );
 
-    if exec_trace {
-        if *CP_TRANSITION_DEBUG_MODE {
+    if transition.exec_trace {
+        if *CP_VERBOSE {
             println!("@@ calling exec_trace");
+        }
+        if *CP_BREAK {
+            dynasm!(asm; .arch x64; int3); // breakpoint
         }
         // Move the arguments into the appropriate registers
         dynasm!(asm
             ; .arch x64
-            ; mov rdi, QWORD frameaddr as i64                   // First argument
-            ; mov rsi, QWORD rsp as i64    // Second argument
-            ; mov rdx, QWORD trace_addr as i64          // Third argument
-            ; mov rcx, QWORD exec_trace_fn as i64         // Move function pointer to rcx
+            ; add rsp, src_val_buffer_size // remove the buffer from the stack
+            ; mov rdi, QWORD frameaddr as i64              // First argument
+            ; mov rsi, QWORD transition.rsp as i64    //   Second argument
+            ; mov rdx, QWORD transition.trace_addr as i64             // Third argument
+            ; mov rcx, QWORD transition.exec_trace_fn as i64          // Move function pointer to rcx
             ; call rcx // Call the function - we don't care about rcx because its overridden in the exec_trace_fn
         );
     } else {
@@ -559,7 +564,7 @@ fn restore_register(
     dynasm!(asm
         ; mov Rq(dest_reg), QWORD [rbp - reg_val_rbp_offset]
     );
-    if *CP_TRANSITION_DEBUG_MODE {
+    if *CP_VERBOSE {
         println!(
             "@@ Restoring reg_num: {:?}, dest_reg: {:?}, reg_offset: 0x{:x}, reg_val_rbp_offset: 0x{:x}",
             dwarf_reg_num,
