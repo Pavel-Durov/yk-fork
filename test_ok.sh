@@ -137,3 +137,4 @@ export SWT_MODULE_CLONE_SKIP_FAILING_TEST=true
 ~/.cargo/bin/cargo test ::guard_consting.c $ARGS
 ~/.cargo/bin/cargo test ::promote_many.c $ARGS
 ~/.cargo/bin/cargo test ::fp_to_si.c $ARGS
+~/.cargo/bin/cargo test ::fcmp_float.c $ARGS
