@@ -8,7 +8,6 @@ use std::ffi::c_void;
 use std::sync::LazyLock;
 use yksmp::Location::{Constant, Direct, Indirect, LargeConstant, Register};
 use yksmp::Record;
-
 /// The size of a 64-bit register in bytes.
 pub(crate) static REG64_BYTESIZE: u64 = 8;
 
@@ -149,10 +148,10 @@ fn calculate_live_vars_buffer_size(src_rec: &Record) -> i32 {
 
 fn copy_live_vars_to_temp_buffer(asm: &mut Assembler, src_rec: &Record) {
     let mut src_var_indirect_index = 0;
-    for (index, src_var) in src_rec.live_vars.iter().enumerate() {
+    for (_, src_var) in src_rec.live_vars.iter().enumerate() {
         let src_location = src_var.get(0).unwrap();
         match src_location {
-            Direct(_, src_off, src_val_size) => {
+            Direct(_, _, _) => {
                 // DO NOTHING
             }
             Indirect(_, src_off, src_val_size) => {
@@ -160,11 +159,7 @@ fn copy_live_vars_to_temp_buffer(asm: &mut Assembler, src_rec: &Record) {
                     *src_val_size == 8,
                     "Only 8-byte Indirect values supported in this example"
                 );
-                let temp_buffer_offset = (src_var_indirect_index * REG64_BYTESIZE as usize) as i32; // assuming each value is 8 bytes
-                                                                                                    // println!(
-                                                                                                    //     "copy_live_vars_to_temp_buffer - save value to temp buffer offset: {:?}",
-                                                                                                    //     temp_buffer_offset
-                                                                                                    // );
+                let temp_buffer_offset = (src_var_indirect_index * REG64_BYTESIZE as usize) as i32;
                 dynasm!(asm
                     ; mov rax, QWORD [rbp + i32::try_from(*src_off).unwrap()]
                     ; mov QWORD [rsp + temp_buffer_offset], rax
@@ -192,7 +187,7 @@ fn set_destination_live_vars(
     asm: &mut Assembler,
     src_rec: &Record,
     dst_rec: &Record,
-    rbp_offset_to_ykrt_control_point_reg_store: i64,
+    rbp_offset_reg_store: i64,
 ) -> HashMap<u16, u16> {
     let mut dest_reg_nums = HashMap::new();
     let mut src_var_indirect_index = 0;
@@ -215,7 +210,7 @@ fn set_destination_live_vars(
             Register(src_reg_num, src_val_size, src_add_locs) => {
                 let src_reg_offset = reg_num_to_ykrt_control_point_rsp_offset(*src_reg_num);
                 let src_reg_val_rbp_offset = i32::try_from(
-                    rbp_offset_to_ykrt_control_point_reg_store - src_reg_offset as i64,
+                    rbp_offset_reg_store - src_reg_offset as i64,
                 )
                 .unwrap();
 
@@ -292,11 +287,6 @@ fn set_destination_live_vars(
                                     ; mov rax, QWORD [rbp - src_reg_val_rbp_offset]
                                     ; mov QWORD [rbp + *dst_off], rax
                                 );
-                                // restore_register(
-                                //     asm,
-                                //     0, // rax dwarf reg num
-                                //     rbp_offset_to_ykrt_control_point_reg_store as i32,
-                                // );
                             }
                             _ => panic!(
                                 "Unexpected Indirect to Register value size: {}",
@@ -364,11 +354,6 @@ fn set_destination_live_vars(
                                     ; mov rax, QWORD [rsp + temp_buffer_offset]
                                     ; mov QWORD [rbp + i32::try_from(*dst_off).unwrap()], rax
                                 );
-                                // restore_register(
-                                //     asm,
-                                //     0, // rax dwarf reg num
-                                //     rbp_offset_to_ykrt_control_point_reg_store as i32,
-                                // );
                             }
                             _ => panic!("Unexpected Indirect to Indirect value size: {}", min_size),
                         }
@@ -425,7 +410,7 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
 
     let src_rbp_offset = src_frame_size as i32 + REG64_BYTESIZE as i32;
     if *CP_VERBOSE {
-        println!("@@ TRANSITION from: {:?} to: {:?}", src_smid, dst_smid);
+        println!("@@ TRANSITION {:?} to: {:?}, exec_trace: {:?}", src_smid, dst_smid, transition.exec_trace);
     }
     if *CP_BREAK {
         dynasm!(asm; .arch x64; int3);
@@ -435,7 +420,7 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
     let src_val_buffer_size = calculate_live_vars_buffer_size(src_rec);
 
     // Calculate the offset from the RBP to the RSP where __ykrt_control_point_real stored the registers.
-    let rbp_offset_to_ykrt_control_point_reg_store =
+    let rbp_offset_reg_store =
         src_frame_size as i64 + (14 * REG64_BYTESIZE) as i64;
 
     // Step 2. Set RBP and RSP
@@ -462,13 +447,13 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
 
     if *CP_VERBOSE {
         println!(
-            "@@ src_rbp: 0x{:x}, src_rsp: 0x{:x}, src_rbp_offset: 0x{:x}, src_frame_size: 0x{:x}, dst_frame_size: 0x{:x}, rbp_offset_to_ykrt_control_point_reg_store: 0x{:x}",
+            "@@ src_rbp: 0x{:x}, src_rsp: 0x{:x}, src_rbp_offset: 0x{:x}, src_frame_size: 0x{:x}, dst_frame_size: 0x{:x}, rbp_offset_reg_store: 0x{:x}",
             frameaddr as i64,
-            frameaddr as i64 - rbp_offset_to_ykrt_control_point_reg_store,
+            frameaddr as i64 - rbp_offset_reg_store,
             src_rbp_offset,
             src_frame_size,
             dst_frame_size,
-            rbp_offset_to_ykrt_control_point_reg_store
+            rbp_offset_reg_store
         );
         println!("--------------------------------");
         println!("@@ src live vars - smid: {:?}", src_smid);
@@ -489,12 +474,7 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
         &mut asm,
         src_rec,
         dst_rec,
-        rbp_offset_to_ykrt_control_point_reg_store,
-    );
-    restore_registers(
-        &mut asm,
-        used_registers,
-        rbp_offset_to_ykrt_control_point_reg_store as i32,
+        rbp_offset_reg_store,
     );
 
     if transition.exec_trace {
@@ -504,7 +484,6 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
         if *CP_BREAK {
             dynasm!(asm; .arch x64; int3); // breakpoint
         }
-        // Move the arguments into the appropriate registers
         dynasm!(asm
             ; .arch x64
             ; add rsp, src_val_buffer_size // remove the buffer from the stack
@@ -515,6 +494,13 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
             ; call rcx // Call the function - we don't care about rcx because its overridden in the exec_trace_fn
         );
     } else {
+
+        restore_registers(
+            &mut asm,
+            used_registers,
+            rbp_offset_reg_store as i32,
+        );
+
         let call_offset = calc_after_cp_offset(dst_rec.offset).unwrap();
         let dst_target_addr = i64::try_from(dst_rec.offset).unwrap() + call_offset;
         dynasm!(asm
@@ -536,7 +522,7 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
 fn restore_registers(
     asm: &mut Assembler,
     exclude_registers: HashMap<u16, u16>,
-    rbp_offset_to_ykrt_control_point_reg_store: i32,
+    rbp_offset_reg_store: i32,
 ) {
     let mut sorted_offsets: Vec<(&u16, &i32)> = REG_OFFSETS.iter().collect();
     sorted_offsets.sort_by(|a, b| b.1.cmp(a.1)); // Sort descending by value
@@ -546,7 +532,7 @@ fn restore_registers(
             restore_register(
                 asm,
                 (**reg_num).try_into().unwrap(),
-                rbp_offset_to_ykrt_control_point_reg_store,
+                rbp_offset_reg_store,
             );
         }
     }
@@ -555,11 +541,11 @@ fn restore_registers(
 fn restore_register(
     asm: &mut Assembler,
     dwarf_reg_num: u16,
-    rbp_offset_to_ykrt_control_point_reg_store: i32,
+    rbp_offset_reg_store: i32,
 ) {
     let reg_offset = reg_num_to_ykrt_control_point_rsp_offset(dwarf_reg_num);
     let reg_val_rbp_offset =
-        i32::try_from(rbp_offset_to_ykrt_control_point_reg_store - reg_offset as i32).unwrap();
+        i32::try_from(rbp_offset_reg_store - reg_offset as i32).unwrap();
     let dest_reg = dwarf_to_dynasm_reg(dwarf_reg_num.try_into().unwrap());
     dynasm!(asm
         ; mov Rq(dest_reg), QWORD [rbp - reg_val_rbp_offset]

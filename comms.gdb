@@ -1,4 +1,8 @@
+
+# logging
+set logging file gdb_output.log
 set logging enabled on
+
 set breakpoint pending on
 
 # break ykrt::trace::swt::cp::debug_return_into_unopt_cp

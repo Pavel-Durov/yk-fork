@@ -16,6 +16,8 @@ use std::{
     thread::{self, JoinHandle},
 };
 
+use std::time::Duration;
+
 use parking_lot::{Condvar, Mutex, MutexGuard};
 #[cfg(not(all(feature = "yk_testing", not(test))))]
 use parking_lot_core::SpinWait;
@@ -437,10 +439,14 @@ impl MT {
                     mtt.push_tstate(MTThreadState::Executing { ctr });
                 });
                 self.stats.timing_state(TimingState::JitExecuting);
+
+                // println!("Sleeping for 2 seconds...");
+                // thread::sleep(Duration::from_secs(2));
                 #[cfg(tracer_swt)]
                 unsafe {
-                    // Transition to unopt before trace execution since
+                    // Transition to unopt before trace execution since``
                     // the trace was collected un unopt version.
+                    // This function will call __yk_exec_trace when live variables are restored.
                     control_point_transition(CPTransition {
                         direction: CPTransitionDirection::OptToUnopt,
                         frameaddr,
@@ -505,7 +511,7 @@ impl MT {
                         rsp: 0 as *const c_void,
                         trace_addr: 0 as *const c_void,
                         exec_trace: false,
-                        exec_trace_fn: __yk_exec_trace,
+                        exec_trace_fn: __yk_exec_trace
                     });
                 }
                 // self.log.log(Verbosity::JITEvent, "returning into unopt cp");
@@ -969,7 +975,7 @@ impl MT {
 #[cfg(target_arch = "x86_64")]
 #[naked]
 #[no_mangle]
-unsafe extern "C" fn __yk_exec_trace(
+pub unsafe extern "C" fn __yk_exec_trace(
     frameaddr: *const c_void,
     rsp: *const c_void,
     trace: *const c_void,
@@ -982,6 +988,7 @@ unsafe extern "C" fn __yk_exec_trace(
         "mov rsp, rsi",
         "sub rsp, 8",   // Return address of control point call
         "sub rsp, 104", // Registers pushed in naked cp call (includes alignment)
+        // "int3",
         // Restore registers which were pushed to the stack in [ykcapi::__ykrt_control_point].
         "pop r15",
         "pop r14",
@@ -1004,7 +1011,7 @@ unsafe extern "C" fn __yk_exec_trace(
 }
 
 /// [MTThread]'s major job is to record what state in the "interpreting/tracing/executing"
-/// state-machine this thread is in. This enum contains the states.
+/// state-machine this thread is in. This enum contains the states.bf.
 #[derive(Debug)]
 enum MTThreadState {
     /// This thread is executing in the normal interpreter: it is not executing a trace or
