@@ -16,9 +16,14 @@ use std::{
     thread::{self, JoinHandle},
 };
 
+use std::time::Duration;
+
 use parking_lot::{Condvar, Mutex, MutexGuard};
 #[cfg(not(all(feature = "yk_testing", not(test))))]
 use parking_lot_core::SpinWait;
+
+#[cfg(tracer_swt)]
+use crate::trace::swt::cp::{control_point_transition, CPTransition, CPTransitionDirection};
 
 use crate::{
     aotsmp::{load_aot_stackmaps, AOT_STACKMAPS},
@@ -435,9 +440,27 @@ impl MT {
                 });
                 self.stats.timing_state(TimingState::JitExecuting);
 
+                // println!("Sleeping for 2 seconds...");
+                // thread::sleep(Duration::from_secs(2));
+                #[cfg(tracer_swt)]
+                unsafe {
+                    // Transition to unopt before trace execution since``
+                    // the trace was collected un unopt version.
+                    // This function will call __yk_exec_trace when live variables are restored.
+                    control_point_transition(CPTransition {
+                        direction: CPTransitionDirection::OptToUnopt,
+                        frameaddr,
+                        rsp,
+                        trace_addr: trace_addr,
+                        exec_trace: true,
+                        exec_trace_fn: __yk_exec_trace,
+                    });
+                }
                 // FIXME: Calling this function overwrites the current (Rust) function frame,
                 // rather than unwinding it. https://github.com/ykjit/yk/issues/778.
-                unsafe { __yk_exec_trace(frameaddr, rsp, trace_addr) };
+                unsafe {
+                    __yk_exec_trace(frameaddr, rsp, trace_addr);
+                };
             }
             TransitionControlPoint::StartTracing(hl) => {
                 self.log.log(Verbosity::JITEvent, "start-tracing");
@@ -478,6 +501,20 @@ impl MT {
                         todo!("{e:?}");
                     }
                 }
+                #[cfg(tracer_swt)]
+                unsafe {
+                    // Transition to unopt before start tracing cause
+                    // we need the intepreter version with tracing calls..
+                    control_point_transition(CPTransition {
+                        direction: CPTransitionDirection::OptToUnopt,
+                        frameaddr,
+                        rsp: 0 as *const c_void,
+                        trace_addr: 0 as *const c_void,
+                        exec_trace: false,
+                        exec_trace_fn: __yk_exec_trace
+                    });
+                }
+                // self.log.log(Verbosity::JITEvent, "returning into unopt cp");
             }
             TransitionControlPoint::StopTracing => {
                 // Assuming no bugs elsewhere, the `unwrap`s cannot fail, because `StartTracing`
@@ -513,6 +550,18 @@ impl MT {
                         self.log
                             .log(Verbosity::Warning, &format!("stop-tracing-aborted: {e}"));
                     }
+                }
+                #[cfg(tracer_swt)]
+                unsafe {
+                    // Transition into opt interpreter when we stop tracing.
+                    control_point_transition(CPTransition {
+                        direction: CPTransitionDirection::UnoptToOpt,
+                        frameaddr,
+                        rsp: 0 as *const c_void,
+                        trace_addr: 0 as *const c_void,
+                        exec_trace: false,
+                        exec_trace_fn: __yk_exec_trace,
+                    });
                 }
             }
             TransitionControlPoint::StopSideTracing {
@@ -926,7 +975,7 @@ impl MT {
 #[cfg(target_arch = "x86_64")]
 #[naked]
 #[no_mangle]
-unsafe extern "C" fn __yk_exec_trace(
+pub unsafe extern "C" fn __yk_exec_trace(
     frameaddr: *const c_void,
     rsp: *const c_void,
     trace: *const c_void,
@@ -939,6 +988,7 @@ unsafe extern "C" fn __yk_exec_trace(
         "mov rsp, rsi",
         "sub rsp, 8",   // Return address of control point call
         "sub rsp, 104", // Registers pushed in naked cp call (includes alignment)
+        // "int3",
         // Restore registers which were pushed to the stack in [ykcapi::__ykrt_control_point].
         "pop r15",
         "pop r14",
@@ -961,7 +1011,7 @@ unsafe extern "C" fn __yk_exec_trace(
 }
 
 /// [MTThread]'s major job is to record what state in the "interpreting/tracing/executing"
-/// state-machine this thread is in. This enum contains the states.
+/// state-machine this thread is in. This enum contains the states.bf.
 #[derive(Debug)]
 enum MTThreadState {
     /// This thread is executing in the normal interpreter: it is not executing a trace or
