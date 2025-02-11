@@ -60,7 +60,7 @@ pub(super) mod lsregalloc;
 mod rev_analyse;
 
 use deopt::{__yk_deopt, __yk_guardcheck};
-use lsregalloc::{GPConstraint, LSRegAlloc, RegConstraint, RegExtension};
+use lsregalloc::{GPConstraint, GuardSnapshot, LSRegAlloc, RegConstraint, RegExtension};
 
 /// General purpose argument registers as defined by the x64 SysV ABI.
 static ARG_GP_REGS: [Rq; 6] = [Rq::RDI, Rq::RSI, Rq::RDX, Rq::RCX, Rq::R8, Rq::R9];
@@ -301,7 +301,7 @@ struct Assemble<'a> {
     body_start_locs: Vec<VarLocation>,
     asm: dynasmrt::x64::Assembler,
     /// Deopt info, with one entry per guard, in the order that the guards appear in the trace.
-    deoptinfo: HashMap<usize, DeoptInfo>,
+    deoptinfo: HashMap<usize, (GuardSnapshot, DeoptInfo)>,
     ///
     /// Maps assembly offsets to comments.
     ///
@@ -419,7 +419,7 @@ impl<'a> Assemble<'a> {
             let mut infos = self
                 .deoptinfo
                 .iter()
-                .map(|(id, l)| (*id, l.fail_label))
+                .map(|(id, (_regset, di))| (*id, di.fail_label))
                 .collect::<Vec<_>>();
             // Debugging deopt asm is much easier if the stubs are in order.
             #[cfg(debug_assertions)]
@@ -431,6 +431,8 @@ impl<'a> Assemble<'a> {
                     self.asm.offset(),
                     format!("Deopt ID for guard {:?}", deoptid),
                 );
+                self.ra
+                    .get_ready_for_deopt(&mut self.asm, &self.deoptinfo[&deoptid].0);
                 // FIXME: Why are `deoptid`s 64 bit? We're not going to have that many guards!
                 let deoptid = i32::try_from(deoptid).unwrap();
                 dynasm!(self.asm
@@ -560,7 +562,11 @@ impl<'a> Assemble<'a> {
         Ok(Arc::new(X64CompiledTrace {
             mt,
             buf,
-            deoptinfo: self.deoptinfo,
+            deoptinfo: self
+                .deoptinfo
+                .into_iter()
+                .map(|(id, (_gsnap, di))| (id, di))
+                .collect::<HashMap<_, _>>(),
             prevguards,
             sp_offset: self.ra.stack_size(),
             prologue_offset: self.prologue_offset.0,
@@ -2633,6 +2639,16 @@ impl<'a> Assemble<'a> {
     fn cg_select(&mut self, iidx: jit_ir::InstIdx, inst: &jit_ir::SelectInst) {
         // First load the true case. We then immediately follow this up with a conditional move,
         // overwriting the value with the false case, if the condition was false.
+        match self.m.type_(inst.trueval(self.m).tyidx(self.m)) {
+            Ty::Void => todo!(),
+            Ty::Integer(_) | Ty::Ptr => self.cg_select_int_ptr(iidx, inst),
+            Ty::Func(_) => todo!(),
+            Ty::Float(_) => self.cg_select_float(iidx, inst),
+            Ty::Unimplemented(_) => unreachable!(),
+        }
+    }
+
+    fn cg_select_int_ptr(&mut self, iidx: jit_ir::InstIdx, inst: &jit_ir::SelectInst) {
         let [true_reg, cond_reg, false_reg] = self.ra.assign_gp_regs(
             &mut self.asm,
             iidx,
@@ -2667,6 +2683,61 @@ impl<'a> Assemble<'a> {
 
         dynasm!(self.asm ; bt Rd(cond_reg.code()), 0);
         dynasm!(self.asm ; cmovnc Rq(true_reg.code()), Rq(false_reg.code()));
+    }
+
+    fn cg_select_float(&mut self, iidx: jit_ir::InstIdx, inst: &jit_ir::SelectInst) {
+        let ([cond_reg], [true_reg, false_reg, out_reg]) = self.ra.assign_regs(
+            &mut self.asm,
+            iidx,
+            [GPConstraint::Input {
+                op: inst.cond(self.m),
+                in_ext: RegExtension::Undefined,
+                force_reg: None,
+                clobber_reg: false,
+            }],
+            [
+                RegConstraint::Input(inst.trueval(self.m)),
+                RegConstraint::Input(inst.falseval(self.m)),
+                RegConstraint::Output,
+            ],
+        );
+        debug_assert_eq!(
+            self.m
+                .type_(inst.cond(self.m).tyidx(self.m))
+                .bitw()
+                .unwrap(),
+            1
+        );
+
+        assert_eq!(
+            inst.trueval(self.m).bitw(self.m),
+            inst.falseval(self.m).bitw(self.m)
+        );
+        match inst.trueval(self.m).bitw(self.m) {
+            32 => {
+                dynasm!(self.asm
+                    ;   bt Rd(cond_reg.code()), 0
+                    ;   jc >equal
+                    ;   movss Rx(out_reg.code()), Rx(false_reg.code())
+                    ;   jmp >done
+                    ; equal:
+                    ;   movss Rx(out_reg.code()), Rx(true_reg.code())
+                    ; done:
+                );
+            }
+            64 => {
+                dynasm!(self.asm
+                    ;   bt Rd(cond_reg.code()), 0
+                    ;   jc >equal
+                    ;   movsd Rx(out_reg.code()), Rx(false_reg.code())
+                    ;   jmp >done
+                    ; equal:
+                    ;   movsd Rx(out_reg.code()), Rx(true_reg.code())
+                    ; done:
+                );
+            }
+            x => todo!("{x}"),
+        }
     }
 
     fn guard_to_deopt(&mut self, inst: &jit_ir::GuardInst) -> DynamicLabel {
@@ -2712,7 +2783,8 @@ impl<'a> Assemble<'a> {
             inlined_frames: gi.inlined_frames().to_vec(),
             guard: Guard::new(),
         };
-        self.deoptinfo.insert(inst.gidx.into(), deoptinfo);
+        self.deoptinfo
+            .insert(inst.gidx.into(), (self.ra.guard_snapshot(inst), deoptinfo));
         fail_label
     }
 
@@ -4351,6 +4423,30 @@ mod tests {
     }
 
     #[test]
+    fn cg_deopt_reg_exts() {
+        codegen_and_test(
+            "
+              entry:
+                %0: i8 = param 0
+                %1: i1 = param 1
+                %2: i8 = shl %0, 1i8
+                guard true, %1, [%2]
+            ",
+            "
+                ...
+                ; %2: i8 = shl %0, 1i8
+                shl r.64.x, 0x01
+                ; guard true, %1, ...
+                ...
+                ; deopt id for guard 0
+                and r.32.x, 0xff
+                ...
+            ",
+            false,
+        );
+    }
+
+    #[test]
     fn cg_icmp_const() {
         codegen_and_test(
             "
@@ -4539,7 +4635,7 @@ mod tests {
     }
 
     #[test]
-    fn cg_select() {
+    fn cg_select_int() {
         codegen_and_test(
             "
               entry:
@@ -4556,6 +4652,59 @@ mod tests {
                 cmovnb r.64.x, r.64.y
             ",
             false,
+        );
+    }
+
+    #[test]
+    fn cg_select_float() {
+        codegen_and_test(
+            "
+              entry:
+                %0: float = param 0
+                %1: float = param 1
+                %2: i1 = param 2
+                %3: float = %2 ? %0 : %1
+                %4: float = fadd %0, %1
+                black_box %3
+                black_box %4
+            ",
+            "
+                ...
+                ; %3: float = %2 ? %0 : %1
+                {{_}} {{_}}: bt r.32._, 0x00
+                {{_}} {{_}}: jb 0x00000000{{true_label}}
+                {{_}} {{_}}: movss fp.128.x, fp.128.y
+                {{_}} {{_}}: jmp 0x00000000{{done_label}}
+                {{_}} {{true_label}}: movss fp.128.x, fp.128.z
+                ; %4: float = fadd %0, %1
+                {{_}} {{done_label}}: ...
+            ",
+            true,
+        );
+
+        codegen_and_test(
+            "
+              entry:
+                %0: double = param 0
+                %1: double = param 1
+                %2: i1 = param 2
+                %3: double = %2 ? %0 : %1
+                %4: double = fadd %0, %1
+                black_box %3
+                black_box %4
+            ",
+            "
+                ...
+                ; %3: double = %2 ? %0 : %1
+                {{_}} {{_}}: bt r.32._, 0x00
+                {{_}} {{_}}: jb 0x00000000{{true_label}}
+                {{_}} {{_}}: movsd fp.128.x, fp.128.y
+                {{_}} {{_}}: jmp 0x00000000{{done_label}}
+                {{_}} {{true_label}}: movsd fp.128.x, fp.128.z
+                ; %4: double = fadd %0, %1
+                {{_}} {{done_label}}: ...
+            ",
+            true,
         );
     }
 
