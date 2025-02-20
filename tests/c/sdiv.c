@@ -1,5 +1,4 @@
 // ignore-if: test $SWT_MODULE_CLONE_SKIP_FAILING_TEST=true
-// # Note: Signal 11 - Exception in queue_root_compile_job
 // Compiler:
 //   env-var: YKB_EXTRA_CC_FLAGS=-O1
 // Run-time:
@@ -57,6 +56,8 @@
 //     exit
 
 // Test signed division.
+
+// SWT Note: Signal 11 - Exception in queue_root_compile_job
 
 #include <assert.h>
 #include <stdio.h>

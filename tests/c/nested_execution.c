@@ -7,41 +7,13 @@
 //     yk-jit-event: start-tracing
 //     6
 //     enter
+//     yk-jit-event: tracing-aborted
 //     5
-//     4
-//     3
-//     2
-//     1
-//     return
-//     yk-jit-event: stop-tracing
-//     --- Begin jit-pre-opt ---
-//       ...
-//       guard true, ...
-//       ...
-//       guard false, ...
-//       ...
-//       guard false, ...
-//       ...
-//       guard false, ...
-//       ...
-//       guard true, ...
-//       ...
-//       guard true, ...
-//       ...
-//     --- End jit-pre-opt ---
-//     5
-//     enter
 //     yk-jit-event: start-tracing
 //     4
 //     yk-jit-event: stop-tracing
 //     --- Begin jit-pre-opt ---
-//       ...
-//       guard false, ...
-//       ...
-//       guard false, ...
-//       ...
-//       guard true, ...
-//       ...
+//     ...
 //     --- End jit-pre-opt ---
 //     3
 //     yk-jit-event: enter-jit-code
@@ -49,7 +21,19 @@
 //     1
 //     yk-jit-event: deoptimise
 //     return
+//     yk-jit-event: start-tracing
+//     5
+//     enter
+//     yk-jit-event: tracing-aborted
+//     4
 //     yk-jit-event: enter-jit-code
+//     3
+//     2
+//     1
+//     yk-jit-event: deoptimise
+//     yk-jit-event: start-side-tracing
+//     return
+//     yk-jit-event: tracing-aborted
 //     4
 //     enter
 //     yk-jit-event: enter-jit-code
@@ -58,26 +42,24 @@
 //     1
 //     yk-jit-event: deoptimise
 //     return
-//     yk-jit-event: deoptimise
+//     yk-jit-event: start-tracing
 //     c
 //     3
 //     enter
-//     yk-jit-event: enter-jit-code
+//     yk-jit-event: tracing-aborted
 //     2
+//     yk-jit-event: enter-jit-code
 //     1
 //     yk-jit-event: deoptimise
 //     return
-//     yk-jit-event: enter-jit-code
-//     yk-jit-event: deoptimise
+//     yk-jit-event: start-tracing
 //     b
 //     2
 //     enter
-//     yk-jit-event: enter-jit-code
+//     yk-jit-event: tracing-aborted
 //     1
-//     yk-jit-event: deoptimise
 //     return
-//     yk-jit-event: enter-jit-code
-//     yk-jit-event: deoptimise
+//     yk-jit-event: start-tracing
 //     a
 //     1
 //     enter
@@ -120,6 +102,7 @@ void f(YkMT *mt, int who, YkLocation *loc1, YkLocation *loc2, int i) {
 int main(int argc, char **argv) {
   YkMT *mt = yk_mt_new(NULL);
   yk_mt_hot_threshold_set(mt, 0);
+  yk_mt_sidetrace_threshold_set(mt, 2);
   YkLocation loc1 = yk_location_new();
   YkLocation loc2 = yk_location_new();
   int i = 6;

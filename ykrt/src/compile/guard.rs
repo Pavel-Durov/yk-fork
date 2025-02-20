@@ -17,7 +17,7 @@ pub(crate) struct Guard(Mutex<GuardState>);
 enum GuardState {
     Counting(HotThreshold),
     SideTracing,
-    Compiled(Arc<dyn CompiledTrace>),
+    Compiled,
 }
 
 impl Guard {
@@ -40,26 +40,32 @@ impl Guard {
                 }
             }
             GuardState::SideTracing => false,
-            GuardState::Compiled(_) => false,
+            GuardState::Compiled => false,
         }
     }
 
-    /// Stores a compiled side-trace inside this guard.
-    pub fn set_ctr(&self, ctr: Arc<dyn CompiledTrace>) {
+    /// Stores a compiled side-trace inside this guard while patching a jump to the side-trace
+    /// directly into the parent trace.
+    /// * `ctr`: The compiled side-trace.
+    /// * `parent`: The immediate parent of the side-trace.
+    /// * `gidx`: The guard id of the side-trace.
+    pub fn set_ctr(
+        &self,
+        ctr: Arc<dyn CompiledTrace>,
+        parent: &Arc<dyn CompiledTrace>,
+        gidx: GuardIdx,
+    ) {
         let mut lk = self.0.lock();
+        let addr = ctr.entry();
         match &*lk {
-            GuardState::SideTracing => *lk = GuardState::Compiled(ctr),
+            GuardState::SideTracing => *lk = GuardState::Compiled,
             _ => panic!(),
         }
-    }
-
-    /// Return the compiled side-trace or None if no side-trace has been compiled.
-    pub fn ctr(&self) -> Option<Arc<dyn CompiledTrace>> {
-        let lk = self.0.lock();
-        match &*lk {
-            GuardState::Compiled(ctr) => Some(Arc::clone(ctr)),
-            _ => None,
-        }
+        // It's important to patch the parent only after we've updated the `GuardState` to avoid a
+        // race condition. If we were to patch the parent trace first, there is a small window
+        // where another thread takes the patched jump and deopts before we had a chance to call
+        // `set_ctr` which sets information required by deopt.
+        parent.patch_guard(gidx, addr);
     }
 }
 

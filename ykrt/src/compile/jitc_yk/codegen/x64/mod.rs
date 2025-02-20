@@ -34,7 +34,7 @@ use crate::{
         CompiledTrace, Guard, GuardIdx, SideTraceInfo,
     },
     location::HotLocation,
-    mt::MT,
+    mt::{CompiledTraceId, MT},
 };
 use dynasmrt::{
     components::StaticLabel,
@@ -44,6 +44,7 @@ use dynasmrt::{
     Register as dynasmrtRegister,
 };
 use indexmap::IndexMap;
+use page_size;
 use parking_lot::Mutex;
 use std::{
     assert_matches::debug_assert_matches,
@@ -51,7 +52,7 @@ use std::{
     collections::HashMap,
     error::Error,
     slice,
-    sync::{Arc, Weak},
+    sync::{atomic::fence, Arc, Weak},
 };
 use ykaddr::addr::symbol_to_ptr;
 
@@ -59,7 +60,7 @@ mod deopt;
 pub(super) mod lsregalloc;
 mod rev_analyse;
 
-use deopt::{__yk_deopt, __yk_guardcheck};
+use deopt::__yk_deopt;
 use lsregalloc::{GPConstraint, GuardSnapshot, LSRegAlloc, RegConstraint, RegExtension};
 
 /// General purpose argument registers as defined by the x64 SysV ABI.
@@ -136,6 +137,11 @@ const SYSV_CALL_STACK_ALIGN: usize = 16;
 /// within this `x64` module and its descendants we can just say `VarLocation`.
 pub(crate) type VarLocation = super::reg_alloc::VarLocation<Register>;
 
+/// The lock used when patching a side-trace into a parent trace.
+static LK_PATCH: Mutex<()> = Mutex::new(());
+/// x86 NOP opcode.
+const NOP_OPCODE: u8 = 0x90;
+
 /// A function that we can put a debugger breakpoint on.
 /// FIXME: gross hack.
 #[cfg(debug_assertions)]
@@ -186,11 +192,16 @@ impl VarLocation {
             },
             yksmp::Location::Constant(v) => {
                 let bitw = m.inst(iidx).def_bitw(m);
-                assert!(bitw <= 64);
+                assert!(bitw <= 32);
                 VarLocation::ConstInt {
                     bits: bitw,
                     v: u64::from(*v),
                 }
+            }
+            yksmp::Location::LargeConstant(v) => {
+                let bitw = m.inst(iidx).def_bitw(m);
+                assert!(bitw <= 64);
+                VarLocation::ConstInt { bits: bitw, v: *v }
             }
             e => {
                 todo!("{:?}", e);
@@ -259,6 +270,8 @@ impl From<&VarLocation> for yksmp::Location {
             VarLocation::ConstInt { bits, v } => {
                 if *bits <= 32 {
                     yksmp::Location::Constant(u32::try_from(*v).unwrap())
+                } else if *bits <= 64 {
+                    yksmp::Location::LargeConstant(*v)
                 } else {
                     todo!(">32 bit constant")
                 }
@@ -302,6 +315,9 @@ struct Assemble<'a> {
     asm: dynasmrt::x64::Assembler,
     /// Deopt info, with one entry per guard, in the order that the guards appear in the trace.
     deoptinfo: HashMap<usize, (GuardSnapshot, DeoptInfo)>,
+    /// An available register at the time of a guard failure. We need this register to patch 64-bit
+    /// jumps when patching side-traces into their parents.
+    patch_reg: HashMap<usize, Rq>,
     ///
     /// Maps assembly offsets to comments.
     ///
@@ -373,6 +389,7 @@ impl<'a> Assemble<'a> {
             header_start_locs: Vec::new(),
             body_start_locs: Vec::new(),
             deoptinfo: HashMap::new(),
+            patch_reg: HashMap::new(),
             comments: Cell::new(IndexMap::new()),
             sp_offset,
             root_offset,
@@ -386,27 +403,11 @@ impl<'a> Assemble<'a> {
         hl: Arc<Mutex<HotLocation>>,
         prevguards: Option<Vec<GuardIdx>>,
     ) -> Result<Arc<dyn CompiledTrace>, CompilationError> {
-        if prevguards.is_some() {
-            // Recover registers.
-            for reg in lsregalloc::FP_REGS.iter() {
-                dynasm!(self.asm
-                    ; pop rcx
-                    ; movq Rx(reg.code()), rcx
-                );
-            }
-            for reg in lsregalloc::GP_REGS.iter() {
-                dynasm!(self.asm; pop Rq(reg.code()));
-            }
-            // Re-align stack. This was misaligned when we pushed RSI in the guard failure routine.
-            // This isn't really neccessary since we are aligning the stack when we calculate the
-            // stack size for this trace. However, this removes the pushed RSI register which
-            // serves no further pupose at this point.
-            dynasm!(self.asm; add rsp, 8);
-        }
-
         let alloc_off = self.emit_prologue();
 
         self.cg_insts()?;
+
+        let mut patch_deopts = Vec::new();
 
         if !self.deoptinfo.is_empty() {
             // We now have to construct the "full" deopt points. Inside the trace itself, are just
@@ -425,26 +426,66 @@ impl<'a> Assemble<'a> {
             #[cfg(debug_assertions)]
             infos.sort_by(|a, b| a.0.cmp(&b.0));
 
+            let deopt_label = self.asm.new_dynamic_label();
             let guardcheck_label = self.asm.new_dynamic_label();
             for (deoptid, fail_label) in infos {
                 self.comment(
                     self.asm.offset(),
-                    format!("Deopt ID for guard {:?}", deoptid),
+                    format!("Deopt ID and patch point for guard {:?}", deoptid),
                 );
                 self.ra
                     .get_ready_for_deopt(&mut self.asm, &self.deoptinfo[&deoptid].0);
                 // FIXME: Why are `deoptid`s 64 bit? We're not going to have that many guards!
+
+                // Align this location in such a way that the operand of the below `mov`
+                // instruction is aligned to 8 bytes, and the entirety of the `mov` instruction (10
+                // bytes) fits into the cache-line.
+                let clsize =
+                    cache_size::cache_line_size(1, cache_size::CacheType::Instruction).unwrap();
+                let off = self.asm.offset().0;
+                let mut align = (off + 2).next_multiple_of(8);
+                if align.next_multiple_of(clsize) == align {
+                    align += 8
+                }
+                let num_ops = align - off - 2;
+                for _ in 0..num_ops {
+                    self.asm.push(NOP_OPCODE);
+                }
+                // Store the future patch offset for this guard.
+                let mov_off = self.asm.offset();
+                self.deoptinfo.get_mut(&deoptid).unwrap().1.fail_offset = mov_off;
+                // Emit the guard failure code.
+                let jumpreg = self.patch_reg[&deoptid];
                 let deoptid = i32::try_from(deoptid).unwrap();
                 dynasm!(self.asm
                     ;=> fail_label
+                    // After compiling a side-trace for this location, we want to patch in a jump
+                    // to its address here later, so we can jump to side-traces directly. We use an
+                    // available register that the register allocator has reserved for us to store
+                    // the jump location. After finalizing this trace we patch the `mov`
+                    // instruction below with the absolute address of the deopt routine. Once a
+                    // side-trace is compiled, we patch the same `mov` with a side-trace address to
+                    // allow us to directly jump to the side-trace.
+                    // FIXME: If the side-trace offset to its parent-trace is < 32-bit we can emit
+                    // a relative jump here that doesn't require a register and is likely faster.
+                    // FIXME: Ideally, instead of patching this place, we could patch the guards
+                    // directly which gets rid of an extra jump. But since `cg_icmp_guard` makes
+                    // use of various types of jumps (e.g. jne, jl, etc), this is an optimisation
+                    // for another time.
+                    ; mov Rq(jumpreg.code()), QWORD 0x0
+                    ; jmp Rq(jumpreg.code())
+                );
+                let deopt_off = self.asm.offset();
+                patch_deopts.push((mov_off, deopt_off));
+                dynasm!(self.asm
                     ; push rsi // FIXME: We push RSI now so we can fish it back out in
-                               // `deopt_label`.
+                               // `deopt_label`. This misaligns the stack which we align
+                               // below.
                     ; mov rsi, deoptid
                     ; jmp => guardcheck_label
                 );
             }
 
-            let deopt_label = self.asm.new_dynamic_label();
             self.comment(self.asm.offset(), "Call __yk_deopt".to_string());
             // Clippy points out that `__yk_depot as i64` isn't portable, but since this entire module
             // is x86 only, we don't need to worry about portability.
@@ -471,68 +512,15 @@ impl<'a> Assemble<'a> {
                     );
                 }
                 dynasm!(self.asm; mov rcx, rsp);
-
-                // Push [GuardIdx]'s of previous guard failures.
-                if let Some(ref guards) = prevguards {
-                    for gidx in guards.iter().rev() {
-                        let g = i64::try_from(usize::from(*gidx)).unwrap();
-                        dynasm!(self.asm
-                            ; mov r9, QWORD g
-                            ; push r9
-                        );
-                    }
-                }
-                // Save the pointer to this list.
-                dynasm!(self.asm
-                    ; mov r8, rsp
-                );
-
-                let len = i64::try_from(prevguards.as_ref().map_or(0, |v| v.len())).unwrap();
-                // Total alignment caused by pushing the parent guards.
-                let mut totalalign = len * 8;
-
-                // Pushing RSI above mis-aligned the stack to 8 bytes, but the calling convetion
-                // requires us to be 16 bytes aligned. Unless we accidentally re-aligned it by
-                // pushing an uneven amount of previous [GuardIdx]'s, we need to re-align it here.
-                if len % 2 == 0 {
-                    dynasm!(self.asm
-                        ; sub rsp, 8
-                    );
-                    totalalign += 8;
-                }
-
-                // Check whether we need to deoptimise or jump into a side-trace.
-                dynasm!(self.asm
-                    ; push rsi  // Save `deoptid`.
-                    ; push rdx  // Save `gp_regs` pointer.
-                    ; push rcx  // Save `fp_regs` pointer.
-                    ; push r8   // Save parent guards pointer.
-                    ; mov rdi, rsi // Pass `deoptid`.
-                    ; mov rsi, r8  // Pass pointer to parent guards.
-                    ; mov rdx, QWORD len  // Pass length of parent guards.
-                    ; mov rax, QWORD __yk_guardcheck as i64
-                    ; call rax
-                    ; pop r8
-                    ; pop rcx
-                    ; pop rdx
-                    ; pop rsi
-                    ; cmp rax, 0
-                    ; je => deopt_label
-                );
-
-                // Jump into side-trace. The side-trace takes care of recovering the saved
-                // registers.
-                dynasm!(self.asm
-                    // Remove pushed [GuardIdx]'s from the stack as they are no longer needed.
-                    ; add rsp, i32::try_from(totalalign).unwrap()
-                    ; jmp rax
-                );
+                // Correct the alignment for the `push rsi` above so the stack is on a 16 byte
+                // boundary.
+                dynasm!(self.asm; sub rsp, 8);
 
                 // Deoptimise.
                 dynasm!(self.asm; => deopt_label);
                 dynasm!(self.asm
                     ; mov rdi, rbp
-                    ; mov r9, QWORD len
+                    ; mov r8, QWORD self.m.ctrid().as_u64().cast_signed()
                     ; mov rax, QWORD __yk_deopt as i64
                     ; call rax
                 );
@@ -551,15 +539,23 @@ impl<'a> Assemble<'a> {
         // This unwrap cannot fail if `commit` (above) succeeded.
         let buf = self.asm.finalize().unwrap();
 
+        // Patch deopt addresses into the mov preceeding mov instruction.
+        for (mov_off, deopt_off) in patch_deopts {
+            let deopt_addr = buf.ptr(deopt_off);
+            let mov_addr = buf.ptr(AssemblyOffset(mov_off.0 + 2));
+            patch_address(mov_addr, deopt_addr as u64);
+        }
+
         #[cfg(any(debug_assertions, test))]
         let gdb_ctx = gdb::register_jitted_code(
-            self.m.ctr_id(),
+            self.m.ctrid(),
             buf.ptr(AssemblyOffset(0)),
             buf.size(),
             self.comments.get_mut(),
         )?;
 
         Ok(Arc::new(X64CompiledTrace {
+            ctrid: self.m.ctrid(),
             mt,
             buf,
             deoptinfo: self
@@ -1629,6 +1625,16 @@ impl<'a> Assemble<'a> {
                 self.cg_ctpop(iidx, op);
                 Ok(())
             }
+            x if x.starts_with("llvm.floor") => {
+                let [op] = args.try_into().unwrap();
+                self.cg_floor(iidx, op);
+                Ok(())
+            }
+            x if x.starts_with("llvm.memcpy") => {
+                let [dst, src, len, is_volatile] = args.try_into().unwrap();
+                self.cg_memcpy(iidx, dst, src, len, is_volatile);
+                Ok(())
+            }
             x if x.starts_with("llvm.smax") => {
                 let [lhs_op, rhs_op] = args.try_into().unwrap();
                 self.cg_smax(iidx, lhs_op, rhs_op);
@@ -1829,6 +1835,64 @@ impl<'a> Assemble<'a> {
         dynasm!(self.asm; popcnt Rq(out_reg.code()), Rq(in_reg.code()));
     }
 
+    fn cg_floor(&mut self, iidx: InstIdx, op: Operand) {
+        match self.m.type_(op.tyidx(self.m)) {
+            Ty::Void => todo!(),
+            Ty::Integer(_) => todo!(),
+            Ty::Ptr => todo!(),
+            Ty::Func(_) => todo!(),
+            Ty::Float(fty) => {
+                let [in_reg, out_reg] = self.ra.assign_fp_regs(
+                    &mut self.asm,
+                    iidx,
+                    [RegConstraint::Input(op.clone()), RegConstraint::Output],
+                );
+                match fty {
+                    FloatTy::Float => todo!(),
+                    FloatTy::Double => {
+                        dynasm!(self.asm; roundsd Rx(out_reg.code()), Rx(in_reg.code()), 1)
+                    }
+                }
+            }
+            Ty::Unimplemented(_) => todo!(),
+        }
+    }
+
+    fn cg_memcpy(
+        &mut self,
+        iidx: InstIdx,
+        dst_op: Operand,
+        src_op: Operand,
+        len_op: Operand,
+        _is_volatile_op: Operand,
+    ) {
+        let [_, _, _] = self.ra.assign_gp_regs(
+            &mut self.asm,
+            iidx,
+            [
+                GPConstraint::Input {
+                    op: dst_op.clone(),
+                    in_ext: RegExtension::ZeroExtended,
+                    force_reg: Some(Rq::RDI),
+                    clobber_reg: true,
+                },
+                GPConstraint::Input {
+                    op: src_op.clone(),
+                    in_ext: RegExtension::ZeroExtended,
+                    force_reg: Some(Rq::RSI),
+                    clobber_reg: true,
+                },
+                GPConstraint::Input {
+                    op: len_op.clone(),
+                    in_ext: RegExtension::ZeroExtended,
+                    force_reg: Some(Rq::RCX),
+                    clobber_reg: true,
+                },
+            ],
+        );
+        dynasm!(self.asm; rep movsb);
+    }
+
     fn cg_smax(&mut self, iidx: InstIdx, lhs: Operand, rhs: Operand) {
         assert_eq!(lhs.bitw(self.m), rhs.bitw(self.m));
         let bitw = lhs.bitw(self.m);
@@ -1972,9 +2036,10 @@ impl<'a> Assemble<'a> {
                     op: lhs,
                     in_ext,
                     force_reg: None,
-                    clobber_reg: false,
+                    clobber_reg: true,
                 }],
             );
+            self.patch_reg.insert(g_inst.gidx.into(), lhs_reg);
             self.cg_cmp_const(bitw, lhs_reg, v);
         } else {
             let [lhs_reg, rhs_reg] = self.ra.assign_gp_regs(
@@ -1985,7 +2050,7 @@ impl<'a> Assemble<'a> {
                         op: lhs,
                         in_ext,
                         force_reg: None,
-                        clobber_reg: false,
+                        clobber_reg: true,
                     },
                     GPConstraint::Input {
                         op: rhs,
@@ -1995,6 +2060,7 @@ impl<'a> Assemble<'a> {
                     },
                 ],
             );
+            self.patch_reg.insert(g_inst.gidx.into(), lhs_reg);
             self.cg_cmp_regs(bitw, lhs_reg, rhs_reg);
         }
 
@@ -2118,7 +2184,65 @@ impl<'a> Assemble<'a> {
     }
 
     fn cg_fcmp(&mut self, iidx: InstIdx, inst: &jit_ir::FCmpInst) {
-        let (lhs, pred, rhs) = (inst.lhs(self.m), inst.predicate(), inst.rhs(self.m));
+        // For some predicates we do as LLVM does and rewrite the operation into an equivalent one
+        // that can be codegenned more efficiently.
+        //
+        // For example, suppose we want to codegen this 32-bit float comparison:
+        //
+        //   %3: i1 = f_ugt %1, %2
+        //
+        // This means "set %3 to 1 if %1 > %2 or if the comparison's result unordered (i.e. one or
+        // both of %1 and %2 were NaN), otherwise set %3 to 0".
+        //
+        // Assume that %1 is in xmm1 and %2 is in xmm2. We'd use `ucomis{s,d}` (depending on if we
+        // are operating on floats or doubles) to set the flags register and then interpret the
+        // flags to know which relation(s) held.
+        //
+        // Here's the truth table:
+        //
+        //               | ZF | PF | CF
+        //     ----------+----+----+---
+        //     UNORDERED | 1  | 1  | 1
+        //         >     | 0  | 0  | 0
+        //         <     | 0  | 0  | 1
+        //         =     | 1  | 0  | 0
+        //
+        // A naiave code-gen for this does `ucomiss xmm1, xmm2` to set the flags register, then
+        // checks for the unordered result (PF=1) and if xmm1 > xmm2 (CF=0 and ZF=0), i.e.:
+        //
+        //     ucomiss xmm1, xmm2
+        //     setp al                  ; unordered result?
+        //     seta bl                  ; xmm1 > xmm2?
+        //     or al, bl                ; either of the above true? result in al
+        //
+        // That's a lot of work for one comparison and what's more it requires a temporary
+        // register.
+        //
+        // A more clever codegen converts `%3: i1 = f_ugt %1, %2` into the equivalent
+        // `%3: i1 = f_ult $2, %1` by inverting the predicate and swapping the operands. By doing
+        // this we can capture the correct outcome in one flag check: CF=1. This allows much more
+        // efficient codegen:
+        //
+        //     ucomiss xmm2, xmm1       ; operands swapped!
+        //     setb al                  ; predicate inverted, result in al
+        //
+        // For evience of this optimisation in LLVM, see:
+        // https://github.com/llvm/llvm-project/blob/2b340c10a611d929fee25e6222909c8915e3d6b6/llvm/lib/Target/X86/X86InstrInfo.cpp#L3388
+        let (lhs, pred, rhs) = match (inst.lhs(self.m), inst.predicate(), inst.rhs(self.m)) {
+            (lhs, jit_ir::FloatPredicate::UnorderedGreater, rhs) => {
+                (rhs, jit_ir::FloatPredicate::UnorderedLess, lhs)
+            }
+            (lhs, jit_ir::FloatPredicate::UnorderedGreaterEqual, rhs) => {
+                (rhs, jit_ir::FloatPredicate::UnorderedLessEqual, lhs)
+            }
+            (lhs, jit_ir::FloatPredicate::OrderedLess, rhs) => {
+                (rhs, jit_ir::FloatPredicate::OrderedGreater, lhs)
+            }
+            (lhs, jit_ir::FloatPredicate::OrderedLessEqual, rhs) => {
+                (rhs, jit_ir::FloatPredicate::OrderedGreaterEqual, lhs)
+            }
+            (lhs, pred, rhs) => (lhs, pred, rhs),
+        };
         let bitw = lhs.bitw(self.m);
         let ([tgt_reg, tmp_reg], [lhs_reg, rhs_reg]) = self.ra.assign_regs(
             &mut self.asm,
@@ -2129,86 +2253,77 @@ impl<'a> Assemble<'a> {
                     force_reg: None,
                     can_be_same_as_input: false,
                 },
+                // OPT: not all comparisons need a temporary register, but we always take one.
                 GPConstraint::Temporary,
             ],
             [RegConstraint::Input(lhs), RegConstraint::Input(rhs)],
         );
 
-        match pred.is_ordered() {
-            Some(true) => match bitw {
-                32 => dynasm!(self.asm; comiss Rx(lhs_reg.code()), Rx(rhs_reg.code())),
-                64 => dynasm!(self.asm; comisd Rx(lhs_reg.code()), Rx(rhs_reg.code())),
-                _ => panic!(),
-            },
-            Some(false) => match bitw {
-                32 => dynasm!(self.asm; ucomiss Rx(lhs_reg.code()), Rx(rhs_reg.code())),
-                64 => dynasm!(self.asm; ucomisd Rx(lhs_reg.code()), Rx(rhs_reg.code())),
-                _ => panic!(),
-            },
-            None => todo!(),
+        // We use ucomis{s,d} instead of comis{s,d} because our IR semantics are such that a float
+        // comparison involving a qNaN operand shouldn't cause a floating point exception.
+        match bitw {
+            32 => dynasm!(self.asm; ucomiss Rx(lhs_reg.code()), Rx(rhs_reg.code())),
+            64 => dynasm!(self.asm; ucomisd Rx(lhs_reg.code()), Rx(rhs_reg.code())),
+            _ => panic!(),
         }
 
         // Interpret the flags assignment WRT the predicate.
         //
-        // Note that although floats are signed values, `{u,}comis{s,d}` sets CF (not SF and OF, as
+        // Note that although floats are signed values, `ucomis{s,d}` sets CF (not SF and OF, as
         // you might expect). So when checking the outcome you have to use the "above" and "below"
         // variants of `setcc`, as if you were comparing unsigned integers.
         match pred {
-            jit_ir::FloatPredicate::OrderedEqual | jit_ir::FloatPredicate::UnorderedEqual => {
-                dynasm!(self.asm; sete Rb(tgt_reg.code()))
+            jit_ir::FloatPredicate::OrderedLess
+            | jit_ir::FloatPredicate::OrderedLessEqual
+            | jit_ir::FloatPredicate::UnorderedGreater
+            | jit_ir::FloatPredicate::UnorderedGreaterEqual => {
+                // All of these cases were re-written to their inverse above.
+                unreachable!();
             }
-            jit_ir::FloatPredicate::UnorderedNotEqual => {
+            jit_ir::FloatPredicate::OrderedNotEqual => {
                 dynasm!(self.asm; setne Rb(tgt_reg.code()))
             }
-            jit_ir::FloatPredicate::OrderedGreater | jit_ir::FloatPredicate::UnorderedGreater => {
-                dynasm!(self.asm; seta Rb(tgt_reg.code()))
+            jit_ir::FloatPredicate::OrderedEqual => {
+                // This case requires two flag checks (and thus a temp reg).
+                dynasm!(self.asm
+                    ; sete Rb(tmp_reg.code())
+                    ; setnp Rb(tgt_reg.code())
+                    ; and Rb(tgt_reg.code()), Rb(tmp_reg.code())
+                );
             }
             jit_ir::FloatPredicate::OrderedGreaterEqual => {
                 dynasm!(self.asm; setae Rb(tgt_reg.code()))
             }
-            jit_ir::FloatPredicate::OrderedLess => dynasm!(self.asm; setb Rb(tgt_reg.code())),
-            jit_ir::FloatPredicate::OrderedLessEqual => dynasm!(self.asm; setbe Rb(tgt_reg.code())),
+            jit_ir::FloatPredicate::OrderedGreater => {
+                dynasm!(self.asm; seta Rb(tgt_reg.code()))
+            }
+            jit_ir::FloatPredicate::UnorderedEqual => {
+                dynasm!(self.asm; sete Rb(tgt_reg.code()))
+            }
+            jit_ir::FloatPredicate::UnorderedNotEqual => {
+                // This case requires two flag checks (and thus a temp reg).
+                dynasm!(self.asm
+                    ; setne Rb(tmp_reg.code())
+                    ; setp Rb(tgt_reg.code())
+                    ; or Rb(tgt_reg.code()), Rb(tmp_reg.code())
+                )
+            }
+            jit_ir::FloatPredicate::UnorderedLess => {
+                dynasm!(self.asm; setb Rb(tgt_reg.code()))
+            }
+            jit_ir::FloatPredicate::UnorderedLessEqual => {
+                dynasm!(self.asm; setbe Rb(tgt_reg.code()))
+            }
             jit_ir::FloatPredicate::False
-            | jit_ir::FloatPredicate::OrderedNotEqual
             | jit_ir::FloatPredicate::Ordered
             | jit_ir::FloatPredicate::Unordered
-            | jit_ir::FloatPredicate::UnorderedGreaterEqual
-            | jit_ir::FloatPredicate::UnorderedLess
-            | jit_ir::FloatPredicate::UnorderedLessEqual
             | jit_ir::FloatPredicate::True => todo!("{}", pred),
-        }
-
-        // But we have to be careful to check that the computation didn't produce "unordered". This
-        // happens when at least one of the value compared was NaN. The unordered result is flagged
-        // by PF (parity flag) being set.
-        //
-        // We follow the precedent set by clang and follow the IEE-754 spec with regards to
-        // comparisons with NaN:
-        //  - Any "not equal" comparison involving NaN is true.
-        //  - All other comparisons are false.
-        match pred {
-            jit_ir::FloatPredicate::OrderedNotEqual | jit_ir::FloatPredicate::UnorderedNotEqual => {
-                dynasm!(self.asm
-                    ; setp Rb(tmp_reg.code())
-                    ; or Rb(tgt_reg.code()), Rb(tmp_reg.code())
-                );
-            }
-            _ => {
-                dynasm!(self.asm
-                    ; setnp Rb(tmp_reg.code())
-                    ; and Rb(tgt_reg.code()), Rb(tmp_reg.code())
-                );
-            }
         }
     }
 
     /// Move live values from their source location into the target location when doing a jump back
     /// to the beginning of a trace (or a jump from a side-trace to the beginning of its root
     /// trace).
-    ///
-    /// # Arguments
-    ///
-    /// * `tgt_vars` - The target locations. If `None` use `self.loop_start_locs` instead.
     fn write_jump_vars(&mut self, iidx: InstIdx) {
         let (tgt_vars, src_ops) = match self.m.tracekind() {
             TraceKind::HeaderOnly => (self.header_start_locs.clone(), self.m.trace_header_end()),
@@ -2223,8 +2338,8 @@ impl<'a> Assemble<'a> {
                 self.m.trace_header_end(),
             ),
         };
-        // If we pass in `None` use `self.loop_start_locs` instead. We need to do this since we
-        // can't pass in `&self.loop_start_locs` directly due to borrowing restrictions.
+
+        // First of all we work out what to do with registers
         let mut gp_regs = lsregalloc::GP_REGS
             .iter()
             .map(|_| GPConstraint::None)
@@ -2234,75 +2349,15 @@ impl<'a> Assemble<'a> {
             .map(|_| RegConstraint::None)
             .collect::<Vec<_>>();
         for (i, op) in src_ops.iter().enumerate() {
-            // FIXME: This is completely broken: see the FIXME later.
             let op = op.unpack(self.m);
             let src = self.op_to_var_location(op.clone());
             let dst = tgt_vars[i];
             if dst == src {
-                // The value is already in the correct place, so there's nothing we need to
-                // do.
+                // The value is already in the correct place.
                 continue;
             }
-            match dst {
-                VarLocation::Stack {
-                    frame_off: off_dst,
-                    size: size_dst,
-                } => {
-                    match src {
-                        VarLocation::Register(Register::GP(reg)) => match size_dst {
-                            8 => dynasm!(self.asm;
-                                mov QWORD [rbp - i32::try_from(off_dst).unwrap()], Rq(reg.code())
-                            ),
-                            4 => dynasm!(self.asm;
-                                mov DWORD [rbp - i32::try_from(off_dst).unwrap()], Rd(reg.code())
-                            ),
-                            _ => todo!(),
-                        },
-                        VarLocation::ConstInt { bits, v } => match bits {
-                            32 => dynasm!(self.asm;
-                                mov DWORD [rbp - i32::try_from(off_dst).unwrap()], v as i32
-                            ),
-                            8 => dynasm!(self.asm;
-                                mov BYTE [rbp - i32::try_from(off_dst).unwrap()], v as i8),
-                            x => todo!("{x}"),
-                        },
-                        VarLocation::ConstPtr(v) => {
-                            dynasm!(self.asm
-                                ; push rax
-                                ; mov rax, QWORD v as i64
-                                ; mov QWORD [rbp - i32::try_from(off_dst).unwrap()], rax
-                                ; pop rax);
-                        }
-                        VarLocation::Stack {
-                            frame_off: off_src,
-                            size: size_src,
-                        } => match size_src {
-                            // FIXME: Better to ask register allocator for a free register
-                            // rather than pushing/popping RAX here?
-                            8 => dynasm!(self.asm;
-                                push rax;
-                                mov rax, QWORD [rbp - i32::try_from(off_src).unwrap()];
-                                mov QWORD [rbp - i32::try_from(off_dst).unwrap()], rax;
-                                pop rax
-                            ),
-                            4 => dynasm!(self.asm;
-                                push rax;
-                                mov eax, DWORD [rbp - i32::try_from(off_src).unwrap()];
-                                mov DWORD [rbp - i32::try_from(off_dst).unwrap()], eax;
-                                pop rax
-                            ),
-                            e => todo!("{:?}", e),
-                        },
-                        e => todo!("{:?}", e),
-                    }
-                }
-                VarLocation::Direct { .. } => {
-                    // Direct locations are read-only, so it doesn't make sense to write to
-                    // them. This is likely a case where the direct value has been moved
-                    // somewhere else (register/normal stack) so dst and src no longer
-                    // match. But since the value can't change we can safely ignore this.
-                }
-                VarLocation::Register(reg) => match reg {
+            if let VarLocation::Register(reg) = dst {
+                match reg {
                     Register::GP(r) => {
                         gp_regs[usize::from(r.code())] = GPConstraint::Input {
                             op: op.clone(),
@@ -2314,7 +2369,82 @@ impl<'a> Assemble<'a> {
                     Register::FP(r) => {
                         fp_regs[usize::from(r.code())] = RegConstraint::InputIntoReg(op.clone(), r);
                     }
+                }
+            }
+        }
+
+        // If we're lucky -- and we normally are! -- there will be a register which we don't need
+        // for the jump that we can use as the scratch register for moving spills around.
+        let scratch_reg = gp_regs
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| !lsregalloc::RESERVED_GP_REGS.contains(&lsregalloc::GP_REGS[*i]))
+            .find(|(_, cnstr)| matches!(cnstr, GPConstraint::None));
+        let spare_reg = match scratch_reg {
+            Some((i, _)) => lsregalloc::GP_REGS[i],
+            None => todo!(),
+        };
+
+        // Second we handle moving spill locations around
+        for (i, op) in src_ops.iter().enumerate() {
+            let op = op.unpack(self.m);
+            let src = self.op_to_var_location(op.clone());
+            let dst = tgt_vars[i];
+            if dst == src {
+                // The value is already in the correct place.
+                continue;
+            }
+            match dst {
+                VarLocation::Stack {
+                    frame_off: off_dst,
+                    size: size_dst,
+                } => match src {
+                    VarLocation::Register(Register::GP(reg)) => match size_dst {
+                        8 => dynasm!(self.asm;
+                            mov QWORD [rbp - i32::try_from(off_dst).unwrap()], Rq(reg.code())
+                        ),
+                        4 => dynasm!(self.asm;
+                            mov DWORD [rbp - i32::try_from(off_dst).unwrap()], Rd(reg.code())
+                        ),
+                        _ => todo!(),
+                    },
+                    VarLocation::ConstInt { bits, v } => match bits {
+                        32 => dynasm!(self.asm;
+                            mov DWORD [rbp - i32::try_from(off_dst).unwrap()], v as i32
+                        ),
+                        8 => dynasm!(self.asm;
+                                mov BYTE [rbp - i32::try_from(off_dst).unwrap()], v as i8),
+                        x => todo!("{x}"),
+                    },
+                    VarLocation::ConstPtr(v) => {
+                        dynasm!(self.asm
+                            ; mov Rq(spare_reg.code()), QWORD v as i64
+                            ; mov QWORD [rbp - i32::try_from(off_dst).unwrap()], Rq(spare_reg.code())
+                        );
+                    }
+                    VarLocation::Stack {
+                        frame_off: off_src,
+                        size: size_src,
+                    } => match size_src {
+                        8 => dynasm!(self.asm
+                            ; mov Rq(spare_reg.code()), QWORD [rbp - i32::try_from(off_src).unwrap()]
+                            ; mov QWORD [rbp - i32::try_from(off_dst).unwrap()], Rq(spare_reg.code())
+                        ),
+                        4 => dynasm!(self.asm
+                            ; mov Rd(spare_reg.code()), DWORD [rbp - i32::try_from(off_src).unwrap()]
+                            ; mov DWORD [rbp - i32::try_from(off_dst).unwrap()], Rd(spare_reg.code())
+                        ),
+                        e => todo!("{:?}", e),
+                    },
+                    e => todo!("{:?}", e),
                 },
+                VarLocation::Direct { .. } => {
+                    // Direct locations are read-only, so it doesn't make sense to write to
+                    // them. This is likely a case where the direct value has been moved
+                    // somewhere else (register/normal stack) so dst and src no longer
+                    // match. But since the value can't change we can safely ignore this.
+                }
+                VarLocation::Register(_reg) => (), // Handled in the earlier loop
                 _ => todo!(),
             }
         }
@@ -2624,15 +2754,20 @@ impl<'a> Assemble<'a> {
     }
 
     fn cg_trunc(&mut self, iidx: InstIdx, i: &jit_ir::TruncInst) {
-        let [_reg] = self.ra.assign_gp_regs(
+        let [reg] = self.ra.assign_gp_regs(
             &mut self.asm,
             iidx,
             [GPConstraint::InputOutput {
                 op: i.val(self.m),
-                in_ext: RegExtension::ZeroExtended,
+                in_ext: RegExtension::Undefined,
                 out_ext: RegExtension::ZeroExtended,
                 force_reg: None,
             }],
+        );
+        self.ra.force_zero_extend_to_reg64(
+            &mut self.asm,
+            reg,
+            self.m.type_(i.dest_tyidx()).bitw().unwrap(),
         );
     }
 
@@ -2779,6 +2914,8 @@ impl<'a> Assemble<'a> {
         let deoptinfo = DeoptInfo {
             bid: gi.bid().clone(),
             fail_label,
+            // We don't know the offset yet but will fill this in later.
+            fail_offset: AssemblyOffset(0),
             live_vars: lives,
             inlined_frames: gi.inlined_frames().to_vec(),
             guard: Guard::new(),
@@ -2833,9 +2970,10 @@ impl<'a> Assemble<'a> {
                 op: cond,
                 in_ext: RegExtension::Undefined,
                 force_reg: None,
-                clobber_reg: false,
+                clobber_reg: true,
             }],
         );
+        self.patch_reg.insert(inst.gidx.into(), reg);
         dynasm!(self.asm ; bt Rd(reg.code()), 0);
         if inst.expect() {
             dynasm!(self.asm ; jnb =>fail_label);
@@ -2851,6 +2989,7 @@ struct DeoptInfo {
     /// The AOT block that the failing guard originated from.
     bid: aot_ir::BBlockId,
     fail_label: DynamicLabel,
+    fail_offset: AssemblyOffset,
     /// Live variables, mapping AOT vars to JIT vars.
     live_vars: Vec<(aot_ir::InstID, VarLocation)>,
     inlined_frames: Vec<InlinedFrame>,
@@ -2858,8 +2997,60 @@ struct DeoptInfo {
     guard: Guard,
 }
 
+/// Patches 8 bytes of a given address with the given value.
+/// - `target`: The address we want to patch. Needs to be 8-byte aligned and must not cross the
+///   cache-line boundary.
+/// - `val`: The new value.
+fn patch_address(target: *const u8, val: u64) {
+    // Find the beginning of the page that the patch address is in to be passed into
+    // `mprotect`.
+    let patch_addr = target as usize;
+    let mprot_addr = patch_addr - (patch_addr % page_size::get());
+
+    // Make the trace writable while keeping it executable.
+    // FIXME: This might not work on other architectures or operating systems. However, the
+    // solution is very involved and requires changing `mt.rs` to make sure no other thread is
+    // accessing the trace (which includes executing the trace itself or any of it's
+    // side-traces, or side-tracig a guard failure).
+    let res = unsafe {
+        libc::mprotect(
+            mprot_addr as *mut libc::c_void,
+            // Since we are only patching 8-bytes which are aligned, we know we can't span two
+            // pages. Passing a size of 1 still marks the entire page which is what we need.
+            1,
+            libc::PROT_WRITE | libc::PROT_EXEC,
+        )
+    };
+    // Check that the target address is 8-byte aligned. This is required so we can patch
+    // this atomically.
+    assert!(patch_addr % 8 == 0);
+    // Check that the target `mov` instruction does not cross a cache-line boundary.
+    let clsize = cache_size::cache_line_size(1, cache_size::CacheType::Instruction).unwrap();
+    assert!(patch_addr + 8 <= patch_addr.next_multiple_of(clsize));
+    if res == 0 {
+        // Patch the new 64-bit address into the mov instruction.
+        let patch_addr = patch_addr as *mut u64;
+        unsafe { *patch_addr = val };
+        fence(std::sync::atomic::Ordering::SeqCst);
+    } else {
+        panic!("Couldn't make trace writeable.");
+    }
+    // Make the trace unwritable again.
+    let res = unsafe {
+        libc::mprotect(
+            mprot_addr as *mut libc::c_void,
+            1,
+            libc::PROT_EXEC | libc::PROT_READ,
+        )
+    };
+    if res != 0 {
+        panic!("Couldn't make trace executable.");
+    }
+}
+
 #[derive(Debug)]
 pub(super) struct X64CompiledTrace {
+    ctrid: CompiledTraceId,
     // Reference to the meta-tracer required for side tracing.
     mt: Arc<MT>,
     /// The executable code itself.
@@ -2898,6 +3089,14 @@ impl X64CompiledTrace {
 }
 
 impl CompiledTrace for X64CompiledTrace {
+    fn ctrid(&self) -> CompiledTraceId {
+        self.ctrid.clone()
+    }
+
+    fn mt(&self) -> &Arc<MT> {
+        &self.mt
+    }
+
     fn entry(&self) -> *const libc::c_void {
         self.buf.ptr(AssemblyOffset(0)) as *const libc::c_void
     }
@@ -2948,6 +3147,23 @@ impl CompiledTrace for X64CompiledTrace {
 
     fn guard(&self, gidx: GuardIdx) -> &crate::compile::Guard {
         &self.deoptinfo[&usize::from(gidx)].guard
+    }
+
+    /// Patch the address of a side-trace directly into the parent trace.
+    /// * `gidx`: The guard to be patched.
+    /// * `staddr`: The address of the side-trace.
+    fn patch_guard(&self, gidx: GuardIdx, staddr: *const std::ffi::c_void) {
+        // Since we have to temporarily make the parent trace writable, another thread trying
+        // to patch this trace could interfere with that. Having this lock prevents this.
+        let _lock = LK_PATCH.lock();
+
+        // Calculate a pointer to the address we want to patch.
+        let patch_offset = self.deoptinfo[&usize::from(gidx)].fail_offset;
+        // Add 2 bytes to get to the address operand of the mov instruction.
+        let patch_addr = unsafe { self.buf.ptr(patch_offset).offset(2) };
+        // FIXME: Is it better/faster to protect the entire buffer in one go and then patch each
+        // address, rather than mark single pages writeable, patch, and mark readable again?
+        patch_address(patch_addr, staddr as u64);
     }
 
     fn hl(&self) -> &std::sync::Weak<parking_lot::Mutex<crate::location::HotLocation>> {
@@ -3028,12 +3244,14 @@ impl<'a> AsmPrinter<'a> {
 #[cfg(test)]
 mod tests {
     use super::{Assemble, X64CompiledTrace};
-    use crate::compile::{
-        jitc_yk::jit_ir::{self, Inst, Module, ParamIdx, TraceKind},
-        CompiledTrace,
+    use crate::{
+        compile::{
+            jitc_yk::jit_ir::{self, Inst, Module, ParamIdx, TraceKind},
+            CompiledTrace,
+        },
+        location::{HotLocation, HotLocationKind},
+        mt::{CompiledTraceId, MT},
     };
-    use crate::location::{HotLocation, HotLocationKind};
-    use crate::mt::MT;
     use fm::{FMBuilder, FMatcher};
     use lazy_static::lazy_static;
     use parking_lot::Mutex;
@@ -3105,6 +3323,10 @@ mod tests {
             Regex::new(r"\{\{_}\}").unwrap()
         };
 
+        static ref FP_REG_IGNORE_RE: Regex = {
+            Regex::new(r"fp\.128\._").unwrap()
+        };
+
         static ref FP_REG_NAME_RE: Regex = {
             Regex::new(r"fp\.128\.[0-9a-z]+").unwrap()
         };
@@ -3151,6 +3373,7 @@ mod tests {
             })
             .name_matcher_ignore(PTN_RE_IGNORE.clone(), TEXT_RE.clone())
             .name_matcher(PTN_RE.clone(), TEXT_RE.clone())
+            .name_matcher_ignore(FP_REG_IGNORE_RE.clone(), FP_REG_TEXT_RE.clone())
             .name_matcher(FP_REG_NAME_RE.clone(), FP_REG_TEXT_RE.clone());
 
         for (class_name, regs) in X64_REGS {
@@ -3189,6 +3412,12 @@ mod tests {
         let fmm = fmatcher("fp.128.x fp.128.y fp.128.x");
         assert!(fmm.matches("xmm0 xmm1 xmm0").is_ok());
         assert!(fmm.matches("xmm0 xmm0 xmm0").is_err());
+
+        let fmm = fmatcher("fp.128.x fp.128.y fp.128._");
+        assert!(fmm.matches("xmm0 xmm1 xmm0").is_ok());
+        assert!(fmm.matches("xmm0 xmm0 xmm0").is_err());
+        assert!(fmm.matches("xmm0 xmm1 xmm2").is_ok());
+        assert!(fmm.matches("xmm0 xmm1 xmm0").is_ok());
     }
 
     fn test_module() -> jit_ir::Module {
@@ -4206,6 +4435,47 @@ mod tests {
     }
 
     #[test]
+    fn cg_call_floor() {
+        codegen_and_test(
+            "
+             func_decl llvm.floor.f64 (double) -> double
+             entry:
+               %0: double = param 0
+               %1: double = call @llvm.floor.f64(%0)
+               black_box %1
+            ",
+            "
+               ...
+               ; %1: double = call @llvm.floor.f64(%0)
+               roundsd fp.128._, fp.128._, 0x01
+            ",
+            false,
+        );
+    }
+
+    #[test]
+    fn cg_call_memcpy() {
+        codegen_and_test(
+            "
+             func_decl llvm.memcpy.p0.p0.i64 (ptr, ptr, i64, i1)
+             entry:
+               %0: ptr = param 0
+               %1: ptr = param 1
+               %2: i64 = param 2
+               call @llvm.memcpy.p0.p0.i64(%0, %1, %2, 0i1)
+            ",
+            "
+               ...
+               ; call @llvm.memcpy.p0.p0.i64(%0, %1, %2, 0i1)
+               mov rcx, r.64._
+               mov rdi, r.64._
+               rep movsb
+            ",
+            false,
+        );
+    }
+
+    #[test]
     fn cg_call_smax() {
         codegen_and_test(
             "
@@ -4344,14 +4614,16 @@ mod tests {
                 bt r.32._, 0x00
                 jnb 0x...
                 ...
-                ; deopt id for guard 0
+                ; deopt id and patch point for guard 0
+                nop
+                ...
                 push rsi
                 mov rsi, 0x00
                 jmp ...
                 ; call __yk_deopt
                 ...
                 mov rdi, rbp
-                mov r9, 0x...
+                mov r8, 0x...
                 mov rax, 0x...
                 call rax
             ",
@@ -4374,14 +4646,16 @@ mod tests {
                 bt r.32._, 0x00
                 jb 0x...
                 ...
-                ; deopt id for guard 0
+                ; deopt id and patch point for guard 0
+                nop
+                ...
                 push rsi
                 mov rsi, 0x00
                 jmp ...
                 ; call __yk_deopt
                 ...
                 mov rdi, rbp
-                mov r9, 0x...
+                mov r8, 0x...
                 mov rax, 0x...
                 call rax
             ",
@@ -4407,14 +4681,16 @@ mod tests {
                 bt r.32._, 0x00
                 jb 0x...
                 ...
-                ; deopt id for guard 0
+                ; deopt id and patch point for guard 0
+                nop
+                ...
                 push rsi
                 mov rsi, 0x00
                 jmp ...
                 ; call __yk_deopt
                 ...
                 mov rdi, rbp
-                mov r9, 0x...
+                mov r8, 0x...
                 mov rax, 0x...
                 call rax
             ",
@@ -4438,7 +4714,7 @@ mod tests {
                 shl r.64.x, 0x01
                 ; guard true, %1, ...
                 ...
-                ; deopt id for guard 0
+                ; deopt id and patch point for guard 0
                 and r.32.x, 0xff
                 ...
             ",
@@ -4508,11 +4784,14 @@ mod tests {
                 cmp r.32.x, 0x03
                 setz r.8._
                 ; guard true, %1, [] ; ...
-                bt r.32._, 0x00
+                and r.32.y, 0x01
+                mov [rbp-0x01], r.8.y
+                bt r.32.y, 0x00
                 jnb 0x...
                 ; %3: i8 = sext %1
-                and r.64.x, 0x01
-                neg r.64.x
+                movzx r.64.y, byte ptr [rbp-0x01]
+                and r.64.y, 0x01
+                neg r.64.y
                 ; black_box %3
                 ...
             ",
@@ -4623,10 +4902,11 @@ mod tests {
                 ; %0: i32 = param ...
                 ...
                 ; %1: i8 = trunc %0
-                mov r.32.x, r.32.x
-                ......
+                ...
+                and r.32._, 0xFF
                 ; %2: i8 = trunc %0
-                ......
+                ...
+                and r.32._, 0xFF
                 ; %3: i8 = add %2, %1
                 add r.32._, r.32._
             ",
@@ -4987,7 +5267,54 @@ mod tests {
     }
 
     #[test]
-    fn cg_fcmp_float() {
+    fn cg_fcmp_float_ordered() {
+        codegen_and_test(
+            "
+              entry:
+                %0: float = param 0
+                %1: float = param 1
+                %2: i1 = f_oeq %0, %1
+                %3: i1 = f_ogt %0, %1
+                %4: i1 = f_oge %0, %1
+                %5: i1 = f_olt %0, %1
+                %6: i1 = f_ole %0, %1
+                %7: i1 = f_one %0, %1
+                black_box %2
+                black_box %3
+                black_box %4
+                black_box %5
+                black_box %6
+                black_box %7
+            ",
+            "
+            ...
+            ; %2: i1 = f_oeq %0, %1
+            ucomiss fp.128.x, fp.128.y
+            setz r.8.i
+            setnp r.8.j
+            and r.8.j, r.8.i
+            ; %3: i1 = f_ogt %0, %1
+            ucomiss fp.128.x, fp.128.y
+            setnbe r.8._
+            ; %4: i1 = f_oge %0, %1
+            ucomiss fp.128.x, fp.128.y
+            setnb r.8._
+            ; %5: i1 = f_olt %0, %1
+            ucomiss fp.128.y, fp.128.x
+            setnbe r.8._
+            ; %6: i1 = f_ole %0, %1
+            ucomiss fp.128.y, fp.128.x
+            setnb r.8._
+            ; %7: i1 = f_one %0, %1
+            ucomiss fp.128.x, fp.128.y
+            setnz r.8._
+            ",
+            false,
+        );
+    }
+
+    #[test]
+    fn cg_fcmp_float_unordered() {
         codegen_and_test(
             "
               entry:
@@ -4995,29 +5322,93 @@ mod tests {
                 %1: float = param 1
                 %2: i1 = f_ueq %0, %1
                 %3: i1 = f_ugt %0, %1
+                %4: i1 = f_uge %0, %1
+                %5: i1 = f_ult %0, %1
+                %6: i1 = f_ule %0, %1
+                %7: i1 = f_une %0, %1
                 black_box %2
                 black_box %3
+                black_box %4
+                black_box %5
+                black_box %6
+                black_box %7
             ",
             "
                 ...
                 ; %2: i1 = f_ueq %0, %1
                 ucomiss fp.128.x, fp.128.y
-                setz r.8.x
-                setnp r.8.y
-                and r.8.x, r.8.y
+                setz r.8._
                 ; %3: i1 = f_ugt %0, %1
+                ucomiss fp.128.y, fp.128.x
+                setb r.8._
+                ; %4: i1 = f_uge %0, %1
+                ucomiss fp.128.y, fp.128.x
+                setbe r.8._
+                ; %5: i1 = f_ult %0, %1
                 ucomiss fp.128.x, fp.128.y
-                setnbe r.8._
-                setnp r.8._
-                and r.8._, r.8._
-                ...
+                setb r.8._
+                ; %6: i1 = f_ule %0, %1
+                ucomiss fp.128.x, fp.128.y
+                setbe r.8._
+                ; %7: i1 = f_une %0, %1
+                ucomiss fp.128.x, fp.128.y
+                setnz r.8.i
+                setp r.8.j
+                or r.8.j, r.8.i
                 ",
             false,
         );
     }
 
     #[test]
-    fn cg_fcmp_double() {
+    fn cg_fcmp_double_ordered() {
+        codegen_and_test(
+            "
+              entry:
+                %0: double = param 0
+                %1: double = param 1
+                %2: i1 = f_oeq %0, %1
+                %3: i1 = f_ogt %0, %1
+                %4: i1 = f_oge %0, %1
+                %5: i1 = f_olt %0, %1
+                %6: i1 = f_ole %0, %1
+                %7: i1 = f_one %0, %1
+                black_box %2
+                black_box %3
+                black_box %4
+                black_box %5
+                black_box %6
+                black_box %7
+            ",
+            "
+                ...
+                ; %2: i1 = f_oeq %0, %1
+                ucomisd fp.128.x, fp.128.y
+                setz r.8.i
+                setnp r.8.j
+                and r.8.j, r.8.i
+                ; %3: i1 = f_ogt %0, %1
+                ucomisd fp.128.x, fp.128.y
+                setnbe r.8._
+                ; %4: i1 = f_oge %0, %1
+                ucomisd fp.128.x, fp.128.y
+                setnb r.8._
+                ; %5: i1 = f_olt %0, %1
+                ucomisd fp.128.y, fp.128.x
+                setnbe r.8._
+                ; %6: i1 = f_ole %0, %1
+                ucomisd fp.128.y, fp.128.x
+                setnb r.8._
+                ; %7: i1 = f_one %0, %1
+                ucomisd fp.128.x, fp.128.y
+                setnz r.8._
+                ",
+            false,
+        );
+    }
+
+    #[test]
+    fn cg_fcmp_double_unordered() {
         codegen_and_test(
             "
               entry:
@@ -5025,22 +5416,39 @@ mod tests {
                 %1: double = param 1
                 %2: i1 = f_ueq %0, %1
                 %3: i1 = f_ugt %0, %1
+                %4: i1 = f_uge %0, %1
+                %5: i1 = f_ult %0, %1
+                %6: i1 = f_ule %0, %1
+                %7: i1 = f_une %0, %1
                 black_box %2
                 black_box %3
+                black_box %4
+                black_box %5
+                black_box %6
+                black_box %7
             ",
             "
                 ...
                 ; %2: i1 = f_ueq %0, %1
                 ucomisd fp.128.x, fp.128.y
                 setz r.8.x
-                setnp r.8.y
-                and r.8.x, r.8.y
                 ; %3: i1 = f_ugt %0, %1
+                ucomisd fp.128.y, fp.128.x
+                setb r.8._
+                ; %4: i1 = f_uge %0, %1
+                ucomisd fp.128.y, fp.128.x
+                setbe r.8._
+                ; %5: i1 = f_ult %0, %1
                 ucomisd fp.128.x, fp.128.y
-                setnbe r.8._
-                setnp r.8._
-                and r.8._, r.8._
-                ...
+                setb r.8._
+                ; %6: i1 = f_ule %0, %1
+                ucomisd fp.128.x, fp.128.y
+                setbe r.8._
+                ; %7: i1 = f_une %0, %1
+                ucomisd fp.128.x, fp.128.y
+                setnz r.8.i
+                setp r.8.j
+                or r.8.j, r.8.i
                 ",
             false,
         );
@@ -5145,7 +5553,8 @@ mod tests {
 
     #[test]
     fn cg_aliasing_params() {
-        let mut m = jit_ir::Module::new(TraceKind::HeaderOnly, 0, 0).unwrap();
+        let mut m =
+            jit_ir::Module::new(TraceKind::HeaderOnly, CompiledTraceId::testing(), 0).unwrap();
 
         // Create two trace paramaters whose locations alias.
         let loc = yksmp::Location::Register(13, 1, [].into());

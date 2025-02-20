@@ -1,4 +1,8 @@
-use crate::{location::HotLocation, mt::MT, trace::AOTTraceIterator};
+use crate::{
+    location::HotLocation,
+    mt::{CompiledTraceId, MT},
+    trace::AOTTraceIterator,
+};
 use libc::c_void;
 use parking_lot::Mutex;
 use std::{
@@ -75,6 +79,12 @@ pub(crate) fn default_compiler() -> Result<Arc<dyn Compiler>, Box<dyn Error>> {
 }
 
 pub(crate) trait CompiledTrace: fmt::Debug + Send + Sync {
+    /// Return this trace's [CompiledTraceId].
+    fn ctrid(&self) -> CompiledTraceId;
+
+    /// Return the [MT] instance this compiled trace is associated with.
+    fn mt(&self) -> &Arc<MT>;
+
     /// Upcast this [CompiledTrace] to `Any`. This method is a hack that's only needed since trait
     /// upcasting in Rust is incomplete.
     fn as_any(self: Arc<Self>) -> Arc<dyn std::any::Any + Send + Sync + 'static>;
@@ -87,6 +97,8 @@ pub(crate) trait CompiledTrace: fmt::Debug + Send + Sync {
 
     /// Return a reference to the guard `id`.
     fn guard(&self, gidx: GuardIdx) -> &Guard;
+
+    fn patch_guard(&self, gidx: GuardIdx, target: *const std::ffi::c_void);
 
     /// The pointer to this trace's executable code.
     fn entry(&self) -> *const c_void;
@@ -127,6 +139,14 @@ mod compiled_trace_testing {
     }
 
     impl CompiledTrace for CompiledTraceTestingMinimal {
+        fn ctrid(&self) -> CompiledTraceId {
+            panic!();
+        }
+
+        fn mt(&self) -> &Arc<MT> {
+            panic!();
+        }
+
         fn as_any(self: Arc<Self>) -> Arc<dyn std::any::Any + Send + Sync + 'static> {
             panic!();
         }
@@ -140,6 +160,10 @@ mod compiled_trace_testing {
         }
 
         fn guard(&self, _gidx: GuardIdx) -> &Guard {
+            panic!();
+        }
+
+        fn patch_guard(&self, _gidx: GuardIdx, _target: *const std::ffi::c_void) {
             panic!();
         }
 
@@ -174,6 +198,14 @@ mod compiled_trace_testing {
     }
 
     impl CompiledTrace for CompiledTraceTestingBasicTransitions {
+        fn ctrid(&self) -> CompiledTraceId {
+            panic!();
+        }
+
+        fn mt(&self) -> &Arc<MT> {
+            panic!();
+        }
+
         fn as_any(self: Arc<Self>) -> Arc<dyn std::any::Any + Send + Sync + 'static> {
             panic!();
         }
@@ -189,6 +221,10 @@ mod compiled_trace_testing {
         fn guard(&self, gidx: GuardIdx) -> &Guard {
             assert_eq!(usize::from(gidx), 0);
             &self.guard
+        }
+
+        fn patch_guard(&self, _gidx: GuardIdx, _target: *const std::ffi::c_void) {
+            panic!();
         }
 
         fn entry(&self) -> *const c_void {

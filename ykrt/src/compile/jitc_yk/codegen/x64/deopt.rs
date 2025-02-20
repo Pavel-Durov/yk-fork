@@ -1,10 +1,15 @@
 use super::{Register, VarLocation};
-use crate::{aotsmp::AOT_STACKMAPS, compile::GuardIdx, log::Verbosity, mt::MTThread};
+use crate::{
+    aotsmp::AOT_STACKMAPS,
+    compile::GuardIdx,
+    log::Verbosity,
+    mt::{CompiledTraceId, MTThread},
+};
 use dynasmrt::Register as _;
 use libc::c_void;
 #[cfg(debug_assertions)]
 use std::collections::HashMap;
-use std::{ptr, slice, sync::Arc};
+use std::{ptr, sync::Arc};
 use yksmp::Location as SMLocation;
 
 use super::{X64CompiledTrace, RBP_DWARF_NUM, REG64_BYTESIZE};
@@ -20,58 +25,6 @@ const RECOVER_REG: [usize; 31] = [
 /// including those omitted from `RECOVER_REG` above (register 32 is XMM15 and numbering starts
 /// from zero). This is used to allocate arrays whose indices need to be the DWARF register number.
 const REGISTER_NUM: usize = RECOVER_REG.len() + 2;
-
-/// When a guard fails, checks if there exists a compiled side-trace for this guard and if so,
-/// returns it's address. Otherwise returns a null pointer, indicating that we need to deoptimise.
-///
-/// # Arguments
-///
-/// * gidx - The [GuardIdx] of the current failing guard.
-/// * gptr - Pointer to a list of previous [GuardIdx]'s leading up to the current guard failure.
-/// * glen - Length for list in `gptr`.
-#[no_mangle]
-pub(crate) extern "C" fn __yk_guardcheck(
-    gidx: usize,
-    gptr: *const usize,
-    glen: usize,
-) -> *const libc::c_void {
-    let v = unsafe { slice::from_raw_parts(gptr, glen) };
-    let ctr = running_trace(v);
-    let info = &ctr.deoptinfo[&gidx];
-    if let Some(st) = info.guard.ctr() {
-        let staddr = st.entry();
-        let mt = Arc::clone(&ctr.mt);
-        mt.log.log(Verbosity::JITEvent, "execute-side-trace");
-        return staddr;
-    }
-    std::ptr::null()
-}
-
-/// Get the actual running trace by walking down the guards from the root trace using the
-/// [GuardIdx]'s passed in via `gidxs`.
-///
-/// # Arguments
-///
-/// * gidxs - List of [GuardIdx]'s for previous guard failures.
-fn running_trace(gidxs: &[usize]) -> Arc<X64CompiledTrace> {
-    let ctr = MTThread::with_borrow(|mtt| mtt.running_trace());
-    let mut ctr = ctr
-        .clone()
-        .unwrap()
-        .as_any()
-        .downcast::<X64CompiledTrace>()
-        .unwrap();
-    for gidx in gidxs {
-        ctr = ctr.deoptinfo[gidx]
-            .guard
-            .ctr()
-            .unwrap()
-            .as_any()
-            .downcast::<X64CompiledTrace>()
-            .unwrap();
-    }
-    ctr
-}
 
 /// Deoptimise back to the interpreter. This function is called from a failing guard (see
 /// [super::Assemble::codegen]).
@@ -91,11 +44,12 @@ pub(crate) extern "C" fn __yk_deopt(
     gidx: u64,
     gp_regs: &[u64; 16],
     fp_regs: &[u64; 16],
-    gptr: *const usize,
-    glen: usize,
+    ctrid: u64,
 ) -> *const libc::c_void {
-    let v = unsafe { slice::from_raw_parts(gptr, glen) };
-    let ctr = running_trace(v);
+    let ctr = MTThread::with_borrow(|mtt| mtt.running_trace(CompiledTraceId::from_u64(ctrid)))
+        .as_any()
+        .downcast::<X64CompiledTrace>()
+        .unwrap();
     let gidx = GuardIdx::from(usize::try_from(gidx).unwrap());
     let aot_smaps = AOT_STACKMAPS.as_ref().unwrap();
     let info = &ctr.deoptinfo[&usize::from(gidx)];
@@ -267,9 +221,18 @@ pub(crate) extern "C" fn __yk_deopt(
                                 unsafe { rbp.offset(isize::from(*extra)) }
                             };
                             match size {
-                                8 => unsafe { ptr::write::<u64>(temp as *mut u64, jitval) },
-                                4 => unsafe { ptr::write::<u32>(temp as *mut u32, jitval as u32) },
+                                1 => unsafe { ptr::write::<u16>(temp as *mut u16, jitval as u16) },
                                 2 => unsafe { ptr::write::<u16>(temp as *mut u16, jitval as u16) },
+                                4 => unsafe { ptr::write::<u32>(temp as *mut u32, jitval as u32) },
+                                8 => unsafe { ptr::write::<u64>(temp as *mut u64, jitval) },
+                                16 => {
+                                    // FIXME: This case is clearly not safe in general: it just so
+                                    // happens to work because it the moment the biggest value we
+                                    // handle is 64 bits (be that a pointer, u64, or double). If
+                                    // and when we support values bigger than 64 bits, this line
+                                    // will lead to weird problems.
+                                    unsafe { ptr::write::<u64>(temp as *mut u64, jitval) };
+                                }
                                 _ => todo!("{}", size),
                             }
                         }
@@ -350,14 +313,9 @@ pub(crate) extern "C" fn __yk_deopt(
         newframedst = unsafe { newframedst.byte_add(REG64_BYTESIZE) };
     }
 
-    // The `clone` should really be `Arc::clone(&ctr)` but that doesn't play well with type
-    // inference in this (unusual) case.
-    mt.guard_failure(ctr.clone(), gidx, frameaddr);
+    mt.guard_failure(ctr, gidx, frameaddr);
     mt.stats
         .timing_state(crate::log::stats::TimingState::OutsideYk);
-
-    // Since we won't return from this function, drop `ctr` manually.
-    drop(ctr);
 
     // Now overwrite the existing stack with our newly recreated one.
     unsafe { replace_stack(newframedst, newstack, memsize) };

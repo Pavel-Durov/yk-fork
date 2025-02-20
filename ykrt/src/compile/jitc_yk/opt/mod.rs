@@ -11,7 +11,7 @@ use super::{
     jit_ir::{
         BinOp, BinOpInst, Const, ConstIdx, DynPtrAddInst, GuardInst, ICmpInst, Inst, InstIdx,
         LoadInst, Module, Operand, Predicate, PtrAddInst, SExtInst, SelectInst, StoreInst,
-        TraceKind, Ty, ZExtInst,
+        TraceKind, TruncInst, Ty, ZExtInst,
     },
 };
 use crate::compile::CompilationError;
@@ -196,6 +196,7 @@ impl Opt {
             Inst::Select(x) => self.opt_select(iidx, x)?,
             Inst::SExt(x) => self.opt_sext(iidx, x)?,
             Inst::Store(x) => self.opt_store(iidx, x)?,
+            Inst::Trunc(x) => self.opt_trunc(iidx, x)?,
             Inst::ZExt(x) => self.opt_zext(iidx, x)?,
             _ => (),
         };
@@ -285,7 +286,7 @@ impl Opt {
                 }
                 (Operand::Var(_), Operand::Var(_)) => (),
             },
-            BinOp::LShr => match (
+            BinOp::AShr | BinOp::LShr => match (
                 self.an.op_map(&self.m, inst.lhs(&self.m)),
                 self.an.op_map(&self.m, inst.rhs(&self.m)),
             ) {
@@ -316,9 +317,15 @@ impl Opt {
                             debug_assert_eq!(lhs_tyidx, _rhs_tyidx);
                             // If checked_shr fails, we've encountered LLVM poison and can
                             // choose any value.
-                            let shr = lhs
-                                .checked_shr(rhs.to_zero_ext_u32().unwrap())
-                                .unwrap_or_else(|| ArbBitInt::all_bits_set(lhs.bitw()));
+                            let shr = match inst.binop() {
+                                BinOp::AShr => lhs
+                                    .checked_ashr(rhs.to_zero_ext_u32().unwrap())
+                                    .unwrap_or_else(|| ArbBitInt::all_bits_set(lhs.bitw())),
+                                BinOp::LShr => lhs
+                                    .checked_lshr(rhs.to_zero_ext_u32().unwrap())
+                                    .unwrap_or_else(|| ArbBitInt::all_bits_set(lhs.bitw())),
+                                _ => unreachable!(),
+                            };
                             let cidx = self.m.insert_const(Const::Int(*lhs_tyidx, shr))?;
                             self.m.replace(iidx, Inst::Const(cidx));
                         }
@@ -829,6 +836,25 @@ impl Opt {
         Ok(())
     }
 
+    fn opt_trunc(&mut self, iidx: InstIdx, inst: TruncInst) -> Result<(), CompilationError> {
+        if let Operand::Const(cidx) = self.an.op_map(&self.m, inst.val(&self.m)) {
+            let Const::Int(_src_ty, src_val) = self.m.const_(cidx) else {
+                unreachable!()
+            };
+            let dst_ty = self.m.type_(inst.dest_tyidx());
+            let Ty::Integer(dst_bits) = dst_ty else {
+                unreachable!()
+            };
+            debug_assert!(*dst_bits <= 64);
+            let dst_cidx = self
+                .m
+                .insert_const(Const::Int(inst.dest_tyidx(), src_val.truncate(*dst_bits)))?;
+            self.m.replace(iidx, Inst::Const(dst_cidx));
+        }
+
+        Ok(())
+    }
+
     fn opt_zext(&mut self, iidx: InstIdx, inst: ZExtInst) -> Result<(), CompilationError> {
         if let Operand::Const(cidx) = self.an.op_map(&self.m, inst.val(&self.m)) {
             let Const::Int(_src_ty, src_val) = self.m.const_(cidx) else {
@@ -1121,6 +1147,76 @@ mod test {
             %0: ptr = param ...
             %1: ptr = ptr_add %0, 6
             black_box %1
+        ",
+        );
+    }
+
+    #[test]
+    fn opt_ashr_zero() {
+        Module::assert_ir_transform_eq(
+            "
+          entry:
+            %0: i8 = param 0
+            %1: i8 = ashr %0, 0i8
+            black_box %1
+        ",
+            |m| opt(m).unwrap(),
+            "
+          ...
+          entry:
+            %0: i8 = param ...
+            black_box %0
+        ",
+        );
+
+        Module::assert_ir_transform_eq(
+            "
+          entry:
+            %0: i8 = param 0
+            %1: i8 = ashr 0i8, %0
+            black_box %1
+        ",
+            |m| opt(m).unwrap(),
+            "
+          ...
+          entry:
+            %0: i8 = param ...
+            black_box 0i8
+        ",
+        );
+    }
+
+    #[test]
+    fn opt_ashr_const() {
+        Module::assert_ir_transform_eq(
+            "
+          entry:
+            %0: i8 = 255i8
+            %1: i8 = 3i8
+            %2: i8 = ashr %0, %1
+            black_box %2
+        ",
+            |m| opt(m).unwrap(),
+            "
+          ...
+          entry:
+            black_box 255i8
+        ",
+        );
+
+        Module::assert_ir_transform_eq(
+            "
+          entry:
+            %0: i8 = 240i8
+            %1: i8 = 3i8
+            %2: i8 = ashr %0, %1
+            black_box %2
+        ",
+            |m| opt(m).unwrap(),
+            "
+          ...
+          entry:
+            black_box 254i8
         ",
         );
     }
@@ -1574,6 +1670,29 @@ mod test {
             black_box 0i8
             black_box %1
             black_box %5
+        ",
+        );
+    }
+
+    #[test]
+    fn opt_trunc() {
+        Module::assert_ir_transform_eq(
+            "
+          entry:
+            %0: i16 = trunc 1i32
+            %1: i16 = trunc 4294967295i32
+            %2: i32 = trunc 18446744073709551615i64
+            black_box %0
+            black_box %1
+            black_box %2
+        ",
+            |m| opt(m).unwrap(),
+            "
+          ...
+          entry:
+            black_box 1i16
+            black_box 65535i16
+            black_box 4294967295i32
         ",
         );
     }

@@ -2,8 +2,11 @@
 
 set -eu
 
-# What git commit hash of yklua will we test in buildbot?
-YKLUA_COMMIT="7ced271cf4f36a78127d0cc745906cc21409ae0d"
+# What git commit hash of yklua & ykcbf will we test in buildbot?
+YKLUA_REPO="https://github.com/ykjit/yklua.git"
+YKLUA_COMMIT="8a7a2082d941291de90c8314b52fc2bc91353e0c"
+YKCBF_REPO="https://github.com/ykjit/ykcbf.git"
+YKCBF_COMMIT="431b92593180e1e376d08ecf383c4a1ab8473b3d"
 
 TRACERS="hwt swt"
 
@@ -14,7 +17,7 @@ TRACERS="hwt swt"
 #  - YK_BUILD_TYPE must be set.
 test_yklua() {
     if [ ! -e "yklua" ]; then
-        git clone --depth=1 https://github.com/ykjit/yklua
+        git clone --depth=1 "$YKLUA_REPO"
         cd yklua
         git fetch --depth=1 origin "$YKLUA_COMMIT"
         git checkout "$YKLUA_COMMIT"
@@ -118,6 +121,16 @@ if [ "$CI_RUNNER" = buildbot ] ; then
     # cargo-clippy-def to work later.
     git fetch --no-recurse-submodules origin master:refs/remotes/origin/master
 fi
+
+# debug mode is very slow to run yk programs, but we don't really care about
+# the buildtime, so we force `debug` builds to be built with optimisations.
+# Note, this still keeps `debug_assert`s, overflow checks and the like!
+cat << EOF >> Cargo.toml
+[profile.dev]
+opt-level = 3
+codegen-units = 16
+EOF
+
 for tracer in ${TRACERS}; do
     export YKB_TRACER="${tracer}"
     # Check for annoying compiler warnings in each package.
@@ -228,7 +241,6 @@ for tracer in $TRACERS; do
         ln -s ../yklua .
         sed -e 's/executions: \[Lua, YkLua\]/executions: [YkLua]/' \
             -e 's/executable: yklua/executable: lua/' \
-            -e '/Havlak/{N; d;}' \
             rebench.conf > rebench2.conf
         ~/.local/bin/rebench --quick --no-denoise -c rebench2.conf
         cd ..
@@ -245,8 +257,10 @@ for b in collect_and_decode promote; do
 done
 
 # Test some BF programs.
-git clone https://github.com/ykjit/ykcbf.git
+git clone --depth=1 "$YKCBF_REPO"
 cd ykcbf
+git fetch --depth=1 origin "$YKCBF_COMMIT"
+git checkout "$YKCBF_COMMIT"
 PATH=$(pwd)/../bin:${PATH} YK_BUILD_TYPE=debug make
 ./bf_simple_yk lang_tests/bench.bf
 ./bf_simple_yk lang_tests/hanoi-opt.bf

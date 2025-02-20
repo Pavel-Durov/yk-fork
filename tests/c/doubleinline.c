@@ -1,5 +1,4 @@
 // ignore-if: test $SWT_MODULE_CLONE_SKIP_FAILING_TEST=true
-// # Note: Signal 11 after exec trace
 // Compiler:
 //   env-var: YKB_EXTRA_CC_FLAGS=-O1
 // Run-time:
@@ -37,6 +36,8 @@
 //     bar
 //     0
 //     exit
+
+// SWT Note: Signal 11 after exec trace
 
 // Test deoptimisation with multiple nested calls.
 

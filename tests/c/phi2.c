@@ -1,5 +1,4 @@
 // ignore-if: test $SWT_MODULE_CLONE_SKIP_FAILING_TEST=true
-// # Note: Signal 11 after exec trace
 // Compiler:
 //   env-var: YKB_EXTRA_CC_FLAGS=-O0 -Xclang -disable-O0-optnone -Xlinker --lto-newpm-passes=instcombine<max-iterations=1;no-use-loop-info;no-verify-fixpoint>
 // Run-time:
@@ -33,6 +32,8 @@
 //     yk-jit-event: deoptimise
 
 // Check that PHI nodes JIT properly.
+
+// SWT Note: Signal 11 after exec trace
 
 #include <stdio.h>
 #include <stdlib.h>

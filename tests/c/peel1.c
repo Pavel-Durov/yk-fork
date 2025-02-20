@@ -1,5 +1,4 @@
 // ignore-if: echo $RUSTFLAGS | grep "sanitizer" || test $SWT_MODULE_CLONE_SKIP_FAILING_TEST=true
-// # Note: Signal 11 after exec trace
 // ## The sanitisers fiddle with the generated code and mean we can't write the
 // ## test we want.
 // Compiler:
@@ -28,6 +27,8 @@
 
 // Check that peeling works: a constant should be discovered by `header_end`
 // that allows the body to have only 1 guard where the header must have 2.
+
+// SWT Note: Signal 11 after exec trace
 
 #include <assert.h>
 #include <inttypes.h>

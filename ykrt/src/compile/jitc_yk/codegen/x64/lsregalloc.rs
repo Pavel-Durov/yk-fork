@@ -95,7 +95,7 @@ const FP_REGS_LEN: usize = 16;
 
 /// The set of general registers which we will never assign value to. RSP & RBP are reserved by
 /// SysV.
-static RESERVED_GP_REGS: [Rq; 2] = [Rq::RSP, Rq::RBP];
+pub(super) static RESERVED_GP_REGS: [Rq; 2] = [Rq::RSP, Rq::RBP];
 
 /// The set of floating point registers which we will never assign value to.
 static RESERVED_FP_REGS: [Rx; 0] = [];
@@ -862,7 +862,7 @@ impl LSRegAlloc<'_> {
     /// register.
     ///
     /// `from_bits` must be between 1 and 64.
-    fn force_zero_extend_to_reg64(&self, asm: &mut Assembler, reg: Rq, from_bitw: u32) {
+    pub(super) fn force_zero_extend_to_reg64(&self, asm: &mut Assembler, reg: Rq, from_bitw: u32) {
         debug_assert!(from_bitw > 0 && from_bitw <= 64);
         match from_bitw {
             1..=31 => dynasm!(asm; and Rd(reg.code()), ((1u64 << from_bitw) - 1) as i32),
@@ -1071,10 +1071,10 @@ impl LSRegAlloc<'_> {
                 x => todo!("{x}"),
             },
             SpillState::ConstInt { bits, v } => match bits {
-                32 => {
-                    dynasm!(asm; mov Rd(reg.code()), v as i32)
+                64 => {
+                    dynasm!(asm; mov Rq(reg.code()), QWORD v as i64)
                 }
-                8 => {
+                32 | 16 | 8 => {
                     dynasm!(asm; mov Rd(reg.code()), v as i32)
                 }
                 _ => todo!("{bits}"),

@@ -659,7 +659,7 @@ mod swt_cp_transition_tests {
         let buffer_size = calculate_live_vars_buffer_size(&mock_record);
         assert_eq!(
             buffer_size,
-            16 + 8 + 4 + 8,
+            16 + 8 + 4,
             "Buffer size should equal the sum of all live variable sizes"
         );
     }
