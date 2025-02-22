@@ -747,7 +747,7 @@ impl MT {
                                 // This thread is tracing something, so bail out as quickly as possible
                                 TransitionControlPoint::AbortTracing
                             } else {
-                                println!("@@ Executing compiled trace for location: {:?}", loc);
+                                // println!("@@ Executing compiled trace for location: {:?}", loc);
                                 TransitionControlPoint::Execute(Arc::clone(ctr))
                             }
                         }
