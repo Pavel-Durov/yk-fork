@@ -1,3 +1,7 @@
+---
+description: SWT module clone
+globs: *.rs, *.cpp, *.h, *.c, *.ir, *.txt, *.md
+---
 # Context
 
 In JIT tracing systems, the tracing mechanism plays a crucial role.
