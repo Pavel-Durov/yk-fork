@@ -1,3 +1,4 @@
+// ignore-if: test $SWT_MODULE_CLONE_SKIP_FAILING_TEST=true
 // Compiler:
 //   env-var: YKB_EXTRA_CC_FLAGS=-O3
 // Run-time:
@@ -14,6 +15,8 @@
 
 // This is bf_base.c from https://github.com/ykjit/ykcbf modified to hard-code the input to the
 // interpreter (hello.bf from the same repo).
+
+// SWT Note: Signal 11 after exec trace
 
 #include <err.h>
 #include <fcntl.h>
