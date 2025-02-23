@@ -804,35 +804,8 @@ mod swt_cp_transition_tests {
         let dest_reg_nums = set_destination_live_vars(&mut asm, &src_rec, &dst_rec, 0x10);
         // Finalize the assembly and disassemble the instructions
         let buffer = asm.finalize().unwrap();
-        let code_ptr = buffer.ptr(dynasmrt::AssemblyOffset(0)) as *const u8;
-        let code_size = buffer.len();
-
-        // Use Capstone to disassemble and check the generated instructions
-        let capstone = Capstone::new()
-            .x86()
-            .mode(arch::x86::ArchMode::Mode64)
-            .build()
-            .unwrap();
-
-        let instructions = capstone
-            .disasm_all(
-                unsafe { std::slice::from_raw_parts(code_ptr, code_size) },
-                code_ptr as u64,
-            )
-            .expect("Failed to disassemble code");
-
-        // Check the first instruction
-        let first_inst = instructions.first().unwrap();
-        let inst_string = format!(
-            "{} {}",
-            first_inst.mnemonic().unwrap_or(""),
-            first_inst.op_str().unwrap_or("")
-        );
-        // Assert that the instruction matches the expected format
-        assert_eq!(
-            inst_string, "mov rdx, qword ptr [rbp - 0x10]",
-            "The generated instruction should match the expected format"
-        );
+        let instructions = get_asm_instructions(&buffer);
+        assert_eq!(instructions[0], "mov rdx, qword ptr [rbp - 0x10]");
 
         // Verify dest_reg_nums maps rcx to its value size
         assert_eq!(
