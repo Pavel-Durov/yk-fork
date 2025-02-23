@@ -7,26 +7,16 @@ set breakpoint pending on
 
 # break ykrt::trace::swt::cp::debug_return_into_unopt_cp
 # break ykrt::trace::swt::cp::debug_return_into_opt_cp
-
-break ykrt::trace::mt
 # break __yk_clone_main
 break main
 
-break simple2.c:23.c:17
-break simple.c:44.c:17
-break simple.c:52
-# break buffered_vfprintf
-
-# break before cp
-break *0x0000000000202b9a
-# break after cp
-break *0x0000000000202b9d
-
-break ykrt/src/mt.rs:428
+# break ykrt/src/mt.rs:460 # exec trace
 
 # break ykcapi::__ykrt_control_point_real
 # break ykrt::mt::MT::control_point
+# break ykrt::mt::MT::control_point
 
+break ykrt::mt::__yk_exec_trace
 
 define print_live_vars
     p &mt
@@ -74,5 +64,5 @@ printf "RSP Offsets and Values:\n"
     printf "R15 (0x00): %016x\n", *((unsigned long *)($rsp + 0x00))
 end
 
-dashboard assembly -style height 30
+dashboard assembly -style height 50
 

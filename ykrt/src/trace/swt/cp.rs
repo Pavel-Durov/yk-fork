@@ -406,7 +406,7 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
 
     let src_rbp_offset = src_frame_size as i32 + REG64_BYTESIZE as i32;
     if *CP_VERBOSE {
-        println!("@@ TRANSITION {:?} to: {:?}, exec_trace: {:?}", src_smid, dst_smid, transition.exec_trace);
+        println!("@@ transition from {:?} to {:?}, exec_trace: {:?}", src_smid, dst_smid, transition.exec_trace);
     }
     if *CP_BREAK {
         dynasm!(asm; .arch x64; int3);
@@ -479,6 +479,7 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
         0,
         "RSP is not aligned to 16 bytes"
     );
+    println!("@@ rsp aligned to 16 bytes: {}", (frameaddr as i64 - dst_frame_size as i64) % 16);
 
     if transition.exec_trace {
         if *CP_VERBOSE {
@@ -489,6 +490,7 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
         }
         dynasm!(asm
             ; .arch x64
+            ; sub rsp, 0x8                // Align rsp to 16-byte boundary after call
             ; add rsp, src_val_buffer_size // remove the temporary buffer from the stack
             ; mov rdi, QWORD frameaddr as i64              // First argument
             ; mov rsi, QWORD transition.rsp as i64    //   Second argument

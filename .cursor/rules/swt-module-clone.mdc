@@ -44,6 +44,31 @@ in cp.rs that is main responsibility is to copy live variables before
 the transition and then jump to control points accordingly.
 
 
+## Control flow:
+
+__ykrt_control_point in ykcapi/src/lib.rs is responsible for saving the state of various registers before transitioning control to the trace. It pushes the registers in the following order:
+push rax
+push rcx
+push rbx
+push rdi
+push rsi
+push r8
+push r9
+push r10
+push r11
+push r12
+push r13
+push r14
+push r15
+
+After pushing these registers, it calls __ykrt_control_point_real.
+
+__ykrt_control_point_real calls control_point function in ykrt/src/mt.rs which depending on the JIT state will perform control point transition defined in ykrt/src/trace/swt/cp.rs and execute traces.
+
+ykrt/src/trace/swt/cp.rs is responsible for restoring all the registers saved by __ykrt_control_point before JIT tracing starts, stops or traces being executed.
+
+
+
 # Examples
 
 ## simplecall.c

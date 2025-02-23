@@ -1,0 +1,127 @@
+code before trace execution:
+ 0x00007ffff7fb7001> ? movabs rbp,0x7fffffffdd50
+ 0x00007ffff7fb700b  ? movabs rsp,0x7fffffffdd50
+ 0x00007ffff7fb7015  ? sub    rsp,0x40
+ 0x00007ffff7fb701c  ? sub    rsp,0x0
+ 0x00007ffff7fb7023  ? mov    rax,QWORD PTR [rbp-0x50]
+ 0x00007ffff7fb702a  ? mov    rcx,QWORD PTR [rbp-0x58]
+ 0x00007ffff7fb7031  ? mov    rbx,QWORD PTR [rbp-0x60]
+ 0x00007ffff7fb7038  ? mov    rdi,QWORD PTR [rbp-0x68]
+ 0x00007ffff7fb703f  ? mov    rsi,QWORD PTR [rbp-0x70]
+ 0x00007ffff7fb7046  ? mov    r8,QWORD PTR [rbp-0x78]
+ 0x00007ffff7fb704d  ? mov    r9,QWORD PTR [rbp-0x80]
+ 0x00007ffff7fb7054  ? mov    r10,QWORD PTR [rbp-0x88]
+ 0x00007ffff7fb705b  ? mov    r11,QWORD PTR [rbp-0x90]
+ 0x00007ffff7fb7062  ? mov    r13,QWORD PTR [rbp-0xa0]
+ 0x00007ffff7fb7069  ? mov    r14,QWORD PTR [rbp-0xa8]
+ 0x00007ffff7fb7070  ? int3
+ 0x00007ffff7fb7071  ? add    rsp,0x0
+ 0x00007ffff7fb7078  ? movabs rdi,0x7fffffffdd50
+ 0x00007ffff7fb7082  ? movabs rsi,0x7fffffffdd10
+ 0x00007ffff7fb708c  ? movabs rdx,0x7ffff7fb8000
+ 0x00007ffff7fb7096  ? movabs rcx,0x7ffff7b43b18
+ 0x00007ffff7fb70a0  ? call   rcx
+
+
+__yk_exec_trace
+ 0x00007ffff7b43b18> ? mov    rbp,rdi
+ 0x00007ffff7b43b1b  ? mov    rsp,rsi
+ 0x00007ffff7b43b1e  ? sub    rsp,0x8
+ 0x00007ffff7b43b22  ? sub    rsp,0x68
+ 0x00007ffff7b43b26  ? pop    r15
+ 0x00007ffff7b43b28  ? pop    r14
+ 0x00007ffff7b43b2a  ? pop    r13
+ 0x00007ffff7b43b2c  ? pop    r12
+ 0x00007ffff7b43b2e  ? pop    r11
+ 0x00007ffff7b43b30  ? pop    r10
+ 0x00007ffff7b43b32  ? pop    r9
+ 0x00007ffff7b43b34  ? pop    r8
+ 0x00007ffff7b43b36  ? pop    rsi
+ 0x00007ffff7b43b37  ? pop    rdi
+ 0x00007ffff7b43b38  ? pop    rbx
+ 0x00007ffff7b43b39  ? pop    rcx
+ 0x00007ffff7b43b3a  ? pop    rax
+ 0x00007ffff7b43b3b  ? add    rsp,0x8
+ 0x00007ffff7b43b3f  ? jmp    rdx
+ 0x00007ffff7b43b41  ? ret
+
+
+trace:
+0x00007ffff7fb8009> ? movabs r11,0x7ffff7a151a0
+ 0x00007ffff7fb8013  ? call   r11
+ 0x00007ffff7fb8016  ? pop    r11
+ 0x00007ffff7fb8018  ? movabs r14,0x206f80
+ 0x00007ffff7fb8022  ? mov    rdi,QWORD PTR [r14+riz*1+0x0]
+ 0x00007ffff7fb802a  ? mov    edx,DWORD PTR [r12+0x0]
+ 0x00007ffff7fb8032  ? movabs rsi,0x203e6f
+ 0x00007ffff7fb803c  ? mov    rax,0x0
+ 0x00007ffff7fb8043  ? movabs r13,0x7ffff7070df0
+ 0x00007ffff7fb804d  ? call   r13
+ 0x00007ffff7fb8050  ? mov    r13d,DWORD PTR [r12+0x0]
+ 0x00007ffff7fb8058  ? movabs r11,0x206f68
+ 0x00007ffff7fb8062  ? mov    r10,QWORD PTR [r11+riz*1+0x0]
+ 0x00007ffff7fb806a  ? lea    r9,[r10+riz*1+0x4]
+ 0x00007ffff7fb8072  ? mov    QWORD PTR [r11+riz*1+0x0],r9
+ 0x00007ffff7fb807a  ? mov    DWORD PTR [r10+riz*1+0x0],r13d
+ 0x00007ffff7fb8082  ? mov    DWORD PTR [rbp-0x44],r13d
+ 0x00007ffff7fb8089  ? cmp    r13d,0x1
+ 0x00007ffff7fb8090  ? jle    0x7ffff7fb8216
+ 0x00007ffff7fb8096  ? mov    rsi,QWORD PTR [r14+riz*1+0x0]
+ 0x00007ffff7fb809e  ? movabs rdi,0x203e73
+ 0x00007ffff7fb80a8  ? mov    QWORD PTR [rbp-0x50],r10
+ 0x00007ffff7fb80af  ? mov    QWORD PTR [rbp-0x58],r11
+ 0x00007ffff7fb80b6  ? movabs rax,0x7ffff7095570
+ 0x00007ffff7fb80c0  ? call   rax
+ 0x00007ffff7fb80c2  ? mov    r14,QWORD PTR [rbp-0x58]
+ 0x00007ffff7fb80c9  ? mov    r13,QWORD PTR [rbp-0x50]
+ 0x00007ffff7fb80d0  ? mov    QWORD PTR [r14+riz*1+0x0],r13
+ 0x00007ffff7fb80d8  ? mov    r14d,DWORD PTR [r15+riz*1+0x0]
+ 0x00007ffff7fb80e0  ? add    r14d,0x2
+ 0x00007ffff7fb80e7  ? mov    DWORD PTR [r15+riz*1+0x0],r14d
+ 0x00007ffff7fb80ef  ? mov    r14d,DWORD PTR [r12+0x0]
+ 0x00007ffff7fb80f7  ? add    r14d,0xffffffff
+ 0x00007ffff7fb80fe  ? mov    DWORD PTR [r12+0x0],r14d
+ 0x00007ffff7fb8106  ? cmp    r14d,0x0
+ 0x00007ffff7fb810d  ? jle    0x7ffff7fb8236
+ 0x00007ffff7fb8113  ? movabs r14,0x206f80
+ 0x00007ffff7fb811d  ? mov    rdi,QWORD PTR [r14+riz*1+0x0]
+ 0x00007ffff7fb8125  ? mov    edx,DWORD PTR [r12+0x0]
+ 0x00007ffff7fb812d  ? movabs rsi,0x203e6f
+ 0x00007ffff7fb8137  ? mov    rax,0x0
+ 0x00007ffff7fb813e  ? movabs r13,0x7ffff7070df0
+ 0x00007ffff7fb8148  ? call   r13
+ 0x00007ffff7fb814b  ? mov    r13d,DWORD PTR [r12+0x0]
+ 0x00007ffff7fb8153  ? movabs r11,0x206f68
+ 0x00007ffff7fb815d  ? mov    r10,QWORD PTR [r11+riz*1+0x0]
+ 0x00007ffff7fb8165  ? lea    r9,[r10+riz*1+0x4]
+ 0x00007ffff7fb816d  ? mov    QWORD PTR [r11+riz*1+0x0],r9
+ 0x00007ffff7fb8175  ? mov    DWORD PTR [r10+riz*1+0x0],r13d
+ 0x00007ffff7fb817d  ? mov    DWORD PTR [rbp-0x5c],r13d
+ 0x00007ffff7fb8184  ? cmp    r13d,0x1
+ 0x00007ffff7fb818b  ? jle    0x7ffff7fb8256
+ 0x00007ffff7fb8191  ? mov    rsi,QWORD PTR [r14+riz*1+0x0]
+ 0x00007ffff7fb8199  ? movabs rdi,0x203e73
+ 0x00007ffff7fb81a3  ? mov    QWORD PTR [rbp-0x68],r10
+ 0x00007ffff7fb81aa  ? mov    QWORD PTR [rbp-0x70],r11
+ 0x00007ffff7fb81b1  ? movabs rax,0x7ffff7095570
+ 0x00007ffff7fb81bb  ? call   rax
+ 0x00007ffff7fb81bd  ? mov    r14,QWORD PTR [rbp-0x70]
+ 0x00007ffff7fb81c4  ? mov    r13,QWORD PTR [rbp-0x68]
+ 0x00007ffff7fb81cb  ? mov    QWORD PTR [r14+riz*1+0x0],r13
+ 0x00007ffff7fb81d3  ? mov    r14d,DWORD PTR [r15+riz*1+0x0]
+ 0x00007ffff7fb81db  ? add    r14d,0x2
+ 0x00007ffff7fb81e2  ? mov    DWORD PTR [r15+riz*1+0x0],r14d
+ 0x00007ffff7fb81ea  ? mov    r14d,DWORD PTR [r12+0x0]
+ 0x00007ffff7fb81f2  ? add    r14d,0xffffffff
+ 0x00007ffff7fb81f9  ? mov    DWORD PTR [r12+0x0],r14d
+ 0x00007ffff7fb8201  ? cmp    r14d,0x0
+ 0x00007ffff7fb8208  ? jle    0x7ffff7fb8276
+ 0x00007ffff7fb820e  ? jmp    0x7ffff7fb8113
+ 0x00007ffff7fb8213  ? nop
+ 0x00007ffff7fb8214  ? nop
+ 0x00007ffff7fb8215  ? nop
+ 0x00007ffff7fb8216  ? movabs r13,0x7ffff7fb8223
+ 0x00007ffff7fb8220  ? jmp    r13
+ 0x00007ffff7fb8223  ? push   rsi
+ 0x00007ffff7fb8224  ? mov    rsi,0x0
+ 0x00007ffff7fb822b  ? jmp    0x7ffff7fb8290
