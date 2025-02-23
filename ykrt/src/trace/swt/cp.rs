@@ -42,11 +42,17 @@ pub enum CPTransitionDirection {
 }
 
 pub struct CPTransition {
+    // The direction of the transition.
     pub direction: CPTransitionDirection,
+    // The frame address of the caller.
     pub frameaddr: *const c_void,
+    // The stack pointer of the caller.
     pub rsp: *const c_void,
+    // The address of the trace to execute.
     pub trace_addr: *const c_void,
+    // Flag to indicate whether to call __yk_exec_trace.
     pub exec_trace: bool,
+    // The function pointer to __yk_exec_trace.
     pub exec_trace_fn: ExecTraceFn,
 }
 
@@ -133,10 +139,6 @@ fn calculate_live_vars_buffer_size(src_rec: &Record) -> i32 {
     let mut src_val_buffer_size: i32 = 0;
     for (_, src_var) in src_rec.live_vars.iter().enumerate() {
         match src_var.get(0).unwrap() {
-            // TODO: do we need to store direct values?
-            // Direct(_, _, src_val_size) => {
-            //     src_val_buffer_size += *src_val_size as i32;
-            // }
             Indirect(_, _, src_val_size) => {
                 src_val_buffer_size += *src_val_size as i32;
             }
@@ -175,12 +177,6 @@ fn copy_live_vars_to_temp_buffer(asm: &mut Assembler, src_rec: &Record) {
             ),
         }
     }
-    // if *CP_VERBOSE {
-    //     println!(
-    //         "copy_live_vars_to_temp_buffer - indirect variables count: {:?}",
-    //         src_var_indirect_index
-    //     );
-    // }
 }
 
 fn set_destination_live_vars(
@@ -435,12 +431,6 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
         ; sub rsp, (dst_frame_size).try_into().unwrap() // adjust rsp
         ; sub rsp, src_val_buffer_size // Reserve buffer to store Direct and Indirect values
     );
-    // Ensure that RSP remains 16-byte aligned throughout transitions to comply with the x86-64 ABI.
-    assert_eq!(
-        (frameaddr as i64 - dst_frame_size as i64) % 16,
-        0,
-        "RSP is not aligned to 16 bytes"
-    );
 
     // Step 3. Copy src live vars into the buffer
     copy_live_vars_to_temp_buffer(&mut asm, src_rec);
@@ -477,6 +467,19 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
         rbp_offset_reg_store,
     );
 
+    restore_registers(
+        &mut asm,
+        used_registers,
+        rbp_offset_reg_store as i32,
+    );
+
+    // Ensure that RSP remains 16-byte aligned throughout transitions to comply with the x86-64 ABI.
+    assert_eq!(
+        (frameaddr as i64 - dst_frame_size as i64) % 16,
+        0,
+        "RSP is not aligned to 16 bytes"
+    );
+
     if transition.exec_trace {
         if *CP_VERBOSE {
             println!("@@ calling exec_trace");
@@ -486,26 +489,19 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
         }
         dynasm!(asm
             ; .arch x64
-            ; add rsp, src_val_buffer_size // remove the buffer from the stack
+            ; add rsp, src_val_buffer_size // remove the temporary buffer from the stack
             ; mov rdi, QWORD frameaddr as i64              // First argument
             ; mov rsi, QWORD transition.rsp as i64    //   Second argument
             ; mov rdx, QWORD transition.trace_addr as i64             // Third argument
             ; mov rcx, QWORD transition.exec_trace_fn as i64          // Move function pointer to rcx
-            ; call rcx // Call the function - we don't care about rcx because its overridden in the exec_trace_fn
+            ; call rcx // Call the function - we don't care about rcx because its overridden in the __yk_exec_trace
         );
     } else {
-
-        restore_registers(
-            &mut asm,
-            used_registers,
-            rbp_offset_reg_store as i32,
-        );
-
         let call_offset = calc_after_cp_offset(dst_rec.offset).unwrap();
         let dst_target_addr = i64::try_from(dst_rec.offset).unwrap() + call_offset;
         dynasm!(asm
             ; .arch x64
-            ; add rsp, src_val_buffer_size // remove the buffer from the stack
+            ; add rsp, src_val_buffer_size // remove the temporary buffer from the stack
             ; sub rsp, 0x10 // reserves 16 bytes of space on the stack.
             ; mov [rsp], rax // save rsp
             ; mov rax, QWORD dst_target_addr // loads the target address into rax
@@ -601,6 +597,107 @@ mod swt_cp_transition_tests {
     use dynasmrt::{dynasm, x64::Assembler};
     use std::error::Error;
     use yksmp::{LiveVar, Location, Record};
+    // use capstone::Capstone;
+
+    fn get_asm_instructions(buffer: &dynasmrt::ExecutableBuffer) -> Vec<String> {
+        if buffer.len() == 0 {
+            return vec![];
+        }
+        let code_ptr = buffer.ptr(dynasmrt::AssemblyOffset(0)) as *const u8;
+        let code_size = buffer.len();
+        // Use Capstone to disassemble and check the generated instructions
+        let capstone = Capstone::new()
+           .x86()
+           .mode(arch::x86::ArchMode::Mode64)
+           .build()
+           .unwrap();
+
+        let instructions = capstone
+           .disasm_all(
+               unsafe { std::slice::from_raw_parts(code_ptr, code_size) },
+               code_ptr as u64,
+           )
+           .expect("Failed to disassemble code");
+
+        return instructions.iter().map(|inst| format!("{} {}", inst.mnemonic().unwrap_or(""), inst.op_str().unwrap_or(""))).collect();
+    }
+
+    #[test]
+    fn test_restore_registers_no_instructions() {
+        let mut asm = Assembler::new().unwrap();
+        let mut used_regs = HashMap::new();
+        used_regs.insert(0, 8);
+        // used_regs.insert(1, 8); // not used:
+        used_regs.insert(2, 8);
+        used_regs.insert(3, 8);
+        used_regs.insert(4, 8);
+        used_regs.insert(5, 8);
+        // used_regs.insert(6, 8); // not used:
+        // used_regs.insert(7, 8); // not used:
+        used_regs.insert(8, 8);
+        used_regs.insert(9, 8);
+        used_regs.insert(10, 8);
+        used_regs.insert(11, 8);
+        used_regs.insert(12, 8);
+        used_regs.insert(13, 8);
+        used_regs.insert(14, 8);
+        used_regs.insert(15, 8);
+
+        restore_registers(&mut asm, used_regs, 0);
+        let buffer: dynasmrt::ExecutableBuffer = asm.finalize().unwrap();
+        let instructions = get_asm_instructions(&buffer);
+        assert_eq!(instructions.len(), 0);
+    }
+
+    #[test]
+    fn test_restore_registers_partial() {
+        let mut asm = Assembler::new().unwrap();
+        let mut used_regs = HashMap::new();
+        used_regs.insert(0, 8);
+        // used_regs.insert(1, 8); // not used:
+        used_regs.insert(2, 8);
+        used_regs.insert(3, 8);
+        used_regs.insert(4, 8);
+        used_regs.insert(5, 8);
+        // used_regs.insert(6, 8); // not used
+        // used_regs.insert(7, 8); // not used
+        used_regs.insert(8, 8);
+        used_regs.insert(9, 8);
+        // used_regs.insert(10, 8); // not used
+        used_regs.insert(11, 8);
+        used_regs.insert(12, 8);
+        used_regs.insert(13, 8);
+        // used_regs.insert(14, 8); // not used
+        used_regs.insert(15, 8);
+
+        restore_registers(&mut asm, used_regs, 0);
+        let buffer: dynasmrt::ExecutableBuffer = asm.finalize().unwrap();
+        let instructions = get_asm_instructions(&buffer);
+        assert_eq!(instructions[0], "mov r10, qword ptr [rbp + 0x28]");
+        assert_eq!(instructions[1], "mov r14, qword ptr [rbp + 8]");
+    }
+
+    #[test]
+    fn test_restore_registers_empty_restore() {
+        let mut asm = Assembler::new().unwrap();
+        let mut used_regs = HashMap::new();
+        restore_registers(&mut asm, used_regs, 0);
+        let buffer: dynasmrt::ExecutableBuffer = asm.finalize().unwrap();
+        let instructions = get_asm_instructions(&buffer);
+        assert_eq!(instructions[0], "mov rax, qword ptr [rbp + 0x60]");
+        assert_eq!(instructions[1], "mov rcx, qword ptr [rbp + 0x58]");
+        assert_eq!(instructions[2], "mov rbx, qword ptr [rbp + 0x50]");
+        assert_eq!(instructions[3], "mov rdi, qword ptr [rbp + 0x48]");
+        assert_eq!(instructions[4], "mov rsi, qword ptr [rbp + 0x40]");
+        assert_eq!(instructions[5], "mov r8, qword ptr [rbp + 0x38]");
+        assert_eq!(instructions[6], "mov r9, qword ptr [rbp + 0x30]");
+        assert_eq!(instructions[7], "mov r10, qword ptr [rbp + 0x28]");
+        assert_eq!(instructions[8], "mov r11, qword ptr [rbp + 0x20]");
+        assert_eq!(instructions[9], "mov r12, qword ptr [rbp + 0x18]");
+        assert_eq!(instructions[10], "mov r13, qword ptr [rbp + 0x10]");
+        assert_eq!(instructions[11], "mov r14, qword ptr [rbp + 8]");
+        assert_eq!(instructions[12], "mov r15, qword ptr [rbp]");
+    }
 
     #[test]
     fn test_calc_after_cp_offset_with_call_instruction() -> Result<(), Box<dyn Error>> {
@@ -615,9 +712,7 @@ mod swt_cp_transition_tests {
         );
         let buffer = asm.finalize().unwrap();
         let code_ptr = buffer.ptr(dynasmrt::AssemblyOffset(0)) as u64;
-        // Act: Calculate the call offset
         let offset = calc_after_cp_offset(code_ptr)?;
-        // Assert: The offset should be 6 bytes
         assert_eq!(offset, 6, "The call offset should be 6 bytes");
         Ok(())
     }
@@ -652,15 +747,34 @@ mod swt_cp_transition_tests {
                 LiveVar::new(vec![Location::Indirect(0, 0, 16)]),
                 LiveVar::new(vec![Location::Indirect(0, 0, 8)]),
                 LiveVar::new(vec![Location::Indirect(0, 0, 4)]),
-                LiveVar::new(vec![Location::Direct(0, 0, 8)]),
+                LiveVar::new(vec![Location::Indirect(0, 0, 8)]),
             ],
         };
 
         let buffer_size = calculate_live_vars_buffer_size(&mock_record);
         assert_eq!(
             buffer_size,
-            16 + 8 + 4,
+            16 + 8 + 4 + 8,
             "Buffer size should equal the sum of all live variable sizes"
+        );
+    }
+
+    #[test]
+    fn test_calculate_live_vars_buffer_size_aligned_to_16() {
+        let mock_record = Record {
+            offset: 0,
+            size: 0,
+            id: 0,
+            live_vars: vec![
+                LiveVar::new(vec![Location::Indirect(0, 0, 8)]),
+            ],
+        };
+
+        let buffer_size = calculate_live_vars_buffer_size(&mock_record);
+        assert_eq!(
+            buffer_size,
+            8,
+            "Buffer size should be 8 bytes"
         );
     }
 
