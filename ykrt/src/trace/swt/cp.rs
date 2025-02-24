@@ -479,7 +479,6 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
         0,
         "RSP is not aligned to 16 bytes"
     );
-    println!("@@ rsp aligned to 16 bytes: {}", (frameaddr as i64 - dst_frame_size as i64) % 16);
 
     if transition.exec_trace {
         if *CP_VERBOSE {
@@ -594,7 +593,7 @@ fn calc_after_cp_offset(rec_offset: u64) -> Result<i64, Box<dyn Error>> {
 }
 
 #[cfg(test)]
-mod swt_cp_transition_tests {
+mod swt_cp_tests {
     use super::*;
     use dynasmrt::{dynasm, x64::Assembler};
     use std::error::Error;
