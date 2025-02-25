@@ -161,10 +161,10 @@ fn copy_live_vars_to_temp_buffer(asm: &mut Assembler, src_rec: &Record) {
                     *src_val_size == 8,
                     "Only 8-byte Indirect values supported in this example"
                 );
-                let temp_buffer_offset = (src_var_indirect_index * REG64_BYTESIZE as usize) as i32;
+                let temp_buffer_offset = (src_var_indirect_index * (*src_val_size as i32)) as i32;
                 dynasm!(asm
                     ; mov rax, QWORD [rbp + i32::try_from(*src_off).unwrap()]
-                    ; mov QWORD [rsp + temp_buffer_offset], rax
+                    ; mov QWORD [rsp + temp_buffer_offset], rax // This causes collision with saved registers by __ykrt_control_point
                 );
                 src_var_indirect_index += 1;
             }
@@ -423,6 +423,7 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
     // +-------------------------------------------+ <- RBP
     // |       Destination frame                   |
     // +-------------------------------------------+
+    // |       Indirect Live Vars                  |
     // +-------------------------------------------+ <- RSP
     dynasm!(asm
         ; .arch x64
@@ -445,18 +446,18 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
             dst_frame_size,
             rbp_offset_reg_store
         );
-        println!("--------------------------------");
-        println!("@@ src live vars - smid: {:?}", src_smid);
-        for (index, src_var) in src_rec.live_vars.iter().enumerate() {
-            let src_location = &src_var.get(0).unwrap();
-            println!("{} - {:?}", index, src_location);
-        }
-        println!("@@ dst live vars - smid: {:?}", dst_smid);
-        for (index, dst_var) in dst_rec.live_vars.iter().enumerate() {
-            let dst_location = &dst_var.get(0).unwrap();
-            println!("{} - {:?}", index, dst_location);
-        }
-        println!("--------------------------------");
+        // println!("--------------------------------");
+        // println!("@@ src live vars - smid: {:?}", src_smid);
+        // for (index, src_var) in src_rec.live_vars.iter().enumerate() {
+        //     let src_location = &src_var.get(0).unwrap();
+        //     println!("{} - {:?}", index, src_location);
+        // }
+        // println!("@@ dst live vars - smid: {:?}", dst_smid);
+        // for (index, dst_var) in dst_rec.live_vars.iter().enumerate() {
+        //     let dst_location = &dst_var.get(0).unwrap();
+        //     println!("{} - {:?}", index, dst_location);
+        // }
+        // println!("--------------------------------");
     }
 
     // Step 4. Set destination live vars
@@ -547,15 +548,15 @@ fn restore_register(
     dynasm!(asm
         ; mov Rq(dest_reg), QWORD [rbp - reg_val_rbp_offset]
     );
-    if *CP_VERBOSE {
-        println!(
-            "@@ Restoring reg_num: {:?}, dest_reg: {:?}, reg_offset: 0x{:x}, reg_val_rbp_offset: 0x{:x}",
-            dwarf_reg_num,
-            dest_reg,
-            reg_offset,
-            reg_val_rbp_offset
-        );
-    }
+    // if *CP_VERBOSE {
+    //     println!(
+    //         "@@ Restoring reg_num: {:?}, dest_reg: {:?}, reg_offset: 0x{:x}, reg_val_rbp_offset: 0x{:x}",
+    //         dwarf_reg_num,
+    //         dest_reg,
+    //         reg_offset,
+    //         reg_val_rbp_offset
+    //     );
+    // }
 }
 
 // Example:
