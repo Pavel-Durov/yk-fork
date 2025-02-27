@@ -396,7 +396,6 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
         dst_frame_size -= REG64_BYTESIZE;
     }
 
-    let src_rbp_offset = src_frame_size as i32 + REG64_BYTESIZE as i32;
     if *CP_VERBOSE {
         println!(
             "@@ transition from {:?} to {:?}, exec_trace: {:?}",
@@ -432,13 +431,11 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
 
     if *CP_VERBOSE {
         println!(
-            "@@ src_rbp: 0x{:x}, src_rsp: 0x{:x}, src_rbp_offset: 0x{:x}, src_frame_size: 0x{:x}, dst_frame_size: 0x{:x}, rbp_offset_reg_store: 0x{:x}",
+            "@@ src_rbp: 0x{:x}, reg_store: 0x{:x}, src_frame_size: 0x{:x}, dst_frame_size: 0x{:x}",
             frameaddr as i64,
             frameaddr as i64 - rbp_offset_reg_store,
-            src_rbp_offset,
             src_frame_size,
-            dst_frame_size,
-            rbp_offset_reg_store
+            dst_frame_size
         );
         // println!("--------------------------------");
         // println!("@@ src live vars - smid: {:?}", src_smid);
