@@ -1,3 +1,99 @@
+
+## The probolem:
+
+When we set register values from the __yk_trace_basicblock reg store as in:
+```
+mov    rax,QWORD PTR [rbp-0x90]
+```
+
+`rbp-0x90` collides with the temporary live store allocated to the transition  - `rsp + framesize` in this case.
+
+`rbp-0x90` = `rsp+0` (the first live variable copy in the temp store)
+
+
+
+## Diagrams
+
+
+Step one: copy src live var to temp live var
++-----------------------------+ <- $rbp
+| rbp-0x98 (src live var 1)   |
+| rbp-0xa0 (src live var 2)   |
+| rbp-0xa8 (src live var 3)   |
++-----------------------------+ <- $rsp-0x80 (frame size)
+| rsp+0x0  (temp live var 1)  |
+| rsp+0x8  (temp live var 2)  |
+| rsp+0x10 (temp live var 3)  |
++-----------------------------+ <- $rsp-0x18 (live var temp)
+
+Step two: copy temp live var to dst live var
++-----------------------------+ <- $rbp
+| rbp-0x118 (dst live var 1)   |
+| rbp-0x120 (dst live var 2)   |
+| rbp-0x128 (dst live var 3)   |
++-----------------------------+ <- $rsp-0x80 (frame size)
+| rsp+0x0  (temp live var 1)  |
+| rsp+0x8  (temp live var 2)  |
+| rsp+0x10 (temp live var 3)  |
++-----------------------------+ <- $rsp-0x18 (live var temp)
+
+Step three: remove temp live var
++-----------------------------+ <- $rbp
+| rbp-0x118 (dst live var 1)   |
+| rbp-0x120 (dst live var 2)   |
+| rbp-0x128 (dst live var 3)   |
++-----------------------------+ <- $rsp-0x80 (frame size)
+
+
+
+watch *0x7fffffffdca8
+
+>>> x/gx $rbp-0x58
+0x7fffffffdce8:	0x00007ffff6e4b02c
+
+
+## cp transition asm:
+
+ 0x00007ffff7fba001> ? movabs rbp,0x7fffffffdd40
+ 0x00007ffff7fba00b  ? movabs rsp,0x7fffffffdd40
+ 0x00007ffff7fba015  ? sub    rsp,0x80
+ 0x00007ffff7fba01c  ? sub    rsp,0x18
+ 0x00007ffff7fba023  ? mov    rax,QWORD PTR [rbp-0x60]
+ 0x00007ffff7fba02a  ? mov    QWORD PTR [rsp+0x0],rax
+ 0x00007ffff7fba032  ? mov    rax,QWORD PTR [rbp-0x58] <---- this 
+ 0x00007ffff7fba039  ? mov    QWORD PTR [rsp+0x8],rax
+ 0x00007ffff7fba041  ? mov    rax,QWORD PTR [rbp-0x40]
+ 0x00007ffff7fba048  ? mov    QWORD PTR [rsp+0x10],rax
+ 0x00007ffff7fba050  ? mov    rbx,QWORD PTR [rsp+0x0]
+ 0x00007ffff7fba058  ? mov    rax,QWORD PTR [rbp-0xa0]
+ 0x00007ffff7fba05f  ? mov    QWORD PTR [rbp-0x58],rax
+ 0x00007ffff7fba066  ? mov    rax,QWORD PTR [rbp-0xe8]
+ 0x00007ffff7fba06d  ? mov    QWORD PTR [rbp-0x50],rax
+ 0x00007ffff7fba074  ? mov    rax,QWORD PTR [rsp+0x8]
+ 0x00007ffff7fba07c  ? mov    QWORD PTR [rbp-0x48],rax
+ 0x00007ffff7fba083  ? mov    r13,QWORD PTR [rbp-0xd8]
+ 0x00007ffff7fba08a  ? mov    r14,QWORD PTR [rbp-0xe0]
+ 0x00007ffff7fba091  ? mov    r12,QWORD PTR [rbp-0x98]
+ 0x00007ffff7fba098  ? mov    rcx,QWORD PTR [rbp-0xf0]
+ 0x00007ffff7fba09f  ? mov    r15,QWORD PTR [rsp+0x10]
+ 0x00007ffff7fba0a7  ? mov    rax,QWORD PTR [rbp-0x90]
+ 0x00007ffff7fba0ae  ? mov    rdi,QWORD PTR [rbp-0xa8]
+ 0x00007ffff7fba0b5  ? mov    rsi,QWORD PTR [rbp-0xb0]
+ 0x00007ffff7fba0bc  ? mov    r8,QWORD PTR [rbp-0xb8]
+ 0x00007ffff7fba0c3  ? mov    r9,QWORD PTR [rbp-0xc0]
+ 0x00007ffff7fba0ca  ? mov    r10,QWORD PTR [rbp-0xc8]
+ 0x00007ffff7fba0d1  ? mov    r11,QWORD PTR [rbp-0xd0]
+ 0x00007ffff7fba0d8  ? add    rsp,0x18
+ 0x00007ffff7fba0df  ? sub    rsp,0x10
+ 0x00007ffff7fba0e3  ? mov    QWORD PTR [rsp],rax
+ 0x00007ffff7fba0e7  ? movabs rax,0x2053c9
+ 0x00007ffff7fba0f1  ? mov    QWORD PTR [rsp+0x8],rax
+ 0x00007ffff7fba0f6  ? pop    rax
+ 0x00007ffff7fba0f7  ? ret
+
+
+## Unopt main functions:
+
 0x0000000000205210 <+0>:	push   rbp
    0x0000000000205211 <+1>:	mov    rbp,rsp
    0x0000000000205214 <+4>:	push   r15
@@ -124,8 +220,7 @@
 
 
 
-
-   // Live var copy
+#### Live var copy
 
       0x00007ffff7fba050  ? mov    rbx,QWORD PTR [rsp+0x0] - Indirect2Register - src: Indirect(6, -96, 8) dst: Register(3, 8, [])
       >>> x/gx $rbp-96
@@ -134,7 +229,7 @@
       0x7ffff6e4b020:	0x0000000000000004
 
 
-      0x00007ffff7fba058  ? mov    rax,QWORD PTR [rbp-0xa0] - Register2Indirect - src: Register(3, 8, []) dst: Indirect(6, -88, 8)
+      0x00007ffff7fba058  ? mov    rax,QWORD PTR [rbp-0xa0] - Register2Indirect - src: Register(3, 8, []) dst: src_rbp_offset(6, -88, 8)
       0x00007ffff7fba05f  ? mov    QWORD PTR [rbp-0x58],rax
       0x00007ffff7fba066  ? mov    rax,QWORD PTR [rbp-0xe8] - Register2Indirect - src: Register(14, 8, []) dst: Indirect(6, -80, 8)
       0x00007ffff7fba06d  ? mov    QWORD PTR [rbp-0x50],rax
@@ -265,3 +360,4 @@
    0x0000000000205548 <+824>:	mov    esi,0x11
    0x000000000020554d <+829>:	call   0x2055c0 <__yk_trace_basicblock@plt>
    0x0000000000205552 <+834>:	jmp    0x205523 <main+787>
+

@@ -530,7 +530,7 @@ impl MT {
                             rsp: 0 as *const c_void,
                             trace_addr: 0 as *const c_void,
                             exec_trace: false,
-                            exec_trace_fn: __yk_exec_trace
+                            exec_trace_fn: __yk_exec_trace,
                         });
                     }
                 }

@@ -12,18 +12,12 @@ use yksmp::Record;
 pub(crate) static REG64_BYTESIZE: u64 = 8;
 
 // Flag for verbose logging
-pub static CP_VERBOSE: LazyLock<bool> = LazyLock::new(|| {
-    env::var("CP_VERBOSE")
-        .map(|v| v == "1")
-        .unwrap_or(false)
-});
+pub static CP_VERBOSE: LazyLock<bool> =
+    LazyLock::new(|| env::var("CP_VERBOSE").map(|v| v == "1").unwrap_or(false));
 
 // Flag for asm breakpoints
-pub static CP_BREAK: LazyLock<bool> = LazyLock::new(|| {
-    env::var("CP_BREAK")
-    .map(|v| v == "1")
-    .unwrap_or(false)
-});
+pub static CP_BREAK: LazyLock<bool> =
+    LazyLock::new(|| env::var("CP_BREAK").map(|v| v == "1").unwrap_or(false));
 
 #[repr(usize)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -205,10 +199,8 @@ fn set_destination_live_vars(
         match src_location {
             Register(src_reg_num, src_val_size, src_add_locs) => {
                 let src_reg_offset = reg_num_to_ykrt_control_point_rsp_offset(*src_reg_num);
-                let src_reg_val_rbp_offset = i32::try_from(
-                    rbp_offset_reg_store - src_reg_offset as i64,
-                )
-                .unwrap();
+                let src_reg_val_rbp_offset =
+                    i32::try_from(rbp_offset_reg_store - src_reg_offset as i64).unwrap();
 
                 match dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
@@ -406,7 +398,10 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
 
     let src_rbp_offset = src_frame_size as i32 + REG64_BYTESIZE as i32;
     if *CP_VERBOSE {
-        println!("@@ transition from {:?} to {:?}, exec_trace: {:?}", src_smid, dst_smid, transition.exec_trace);
+        println!(
+            "@@ transition from {:?} to {:?}, exec_trace: {:?}",
+            src_smid, dst_smid, transition.exec_trace
+        );
     }
     if *CP_BREAK {
         dynasm!(asm; .arch x64; int3);
@@ -416,8 +411,7 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
     let src_val_buffer_size = calculate_live_vars_buffer_size(src_rec);
 
     // Calculate the offset from the RBP to the RSP where __ykrt_control_point_real stored the registers.
-    let rbp_offset_reg_store =
-        src_frame_size as i64 + (14 * REG64_BYTESIZE) as i64;
+    let rbp_offset_reg_store = src_frame_size as i64 + (14 * REG64_BYTESIZE) as i64;
 
     // Step 2. Set RBP and RSP
     // +-------------------------------------------+ <- RBP
@@ -461,18 +455,10 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
     }
 
     // Step 4. Set destination live vars
-    let used_registers = set_destination_live_vars(
-        &mut asm,
-        src_rec,
-        dst_rec,
-        rbp_offset_reg_store,
-    );
+    let used_registers =
+        set_destination_live_vars(&mut asm, src_rec, dst_rec, rbp_offset_reg_store);
 
-    restore_registers(
-        &mut asm,
-        used_registers,
-        rbp_offset_reg_store as i32,
-    );
+    restore_registers(&mut asm, used_registers, rbp_offset_reg_store as i32);
 
     // Ensure that RSP remains 16-byte aligned throughout transitions to comply with the x86-64 ABI.
     assert_eq!(
@@ -527,23 +513,14 @@ fn restore_registers(
 
     for (reg_num, _) in sorted_offsets.iter() {
         if !exclude_registers.contains_key(reg_num) {
-            restore_register(
-                asm,
-                (**reg_num).try_into().unwrap(),
-                rbp_offset_reg_store,
-            );
+            restore_register(asm, (**reg_num).try_into().unwrap(), rbp_offset_reg_store);
         }
     }
 }
 
-fn restore_register(
-    asm: &mut Assembler,
-    dwarf_reg_num: u16,
-    rbp_offset_reg_store: i32,
-) {
+fn restore_register(asm: &mut Assembler, dwarf_reg_num: u16, rbp_offset_reg_store: i32) {
     let reg_offset = reg_num_to_ykrt_control_point_rsp_offset(dwarf_reg_num);
-    let reg_val_rbp_offset =
-        i32::try_from(rbp_offset_reg_store - reg_offset as i32).unwrap();
+    let reg_val_rbp_offset = i32::try_from(rbp_offset_reg_store - reg_offset as i32).unwrap();
     let dest_reg = dwarf_to_dynasm_reg(dwarf_reg_num.try_into().unwrap());
     dynasm!(asm
         ; mov Rq(dest_reg), QWORD [rbp - reg_val_rbp_offset]
@@ -609,19 +586,28 @@ mod swt_cp_tests {
         let code_size = buffer.len();
         // Use Capstone to disassemble and check the generated instructions
         let capstone = Capstone::new()
-           .x86()
-           .mode(arch::x86::ArchMode::Mode64)
-           .build()
-           .unwrap();
+            .x86()
+            .mode(arch::x86::ArchMode::Mode64)
+            .build()
+            .unwrap();
 
         let instructions = capstone
-           .disasm_all(
-               unsafe { std::slice::from_raw_parts(code_ptr, code_size) },
-               code_ptr as u64,
-           )
-           .expect("Failed to disassemble code");
+            .disasm_all(
+                unsafe { std::slice::from_raw_parts(code_ptr, code_size) },
+                code_ptr as u64,
+            )
+            .expect("Failed to disassemble code");
 
-        return instructions.iter().map(|inst| format!("{} {}", inst.mnemonic().unwrap_or(""), inst.op_str().unwrap_or(""))).collect();
+        return instructions
+            .iter()
+            .map(|inst| {
+                format!(
+                    "{} {}",
+                    inst.mnemonic().unwrap_or(""),
+                    inst.op_str().unwrap_or("")
+                )
+            })
+            .collect();
     }
 
     #[test]
@@ -767,17 +753,11 @@ mod swt_cp_tests {
             offset: 0,
             size: 0,
             id: 0,
-            live_vars: vec![
-                LiveVar::new(vec![Location::Indirect(0, 0, 8)]),
-            ],
+            live_vars: vec![LiveVar::new(vec![Location::Indirect(0, 0, 8)])],
         };
 
         let buffer_size = calculate_live_vars_buffer_size(&mock_record);
-        assert_eq!(
-            buffer_size,
-            8,
-            "Buffer size should be 8 bytes"
-        );
+        assert_eq!(buffer_size, 8, "Buffer size should be 8 bytes");
     }
 
     #[test]
