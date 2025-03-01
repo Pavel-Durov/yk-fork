@@ -1,6 +1,7 @@
 use crate::aotsmp::AOT_STACKMAPS;
 use capstone::prelude::*;
 use dynasmrt::{dynasm, x64::Assembler, DynasmApi};
+use std::alloc::{alloc, dealloc, handle_alloc_error, Layout};
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
@@ -8,7 +9,6 @@ use std::ffi::c_void;
 use std::sync::LazyLock;
 use yksmp::Location::{Direct, Indirect, Register};
 use yksmp::Record;
-use std::alloc::{Layout, alloc, dealloc, handle_alloc_error};
 /// The size of a 64-bit register in bytes.
 pub(crate) static REG64_BYTESIZE: u64 = 8;
 
@@ -51,18 +51,16 @@ pub struct CPTransition {
     pub exec_trace_fn: ExecTraceFn,
 }
 
-
 // This function is called from the asm generated code in `swt_module_cp_transition`.
 // It deallocates the buffer created to temporary store the live variables.
 #[no_mangle]
-unsafe extern "C" fn __yk_swt_dealloc_buffer(ptr: *mut u8, layout: Layout) {
+unsafe extern "C" fn __yk_swt_dealloc_buffer(ptr: *mut u8, size: usize, align: usize) {
     if ptr.is_null() {
-        // Handle null pointer case (shouldn't happen, but just in case)
         return;
     }
+    let layout = Layout::from_size_align_unchecked(size, align);
     dealloc(ptr, layout);
 }
-
 
 pub(crate) type ExecTraceFn = unsafe extern "C" fn(
     frameaddr: *const c_void,
@@ -348,7 +346,10 @@ fn set_destination_live_vars(
             Indirect(src_reg_num, _src_off, src_val_size) => {
                 let temp_buffer_offset = live_vars_buffer.variables[&src_var_indirect_index];
                 if *CP_VERBOSE {
-                    println!("Indirect - buffer_index: {:?}, offset: {:?}", src_var_indirect_index, temp_buffer_offset);
+                    println!(
+                        "Indirect - buffer_index: {:?}, offset: {:?}",
+                        src_var_indirect_index, temp_buffer_offset
+                    );
                 }
                 match dst_location {
                     Register(dst_reg_num, dst_val_size, _dst_add_locs) => {
@@ -517,15 +518,15 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
 
     // Deallocate the buffer
     if temp_live_vars_buffer.variables.len() > 0 {
-        let layout_ptr = &temp_live_vars_buffer.layout as *const Layout as i64;
         if *CP_BREAK {
             dynasm!(asm; .arch x64; int3);
         }
         dynasm!(asm
             ; .arch x64
-            ; mov rdi, QWORD temp_live_vars_buffer.ptr as i64 // first argument
-            ; mov rsi, QWORD layout_ptr // second argument
-            ; mov rax, QWORD __yk_swt_dealloc_buffer as i64 // third argument
+            ; mov rdi, QWORD temp_live_vars_buffer.ptr as i64
+            ; mov rsi, QWORD temp_live_vars_buffer.layout.size() as i64
+            ; mov rdx, QWORD temp_live_vars_buffer.layout.align() as i64
+            ; mov rax, QWORD __yk_swt_dealloc_buffer as i64
             ; call rax
         );
     }
@@ -804,7 +805,7 @@ mod swt_cp_tests {
         let buffer_size = calculate_live_vars_buffer_size(&mock_record);
         assert_eq!(
             // 12 is the padding
-            16 + 8 + 4 + 8 + 12 ,
+            16 + 8 + 4 + 8 + 12,
             buffer_size,
             "Buffer size should equal the sum of all live variable sizes + padding"
         );
@@ -813,12 +814,12 @@ mod swt_cp_tests {
     fn test_buffer_size_alignment() {
         // Test cases with different initial sizes
         let test_cases = vec![
-            (0, 0),    // 0 should remain 0
-            (1, 16),   // 1 should become 16
-            (16, 16),  // 16 should remain 16
-            (17, 32),  // 17 should become 32
-            (31, 32),  // 31 should become 32
-            (32, 32),  // 32 should remain 32
+            (0, 0),   // 0 should remain 0
+            (1, 16),  // 1 should become 16
+            (16, 16), // 16 should remain 16
+            (17, 32), // 17 should become 32
+            (31, 32), // 31 should become 32
+            (32, 32), // 32 should remain 32
         ];
         for (val_size, expected_buffer_size) in test_cases {
             // Create a mock record with the given buffer size
@@ -830,11 +831,9 @@ mod swt_cp_tests {
             };
             let buffer_size = calculate_live_vars_buffer_size(&mock_record);
             assert_eq!(
-                buffer_size,
-                expected_buffer_size,
+                buffer_size, expected_buffer_size,
                 "Buffer size for input {} should be {}",
-                val_size,
-                expected_buffer_size
+                val_size, expected_buffer_size
             );
         }
     }
@@ -861,14 +860,15 @@ mod swt_cp_tests {
         };
 
         let mut asm = Assembler::new().unwrap();
-        let mut temp_live_vars_buffer = LiveVarsBuffer {
+        let temp_live_vars_buffer = LiveVarsBuffer {
             ptr: 0 as *mut u8,
             layout: Layout::new::<u8>(),
             variables: HashMap::new(),
             size: 0,
         };
         // Act: Call the function to test Register-to-Register copy
-        let dest_reg_nums = set_destination_live_vars(&mut asm, &src_rec, &dst_rec, 0x10, temp_live_vars_buffer);
+        let dest_reg_nums =
+            set_destination_live_vars(&mut asm, &src_rec, &dst_rec, 0x10, temp_live_vars_buffer);
         // Finalize the assembly and disassemble the instructions
         let buffer = asm.finalize().unwrap();
         let instructions = get_asm_instructions(&buffer);
@@ -885,4 +885,3 @@ mod swt_cp_tests {
     // TODO: test indirect to register
     // TODO: test indirect to indirect
 }
-
