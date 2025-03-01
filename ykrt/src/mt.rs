@@ -16,8 +16,6 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-use std::time::Duration;
-
 use parking_lot::{Condvar, Mutex, MutexGuard};
 #[cfg(not(all(feature = "yk_testing", not(test))))]
 use parking_lot_core::SpinWait;
