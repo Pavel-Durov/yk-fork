@@ -6,7 +6,7 @@ use std::env;
 use std::error::Error;
 use std::ffi::c_void;
 use std::sync::LazyLock;
-use yksmp::Location::{Constant, Direct, Indirect, LargeConstant, Register};
+use yksmp::Location::{Direct, Indirect, Register};
 use yksmp::Record;
 use std::alloc::{Layout, alloc, dealloc, handle_alloc_error};
 /// The size of a 64-bit register in bytes.
@@ -161,8 +161,17 @@ fn calculate_live_vars_buffer_size(src_rec: &Record) -> i32 {
     }
 }
 
-fn copy_live_vars_to_temp_buffer(asm: &mut Assembler, src_rec: &Record) -> Option<(*mut u8, Layout)> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LiveVarsBuffer {
+    ptr: *mut u8,
+    layout: Layout,
+    variables: HashMap<i32, i32>,
+    size: i32,
+}
+
+fn copy_live_vars_to_temp_buffer(asm: &mut Assembler, src_rec: &Record) -> LiveVarsBuffer {
     let src_val_buffer_size = calculate_live_vars_buffer_size(src_rec);
+
     let temp_live_vars_buffer = if src_val_buffer_size > 0 {
         unsafe {
             let layout = Layout::from_size_align(src_val_buffer_size as usize, 16).unwrap();
@@ -170,12 +179,18 @@ fn copy_live_vars_to_temp_buffer(asm: &mut Assembler, src_rec: &Record) -> Optio
             if ptr.is_null() {
                 handle_alloc_error(layout);
             }
-            Some((ptr, layout))
+            (ptr, layout)
         }
     } else {
-        return None;
+        return LiveVarsBuffer {
+            ptr: 0 as *mut u8,
+            layout: Layout::new::<u8>(),
+            variables: HashMap::new(),
+            size: 0,
+        };
     };
     let mut src_var_indirect_index = 0;
+    let mut variables = HashMap::new();
     for (_, src_var) in src_rec.live_vars.iter().enumerate() {
         let src_location = src_var.get(0).unwrap();
         match src_location {
@@ -186,10 +201,11 @@ fn copy_live_vars_to_temp_buffer(asm: &mut Assembler, src_rec: &Record) -> Optio
                 );
                 let temp_buffer_offset = (src_var_indirect_index * (*src_val_size as i32)) as i32;
                 dynasm!(asm
-                    ; mov rcx, QWORD temp_live_vars_buffer.unwrap().0 as i64
+                    ; mov rcx, QWORD temp_live_vars_buffer.0 as i64
                     ; mov rax, QWORD [rbp + i32::try_from(*src_off).unwrap()]
                     ; mov QWORD [rcx + temp_buffer_offset], rax
                 );
+                variables.insert(src_var_indirect_index, temp_buffer_offset);
                 src_var_indirect_index += 1;
             }
             Direct(_, _, _) => {
@@ -204,7 +220,13 @@ fn copy_live_vars_to_temp_buffer(asm: &mut Assembler, src_rec: &Record) -> Optio
             ),
         }
     }
-    Some(temp_live_vars_buffer?)
+    let live_vars_buffer = LiveVarsBuffer {
+        ptr: temp_live_vars_buffer.0,
+        layout: temp_live_vars_buffer.1,
+        variables: variables,
+        size: src_val_buffer_size,
+    };
+    live_vars_buffer
 }
 
 fn set_destination_live_vars(
@@ -212,7 +234,7 @@ fn set_destination_live_vars(
     src_rec: &Record,
     dst_rec: &Record,
     rbp_offset_reg_store: i64,
-    temp_live_vars_buffer: Option<(*mut u8, Layout)>,
+    live_vars_buffer: LiveVarsBuffer,
 ) -> HashMap<u16, u16> {
     let mut dest_reg_nums = HashMap::new();
     let mut src_var_indirect_index = 0;
@@ -324,12 +346,10 @@ fn set_destination_live_vars(
                 }
             }
             Indirect(src_reg_num, _src_off, src_val_size) => {
-                let temp_buffer_offset = (src_var_indirect_index * REG64_BYTESIZE as usize) as i32;
-                // assuming each value is 8 bytes
-                // if *CP_VERBOSE {
-                //     println!("Indirect - temp_buffer_offset: {:?} src_var_indirect_index: {:?}", temp_buffer_offset, src_var_indirect_index);
-                // }
-                let temp_live_vars_buffer_ptr = temp_live_vars_buffer.unwrap().0;
+                let temp_buffer_offset = live_vars_buffer.variables[&src_var_indirect_index];
+                if *CP_VERBOSE {
+                    println!("Indirect - buffer_index: {:?}, offset: {:?}", src_var_indirect_index, temp_buffer_offset);
+                }
                 match dst_location {
                     Register(dst_reg_num, dst_val_size, _dst_add_locs) => {
                         if *CP_VERBOSE {
@@ -343,16 +363,16 @@ fn set_destination_live_vars(
                         let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
                         match *dst_val_size {
                             1 => dynasm!(asm
-                                ; mov rcx, (temp_live_vars_buffer_ptr as i64).try_into().unwrap()
+                                ; mov rcx, (live_vars_buffer.ptr as i64).try_into().unwrap()
                                 ; mov Rb(dst_reg), BYTE [rcx + temp_buffer_offset]),
                             2 => dynasm!(asm
-                                ; mov rcx, (temp_live_vars_buffer_ptr as i64).try_into().unwrap()
+                                ; mov rcx, (live_vars_buffer.ptr as i64).try_into().unwrap()
                                 ; mov Rw(dst_reg), WORD [rcx + temp_buffer_offset]),
                             4 => dynasm!(asm
-                                ; mov rcx, (temp_live_vars_buffer_ptr as i64).try_into().unwrap()
+                                ; mov rcx, (live_vars_buffer.ptr as i64).try_into().unwrap()
                                 ; mov Rd(dst_reg), DWORD [rcx + temp_buffer_offset]),
                             8 => dynasm!(asm
-                                ; mov rcx, (temp_live_vars_buffer_ptr as i64).try_into().unwrap()
+                                ; mov rcx, (live_vars_buffer.ptr as i64).try_into().unwrap()
                                 ; mov Rq(dst_reg), QWORD [rcx + temp_buffer_offset]),
                             _ => panic!(
                                 "Unexpected Indirect to Register value size: {}",
@@ -371,23 +391,23 @@ fn set_destination_live_vars(
                         let min_size = src_val_size.min(dst_val_size);
                         match min_size {
                             1 => dynasm!(asm
-                                ; mov rcx, QWORD temp_live_vars_buffer_ptr as i64
+                                ; mov rcx, (live_vars_buffer.ptr as i64).try_into().unwrap()
                                 ; mov al, BYTE [rcx + temp_buffer_offset]
                                 ; mov BYTE [rbp + i32::try_from(*dst_off).unwrap()], al
                             ),
                             2 => dynasm!(asm
-                                ; mov rcx, QWORD temp_live_vars_buffer_ptr as i64
+                                ; mov rcx, (live_vars_buffer.ptr as i64).try_into().unwrap()
                                 ; mov ax, WORD [rcx + temp_buffer_offset]
                                 ; mov WORD [rbp + i32::try_from(*dst_off).unwrap()], ax
                             ),
                             4 => dynasm!(asm
-                                ; mov rcx, QWORD temp_live_vars_buffer_ptr as i64
+                                ; mov rcx, (live_vars_buffer.ptr as i64).try_into().unwrap()
                                 ; mov eax, DWORD [rcx + temp_buffer_offset]
                                 ; mov DWORD [rbp + i32::try_from(*dst_off).unwrap()], eax
                             ),
                             8 => {
                                 dynasm!(asm
-                                    ; mov rcx, QWORD temp_live_vars_buffer_ptr as i64
+                                    ; mov rcx, (live_vars_buffer.ptr as i64).try_into().unwrap()
                                     ; mov rax, QWORD [rcx + temp_buffer_offset]
                                     ; mov QWORD [rbp + i32::try_from(*dst_off).unwrap()], rax
                                 );
@@ -449,41 +469,37 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
         dynasm!(asm; .arch x64; int3);
     }
 
-    // Calculate the offset from the RBP to the RSP where __ykrt_control_point_real stored the registers.
-    let rbp_offset_reg_store = src_frame_size as i64 + (14 * REG64_BYTESIZE) as i64;
-
-    // Step 2. Set RBP and RSP
-    // +-------------------------------------------+ <- RBP
-    // |       Destination frame                   |
-    // +-------------------------------------------+
+    // Set RBP and RSP
     dynasm!(asm
         ; .arch x64
         ; mov rbp, QWORD frameaddr as i64
         ; mov rsp, QWORD frameaddr as i64
         ; sub rsp, (dst_frame_size).try_into().unwrap() // adjust rsp
-        // ; sub rsp, src_val_buffer_size // Reserve buffer to store Direct and Indirect values
     );
+
+    // Calculate the offset from the RBP to the RSP where __ykrt_control_point_real stored the registers.
+    let rbp_offset_reg_store = src_frame_size as i64 + (14 * REG64_BYTESIZE) as i64;
+
     let temp_live_vars_buffer = copy_live_vars_to_temp_buffer(&mut asm, src_rec);
     if *CP_VERBOSE {
         println!(
-            "@@ src_rbp: 0x{:x}, reg_store: 0x{:x}, src_frame_size: 0x{:x}, dst_frame_size: 0x{:x}, temp_live_vars_buffer: 0x{:x}",
+            "src_rbp: 0x{:x}, reg_store: 0x{:x}, src_frame_size: 0x{:x}, dst_frame_size: 0x{:x}",
             frameaddr as i64,
             frameaddr as i64 - rbp_offset_reg_store,
             src_frame_size,
-            dst_frame_size,
-            temp_live_vars_buffer.unwrap().0 as i64
+            dst_frame_size
         );
     }
+    // let live_vars_buffer = temp_live_vars_buffer.unwrap();
 
-    // Step 4. Set destination live vars
+    // Set destination live vars
     let used_registers = set_destination_live_vars(
         &mut asm,
         src_rec,
         dst_rec,
         rbp_offset_reg_store,
-        temp_live_vars_buffer,
+        temp_live_vars_buffer.clone(),
     );
-
     restore_registers(&mut asm, used_registers, rbp_offset_reg_store as i32);
 
     // Ensure that RSP remains 16-byte aligned throughout transitions to comply with the x86-64 ABI.
@@ -500,14 +516,14 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
     );
 
     // Deallocate the buffer
-    if let Some((buffer, layout)) = temp_live_vars_buffer {
-        let layout_ptr = &layout as *const Layout as i64;
+    if temp_live_vars_buffer.variables.len() > 0 {
+        let layout_ptr = &temp_live_vars_buffer.layout as *const Layout as i64;
         if *CP_BREAK {
             dynasm!(asm; .arch x64; int3);
         }
         dynasm!(asm
             ; .arch x64
-            ; mov rdi, QWORD buffer as i64 // first argument
+            ; mov rdi, QWORD temp_live_vars_buffer.ptr as i64 // first argument
             ; mov rsi, QWORD layout_ptr // second argument
             ; mov rax, QWORD __yk_swt_dealloc_buffer as i64 // third argument
             ; call rax
@@ -714,7 +730,7 @@ mod swt_cp_tests {
     #[test]
     fn test_restore_registers_empty_restore() {
         let mut asm = Assembler::new().unwrap();
-        let mut used_regs = HashMap::new();
+        let used_regs = HashMap::new();
         restore_registers(&mut asm, used_regs, 0);
         let buffer: dynasmrt::ExecutableBuffer = asm.finalize().unwrap();
         let instructions = get_asm_instructions(&buffer);
@@ -823,43 +839,48 @@ mod swt_cp_tests {
         }
     }
 
-    // #[test]
-    // fn test_set_destination_live_vars_register_to_register() {
-    //     // Arrange: Create mock `src_rec` and `dst_rec` for Register-to-Register live vars
-    //     let src_rec = Record {
-    //         offset: 0,
-    //         size: 0,
-    //         id: 0,
-    //         live_vars: vec![
-    //             LiveVar::new(vec![Location::Register(15, 8, vec![])]), // r15, size 8
-    //         ],
-    //     };
+    #[test]
+    fn test_set_destination_live_vars_register_to_register() {
+        // Arrange: Create mock `src_rec` and `dst_rec` for Register-to-Register live vars
+        let src_rec = Record {
+            offset: 0,
+            size: 0,
+            id: 0,
+            live_vars: vec![
+                LiveVar::new(vec![Location::Register(15, 8, vec![])]), // r15, size 8
+            ],
+        };
 
-    //     let dst_rec = Record {
-    //         offset: 0,
-    //         size: 0,
-    //         id: 0,
-    //         live_vars: vec![
-    //             LiveVar::new(vec![Location::Register(1, 8, vec![])]), // rcx, size 8
-    //         ],
-    //     };
+        let dst_rec = Record {
+            offset: 0,
+            size: 0,
+            id: 0,
+            live_vars: vec![
+                LiveVar::new(vec![Location::Register(1, 8, vec![])]), // rcx, size 8
+            ],
+        };
 
-    //     let mut asm = Assembler::new().unwrap();
-    //     temp_live_vars_buffer =
-    //     // Act: Call the function to test Register-to-Register copy
-    //     let dest_reg_nums = set_destination_live_vars(&mut asm, &src_rec, &dst_rec, 0x10, temp_live_vars_buffer);
-    //     // Finalize the assembly and disassemble the instructions
-    //     let buffer = asm.finalize().unwrap();
-    //     let instructions = get_asm_instructions(&buffer);
-    //     assert_eq!(instructions[0], "mov rdx, qword ptr [rbp - 0x10]");
+        let mut asm = Assembler::new().unwrap();
+        let mut temp_live_vars_buffer = LiveVarsBuffer {
+            ptr: 0 as *mut u8,
+            layout: Layout::new::<u8>(),
+            variables: HashMap::new(),
+            size: 0,
+        };
+        // Act: Call the function to test Register-to-Register copy
+        let dest_reg_nums = set_destination_live_vars(&mut asm, &src_rec, &dst_rec, 0x10, temp_live_vars_buffer);
+        // Finalize the assembly and disassemble the instructions
+        let buffer = asm.finalize().unwrap();
+        let instructions = get_asm_instructions(&buffer);
+        assert_eq!(instructions[0], "mov rdx, qword ptr [rbp - 0x10]");
 
-    //     // Verify dest_reg_nums maps rcx to its value size
-    //     assert_eq!(
-    //         dest_reg_nums.get(&1),
-    //         Some(&8),
-    //         "The destination register (rcx) should be recorded with its size"
-    //     );
-    // }
+        // Verify dest_reg_nums maps rcx to its value size
+        assert_eq!(
+            dest_reg_nums.get(&1),
+            Some(&8),
+            "The destination register (rcx) should be recorded with its size"
+        );
+    }
     // TODO: test register to indirect
     // TODO: test indirect to register
     // TODO: test indirect to indirect
