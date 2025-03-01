@@ -23,7 +23,7 @@ use parking_lot::{Condvar, Mutex, MutexGuard};
 use parking_lot_core::SpinWait;
 
 #[cfg(tracer_swt)]
-use crate::trace::swt::cp::{control_point_transition, CPTransition, CPTransitionDirection};
+use crate::trace::swt::cp::{swt_module_cp_transition, CPTransition, CPTransitionDirection};
 
 use crate::{
     aotsmp::{load_aot_stackmaps, AOT_STACKMAPS},
@@ -463,7 +463,7 @@ impl MT {
                         // Transition to unopt before trace execution since``
                         // the trace was collected un unopt version.
                         // This function will call __yk_exec_trace when live variables are restored.
-                        control_point_transition(CPTransition {
+                        swt_module_cp_transition(CPTransition {
                             direction: CPTransitionDirection::OptToUnopt,
                             frameaddr,
                             rsp,
@@ -524,7 +524,7 @@ impl MT {
                     unsafe {
                         // Transition to unopt before start tracing cause
                         // we need the intepreter version with tracing calls..
-                        control_point_transition(CPTransition {
+                        swt_module_cp_transition(CPTransition {
                             direction: CPTransitionDirection::OptToUnopt,
                             frameaddr,
                             rsp: 0 as *const c_void,
@@ -576,7 +576,7 @@ impl MT {
                     #[cfg(tracer_swt)]
                     unsafe {
                         // Transition into opt interpreter when we stop tracing.
-                        control_point_transition(CPTransition {
+                        swt_module_cp_transition(CPTransition {
                             direction: CPTransitionDirection::UnoptToOpt,
                             frameaddr,
                             rsp: 0 as *const c_void,

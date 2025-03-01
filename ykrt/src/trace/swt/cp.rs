@@ -51,6 +51,15 @@ pub struct CPTransition {
     pub exec_trace_fn: ExecTraceFn,
 }
 
+
+// This function is called from the asm generated code in `swt_module_cp_transition`.
+// It deallocates the buffer created to temporary store the live variables.
+#[no_mangle]
+unsafe extern "C" fn __yk_swt_dealloc_buffer(ptr: *mut u8, layout: Layout) {
+    dealloc(ptr, layout);
+}
+
+
 pub(crate) type ExecTraceFn = unsafe extern "C" fn(
     frameaddr: *const c_void,
     rsp: *const c_void,
@@ -140,14 +149,15 @@ fn calculate_live_vars_buffer_size(src_rec: &Record) -> i32 {
             _ => { /* DO NOTHING */ }
         }
     }
-    src_val_buffer_size
+    // Align the buffer size to 16 bytes
+    (src_val_buffer_size + 15) & !15
 }
 
 fn copy_live_vars_to_temp_buffer(asm: &mut Assembler, src_rec: &Record) -> Option<(*mut u8, Layout)> {
     let src_val_buffer_size = calculate_live_vars_buffer_size(src_rec);
     let temp_live_vars_buffer = if src_val_buffer_size > 0 {
         unsafe {
-            let layout = Layout::from_size_align(src_val_buffer_size as usize, 8).unwrap();
+            let layout = Layout::from_size_align(src_val_buffer_size as usize, 16).unwrap();
             let ptr = alloc(layout);
             if ptr.is_null() {
                 handle_alloc_error(layout);
@@ -403,7 +413,7 @@ General stack layout:
     |  Temporary buffer for Source Live Vars      |
     +---------------------------------------------+  <-- RSP
 */
-pub unsafe fn control_point_transition(transition: CPTransition) {
+pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
     let frameaddr = transition.frameaddr as usize;
     let mut asm = Assembler::new().unwrap();
 
@@ -481,11 +491,19 @@ pub unsafe fn control_point_transition(transition: CPTransition) {
         "RSP is not aligned to 16 bytes"
     );
 
-    // Deallocate the buffer after use
+    // Deallocate the buffer
     if let Some((buffer, layout)) = temp_live_vars_buffer {
-        unsafe {
-            dealloc(buffer, layout);
+        let layout_ptr = &layout as *const Layout as i64;
+        if *CP_BREAK {
+            dynasm!(asm; .arch x64; int3);
         }
+        dynasm!(asm
+            ; .arch x64
+            ; mov rdi, QWORD buffer as i64 // first argument
+            ; mov rsi, QWORD layout_ptr // second argument
+            ; mov rax, QWORD __yk_swt_dealloc_buffer as i64 // third argument
+            ; call rax
+        );
     }
     if transition.exec_trace {
         if *CP_VERBOSE {
