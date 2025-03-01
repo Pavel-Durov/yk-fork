@@ -150,14 +150,8 @@ impl<Register: Send + Sync + 'static> JITCYk<Register> {
         let root_offset = sti.as_ref().map(|x| x.root_offset);
         let guards = sti.as_ref().map(|x| x.guards.clone());
 
-        let mut jit_mod = trace_builder::build(
-            mt.next_compiled_trace_id(),
-            aot_mod,
-            aottrace_iter,
-            sti,
-            promotions,
-            debug_strs,
-        )?;
+        let mut jit_mod =
+            trace_builder::build(&mt, aot_mod, aottrace_iter, sti, promotions, debug_strs)?;
 
         if should_log_ir(IRPhase::PreOpt) {
             log_ir(&format!(
@@ -226,5 +220,5 @@ pub(crate) fn yk_ir_section() -> Result<&'static [u8], Box<dyn Error>> {
     let start = symbol_to_ptr("ykllvm.yk_ir.start")? as *const u8;
     let stop = symbol_to_ptr("ykllvm.yk_ir.stop")? as *const u8;
     debug_assert!(start < stop);
-    Ok(unsafe { slice::from_raw_parts(start, stop.sub_ptr(start)) })
+    Ok(unsafe { slice::from_raw_parts(start, stop.sub(start as usize) as usize) })
 }
