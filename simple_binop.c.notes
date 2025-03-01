@@ -11,6 +11,59 @@ Indirect2Register - src: Indirect(6, -80, 8) dst: Register(13, 8, [])
     Indirect2Indirect - src: Indirect(6, -72, 8) dst: Indirect(6, -72, 8)
     Indirect2Indirect - src: Indirect(6, -64, 8) dst: Indirect(6, -64, 8)
 
+─── Assembly ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ 0x00007ffff7fba001> ? movabs rbp,0x7fffffffdd40
+ 0x00007ffff7fba00b  ? movabs rsp,0x7fffffffdd40
+ 0x00007ffff7fba015  ? sub    rsp,0x80
+ 0x00007ffff7fba01c  ? movabs rcx,0x208a80
+ 0x00007ffff7fba026  ? mov    rax,QWORD PTR [rbp-0x58]
+ 0x00007ffff7fba02d  ? mov    QWORD PTR [rcx+0x0],rax
+ 0x00007ffff7fba034  ? movabs rcx,0x208a80
+ 0x00007ffff7fba03e  ? mov    rax,QWORD PTR [rbp-0x50]
+ 0x00007ffff7fba045  ? mov    QWORD PTR [rcx+0x8],rax
+ 0x00007ffff7fba04c  ? movabs rcx,0x208a80
+ 0x00007ffff7fba056  ? mov    rax,QWORD PTR [rbp-0x48]
+ 0x00007ffff7fba05d  ? mov    QWORD PTR [rcx+0x10],rax
+ 0x00007ffff7fba064  ? movabs rcx,0x208a80
+ 0x00007ffff7fba06e  ? mov    rax,QWORD PTR [rbp-0x40]
+ 0x00007ffff7fba075  ? mov    QWORD PTR [rcx+0x18],rax
+ 0x00007ffff7fba07c  ? mov    rax,QWORD PTR [rbp-0xf0]
+ 0x00007ffff7fba083  ? mov    QWORD PTR [rbp-0x58],rax
+ 0x00007ffff7fba08a  ? mov    r15,QWORD PTR [rbp-0xe8]
+ 0x00007ffff7fba091  ? mov    r14,QWORD PTR [rbp-0xd8]
+ 0x00007ffff7fba098  ? mov    r12,QWORD PTR [rbp-0xe0]
+ 0x00007ffff7fba09f  ? movabs rcx,0x208a80
+ 0x00007ffff7fba0a9  ? mov    rax,QWORD PTR [rcx+0x0]
+ 0x00007ffff7fba0b0  ? mov    QWORD PTR [rbp-0x50],rax
+ 0x00007ffff7fba0b7  ? mov    rcx,0x208a80
+ 0x00007ffff7fba0be  ? mov    r13,QWORD PTR [rcx+0x8]
+ 0x00007ffff7fba0c5  ? movabs rcx,0x208a80
+ 0x00007ffff7fba0cf  ? mov    rax,QWORD PTR [rcx+0x10]
+ 0x00007ffff7fba0d6  ? mov    QWORD PTR [rbp-0x48],rax
+ 0x00007ffff7fba0dd  ? movabs rcx,0x208a80
+ 0x00007ffff7fba0e7  ? mov    rax,QWORD PTR [rcx+0x18]
+ 0x00007ffff7fba0ee  ? mov    QWORD PTR [rbp-0x40],rax
+ 0x00007ffff7fba0f5  ? mov    rax,QWORD PTR [rbp-0x90]
+ 0x00007ffff7fba0fc  ? mov    rcx,QWORD PTR [rbp-0x98]
+ 0x00007ffff7fba103  ? mov    rdi,QWORD PTR [rbp-0xa8]
+ 0x00007ffff7fba10a  ? mov    rsi,QWORD PTR [rbp-0xb0]
+ 0x00007ffff7fba111  ? mov    r8,QWORD PTR [rbp-0xb8]
+ 0x00007ffff7fba118  ? mov    r9,QWORD PTR [rbp-0xc0]
+ 0x00007ffff7fba11f  ? mov    r10,QWORD PTR [rbp-0xc8]
+ 0x00007ffff7fba126  ? mov    r11,QWORD PTR [rbp-0xd0]
+ 0x00007ffff7fba12d  ? int3
+ 0x00007ffff7fba12e  ? movabs rdi,0x208a80
+ 0x00007ffff7fba138  ? movabs rsi,0x7fffffffcdb0
+ 0x00007ffff7fba142  ? movabs rax,0x7ffff796fe80
+ 0x00007ffff7fba14c  ? call   rax
+ 0x00007ffff7fba14e  ? sub    rsp,0x10
+ 0x00007ffff7fba152  ? mov    QWORD PTR [rsp],rax
+ 0x00007ffff7fba156  ? movabs rax,0x205381
+ 0x00007ffff7fba160  ? mov    QWORD PTR [rsp+0x8],rax
+ 0x00007ffff7fba165  ? pop    rax
+ 0x00007ffff7fba166  ? ret
+
+
    0x000000000020537e <+414>:	call   r11 <------------------------------ yk_control_point_call
    0x0000000000205381 <+417>:	mov    r15,QWORD PTR [rbp-0x58] <----------------------------------Indirect(6, -88, 8) - i
    0x0000000000205385 <+421>:	jmp    0x205387 <main+423>
