@@ -56,6 +56,10 @@ pub struct CPTransition {
 // It deallocates the buffer created to temporary store the live variables.
 #[no_mangle]
 unsafe extern "C" fn __yk_swt_dealloc_buffer(ptr: *mut u8, layout: Layout) {
+    if ptr.is_null() {
+        // Handle null pointer case (shouldn't happen, but just in case)
+        return;
+    }
     dealloc(ptr, layout);
 }
 
@@ -149,8 +153,12 @@ fn calculate_live_vars_buffer_size(src_rec: &Record) -> i32 {
             _ => { /* DO NOTHING */ }
         }
     }
-    // Align the buffer size to 16 bytes
-    (src_val_buffer_size + 15) & !15
+    // Align the buffer size to 16 bytes (only round up, never down)
+    if src_val_buffer_size % 16 == 0 {
+        src_val_buffer_size
+    } else {
+        ((src_val_buffer_size / 16) + 1) * 16
+    }
 }
 
 fn copy_live_vars_to_temp_buffer(asm: &mut Assembler, src_rec: &Record) -> Option<(*mut u8, Layout)> {
@@ -779,23 +787,40 @@ mod swt_cp_tests {
 
         let buffer_size = calculate_live_vars_buffer_size(&mock_record);
         assert_eq!(
+            // 12 is the padding
+            16 + 8 + 4 + 8 + 12 ,
             buffer_size,
-            16 + 8 + 4 + 8,
-            "Buffer size should equal the sum of all live variable sizes"
+            "Buffer size should equal the sum of all live variable sizes + padding"
         );
     }
-
     #[test]
-    fn test_calculate_live_vars_buffer_size_aligned_to_16() {
-        let mock_record = Record {
-            offset: 0,
-            size: 0,
-            id: 0,
-            live_vars: vec![LiveVar::new(vec![Location::Indirect(0, 0, 8)])],
-        };
-
-        let buffer_size = calculate_live_vars_buffer_size(&mock_record);
-        assert_eq!(buffer_size, 8, "Buffer size should be 8 bytes");
+    fn test_buffer_size_alignment() {
+        // Test cases with different initial sizes
+        let test_cases = vec![
+            (0, 0),    // 0 should remain 0
+            (1, 16),   // 1 should become 16
+            (16, 16),  // 16 should remain 16
+            (17, 32),  // 17 should become 32
+            (31, 32),  // 31 should become 32
+            (32, 32),  // 32 should remain 32
+        ];
+        for (val_size, expected_buffer_size) in test_cases {
+            // Create a mock record with the given buffer size
+            let mock_record = Record {
+                offset: 0,
+                size: 0,
+                id: 0,
+                live_vars: vec![LiveVar::new(vec![Location::Indirect(0, 0, val_size)])],
+            };
+            let buffer_size = calculate_live_vars_buffer_size(&mock_record);
+            assert_eq!(
+                buffer_size,
+                expected_buffer_size,
+                "Buffer size for input {} should be {}",
+                val_size,
+                expected_buffer_size
+            );
+        }
     }
 
     // #[test]
