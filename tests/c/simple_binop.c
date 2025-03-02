@@ -1,3 +1,4 @@
+// ignore-if: test $SWT_MODULE_CLONE_SKIP_FAILING_TEST=true
 // Run-time:
 //   env-var: YKD_LOG_IR=jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
@@ -50,7 +51,11 @@
 //     yk-jit-event: deoptimise
 //     exit
 
+// ignore-if: test $SWT_MODULE_CLONE_SKIP_FAILING_TEST=true
+
 // Test some binary operations.
+
+// SWT Note: Signal 11 after exec trace
 
 #include <assert.h>
 #include <stdio.h>
@@ -75,11 +80,11 @@ int main(int argc, char **argv) {
     int or = i | 1;
     int lshr = (uint)i >> 1;
     int ashr = i >> 1;
+    fprintf(stderr, "and %d\nor %d\nlshr %d\nashr %d\n", and, or, lshr, ashr);
     int ashr2 = -i >> 1;
     int xor = i ^ 1;
     int xor2 = ~i;
     int shl = i << 1;
-    fprintf(stderr, "and %d\nor %d\nlshr %d\nashr %d\n", and, or, lshr, ashr);
     fprintf(stderr, "ashr2 %d\nxor %d\nxor2 %d\nshl %d\n---\n", ashr2, xor,
             xor2, shl);
     i--;

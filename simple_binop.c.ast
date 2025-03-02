@@ -1,0 +1,670 @@
+ModuleID = 'ld-temp.o'
+source_filename = "ld-temp.o"
+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-unknown-linux-gnu"
+
+%struct.YkLocation = type { i64 }
+
+@stderr = external dso_local local_unnamed_addr global ptr, align 8
+@.str = private unnamed_addr constant [30 x i8] c"and %d\0Aor %d\0Alshr %d\0Aashr %d\0A\00", align 1, !dbg !0
+@.str.1 = private unnamed_addr constant [36 x i8] c"ashr2 %d\0Axor %d\0Axor2 %d\0Ashl %d\0A---\0A\00", align 1, !dbg !7
+@.str.2 = private unnamed_addr constant [6 x i8] c"exit\0A\00", align 1, !dbg !12
+@shadowstack_0 = global ptr null
+
+; Function Attrs: noinline nounwind optnone uwtable
+define dso_local i32 @foo(i32 noundef %0) local_unnamed_addr #0 !dbg !32 {
+  call void @__yk_trace_basicblock_dummy(i32 0, i32 0)
+  %2 = load ptr, ptr @shadowstack_0, align 8
+  %3 = getelementptr i8, ptr %2, i32 4
+  store ptr %3, ptr @shadowstack_0, align 8
+  %4 = getelementptr i8, ptr %2, i32 0
+  store i32 %0, ptr %4, align 4
+  br label %5, !dbg !37
+
+5:                                                ; preds = %1
+  call void @__yk_trace_basicblock_dummy(i32 0, i32 1), !dbg !38
+  call void @llvm.dbg.declare(metadata ptr %4, metadata !39, metadata !DIExpression()), !dbg !37
+  %6 = load i32, ptr %4, align 4, !dbg !38
+  %7 = add nsw i32 %6, 3, !dbg !40
+  br label %9, !dbg !41
+
+8:                                                ; preds = %9
+  call void @__yk_trace_basicblock_dummy(i32 0, i32 2), !dbg !41
+  store ptr %2, ptr @shadowstack_0, align 8, !dbg !41
+  ret i32 %7, !dbg !41
+
+9:                                                ; preds = %5
+  call void @__yk_trace_basicblock_dummy(i32 0, i32 3), !dbg !41
+  br label %8, !dbg !41
+}
+
+; Function Attrs: mustprogress nocallback nofree nosync nounwind speculatable willreturn memory(none)
+declare void @llvm.dbg.declare(metadata, metadata, metadata) #1
+
+; Function Attrs: noinline nounwind optnone uwtable
+define dso_local i32 @main(i32 noundef %0, ptr noundef %1) local_unnamed_addr #2 !dbg !42 {
+  call void @__yk_trace_basicblock_dummy(i32 2, i32 0)
+  %3 = call ptr @malloc(i64 1000000)
+  %4 = getelementptr i8, ptr %3, i32 52
+  store ptr %4, ptr @shadowstack_0, align 8
+  %5 = getelementptr i8, ptr %3, i32 0
+  %6 = getelementptr i8, ptr %3, i32 4
+  %7 = getelementptr i8, ptr %3, i32 8
+  %8 = alloca ptr, align 8
+  %9 = alloca %struct.YkLocation, align 8
+  %10 = getelementptr i8, ptr %3, i32 16
+  %11 = getelementptr i8, ptr %3, i32 20
+  %12 = getelementptr i8, ptr %3, i32 24
+  %13 = getelementptr i8, ptr %3, i32 28
+  %14 = getelementptr i8, ptr %3, i32 32
+  %15 = getelementptr i8, ptr %3, i32 36
+  %16 = getelementptr i8, ptr %3, i32 40
+  %17 = getelementptr i8, ptr %3, i32 44
+  %18 = getelementptr i8, ptr %3, i32 48
+  store i32 0, ptr %5, align 4
+  store i32 %0, ptr %6, align 4
+  br label %19, !dbg !47
+
+19:                                               ; preds = %2
+  call void @__yk_trace_basicblock_dummy(i32 2, i32 1)
+  call void @llvm.dbg.declare(metadata ptr %6, metadata !48, metadata !DIExpression()), !dbg !47
+  store ptr %1, ptr %7, align 8
+  call void @llvm.dbg.declare(metadata ptr %7, metadata !49, metadata !DIExpression()), !dbg !50
+  call void @llvm.dbg.declare(metadata ptr %8, metadata !51, metadata !DIExpression()), !dbg !56
+  %20 = call ptr @yk_mt_new(ptr noundef null), !dbg !57
+  br label %21, !dbg !56
+
+21:                                               ; preds = %19
+  call void @__yk_trace_basicblock_dummy(i32 2, i32 2), !dbg !56
+  store ptr %20, ptr %8, align 8, !dbg !56
+  %22 = load ptr, ptr %8, align 8, !dbg !58
+  call void @yk_mt_hot_threshold_set(ptr noundef %22, i32 noundef 0), !dbg !59
+  br label %23, !dbg !60
+
+23:                                               ; preds = %21
+  call void @__yk_trace_basicblock_dummy(i32 2, i32 3), !dbg !61
+  call void @llvm.dbg.declare(metadata ptr %9, metadata !62, metadata !DIExpression()), !dbg !60
+  %24 = call i64 @yk_location_new(), !dbg !61
+  br label %25, !dbg !61
+
+25:                                               ; preds = %23
+  call void @__yk_trace_basicblock_dummy(i32 2, i32 4), !dbg !61
+  %26 = getelementptr inbounds %struct.YkLocation, ptr %9, i32 0, i32 0, !dbg !61
+  store i64 %24, ptr %26, align 8, !dbg !61
+  call void @llvm.dbg.declare(metadata ptr %10, metadata !70, metadata !DIExpression()), !dbg !71
+  store i32 4, ptr %10, align 4, !dbg !71
+  %27 = load i64, ptr %9, align 8, !dbg !72
+  call void asm sideeffect "", "=*r|m,0,~{memory},~{dirflag},~{fpsr},~{flags}"(ptr elementtype(%struct.YkLocation) %9, i64 %27) #6, !dbg !72, !srcloc !73
+  br label %28, !dbg !74
+
+28:                                               ; preds = %25
+  call void @__yk_trace_basicblock_dummy(i32 2, i32 5), !dbg !74
+  %29 = load i32, ptr %10, align 4, !dbg !74
+  call void asm sideeffect "", "=*r|m,0,~{memory},~{dirflag},~{fpsr},~{flags}"(ptr elementtype(i32) %10, i32 %29) #6, !dbg !74, !srcloc !75
+  br label %30, !dbg !76
+
+30:                                               ; preds = %28
+  call void @__yk_trace_basicblock_dummy(i32 2, i32 6), !dbg !76
+  br label %31, !dbg !76
+
+31:                                               ; preds = %67, %30
+  call void @__yk_trace_basicblock_dummy(i32 2, i32 7), !dbg !77
+  %32 = load i32, ptr %10, align 4, !dbg !77
+  %33 = icmp sgt i32 %32, 0, !dbg !78
+  call void (i64, i32, ...) @llvm.experimental.stackmap(i64 2, i32 0, ptr %8, ptr %9, ptr %10, ptr %11, ptr %12, ptr %13, ptr %14, ptr %15, ptr %16, ptr %17, ptr %18, i1 %33), !dbg !76
+  br i1 %33, label %34, label %70, !dbg !76
+
+34:                                               ; preds = %31
+  call void @__yk_trace_basicblock_dummy(i32 2, i32 8), !dbg !79
+  %35 = load ptr, ptr %8, align 8, !dbg !79
+  call void (i64, i32, ptr, i32, ...) @llvm.experimental.patchpoint.void(i64 0, i32 13, ptr @__ykrt_control_point, i32 3, ptr %35, ptr %9, i64 0, ptr %8, ptr %9, ptr %10, ptr %11, ptr %12, ptr %13, ptr %14, ptr %15, ptr %16, ptr %17, ptr %18), !dbg !81
+  br label %36, !dbg !82
+
+36:                                               ; preds = %34
+  call void @__yk_trace_basicblock_dummy(i32 2, i32 9), !dbg !83
+  call void @llvm.dbg.declare(metadata ptr %11, metadata !84, metadata !DIExpression()), !dbg !82
+  %37 = load i32, ptr %10, align 4, !dbg !83
+  %38 = and i32 %37, 1, !dbg !85
+  store i32 %38, ptr %11, align 4, !dbg !82
+  call void @llvm.dbg.declare(metadata ptr %12, metadata !86, metadata !DIExpression()), !dbg !87
+  %39 = load i32, ptr %10, align 4, !dbg !88
+  %40 = or i32 %39, 1, !dbg !89
+  store i32 %40, ptr %12, align 4, !dbg !87
+  call void @llvm.dbg.declare(metadata ptr %13, metadata !90, metadata !DIExpression()), !dbg !91
+  %41 = load i32, ptr %10, align 4, !dbg !92
+  %42 = lshr i32 %41, 1, !dbg !93
+  store i32 %42, ptr %13, align 4, !dbg !91
+  call void @llvm.dbg.declare(metadata ptr %14, metadata !94, metadata !DIExpression()), !dbg !95
+  %43 = load i32, ptr %10, align 4, !dbg !96
+  %44 = ashr i32 %43, 1, !dbg !97
+  store i32 %44, ptr %14, align 4, !dbg !95
+  %45 = load ptr, ptr @stderr, align 8, !dbg !98
+  %46 = load i32, ptr %11, align 4, !dbg !99
+  %47 = load i32, ptr %12, align 4, !dbg !100
+  %48 = load i32, ptr %13, align 4, !dbg !101
+  %49 = load i32, ptr %14, align 4, !dbg !102
+  %50 = call i32 (ptr, ptr, ...) @fprintf(ptr noundef %45, ptr noundef @.str, i32 noundef %46, i32 noundef %47, i32 noundef %48, i32 noundef %49), !dbg !103
+  br label %51, !dbg !104
+
+51:                                               ; preds = %36
+  call void @__yk_trace_basicblock_dummy(i32 2, i32 10), !dbg !105
+  call void @llvm.dbg.declare(metadata ptr %15, metadata !106, metadata !DIExpression()), !dbg !104
+  %52 = load i32, ptr %10, align 4, !dbg !105
+  %53 = sub nsw i32 0, %52, !dbg !107
+  %54 = ashr i32 %53, 1, !dbg !108
+  store i32 %54, ptr %15, align 4, !dbg !104
+  call void @llvm.dbg.declare(metadata ptr %16, metadata !109, metadata !DIExpression()), !dbg !110
+  %55 = load i32, ptr %10, align 4, !dbg !111
+  %56 = xor i32 %55, 1, !dbg !112
+  store i32 %56, ptr %16, align 4, !dbg !110
+  call void @llvm.dbg.declare(metadata ptr %17, metadata !113, metadata !DIExpression()), !dbg !114
+  %57 = load i32, ptr %10, align 4, !dbg !115
+  %58 = xor i32 %57, -1, !dbg !116
+  store i32 %58, ptr %17, align 4, !dbg !114
+  call void @llvm.dbg.declare(metadata ptr %18, metadata !117, metadata !DIExpression()), !dbg !118
+  %59 = load i32, ptr %10, align 4, !dbg !119
+  %60 = shl i32 %59, 1, !dbg !120
+  store i32 %60, ptr %18, align 4, !dbg !118
+  %61 = load ptr, ptr @stderr, align 8, !dbg !121
+  %62 = load i32, ptr %15, align 4, !dbg !122
+  %63 = load i32, ptr %16, align 4, !dbg !123
+  %64 = load i32, ptr %17, align 4, !dbg !124
+  %65 = load i32, ptr %18, align 4, !dbg !125
+  %66 = call i32 (ptr, ptr, ...) @fprintf(ptr noundef %61, ptr noundef @.str.1, i32 noundef %62, i32 noundef %63, i32 noundef %64, i32 noundef %65), !dbg !126
+  br label %67, !dbg !127
+
+67:                                               ; preds = %51
+  call void @__yk_trace_basicblock_dummy(i32 2, i32 11), !dbg !127
+  %68 = load i32, ptr %10, align 4, !dbg !127
+  %69 = add nsw i32 %68, -1, !dbg !127
+  store i32 %69, ptr %10, align 4, !dbg !127
+  br label %31, !dbg !76, !llvm.loop !128
+
+70:                                               ; preds = %31
+  call void @__yk_trace_basicblock_dummy(i32 2, i32 12), !dbg !131
+  %71 = load ptr, ptr @stderr, align 8, !dbg !131
+  %72 = call i32 (ptr, ptr, ...) @fprintf(ptr noundef %71, ptr noundef @.str.2), !dbg !132
+  br label %73, !dbg !133
+
+73:                                               ; preds = %70
+  call void @__yk_trace_basicblock_dummy(i32 2, i32 13), !dbg !133
+  %74 = getelementptr inbounds %struct.YkLocation, ptr %9, i32 0, i32 0, !dbg !133
+  %75 = load i64, ptr %74, align 8, !dbg !133
+  call void @yk_location_drop(i64 %75), !dbg !133
+  br label %76, !dbg !134
+
+76:                                               ; preds = %73
+  call void @__yk_trace_basicblock_dummy(i32 2, i32 14), !dbg !134
+  %77 = load ptr, ptr %8, align 8, !dbg !134
+  call void @yk_mt_shutdown(ptr noundef %77), !dbg !135
+  br label %78, !dbg !136
+
+78:                                               ; preds = %76
+  call void @__yk_trace_basicblock_dummy(i32 2, i32 15), !dbg !136
+  br label %80, !dbg !136
+
+79:                                               ; preds = %80
+  call void @__yk_trace_basicblock_dummy(i32 2, i32 16), !dbg !136
+  ret i32 0, !dbg !136
+
+80:                                               ; preds = %78
+  call void @__yk_trace_basicblock_dummy(i32 2, i32 17), !dbg !136
+  br label %79, !dbg !136
+}
+
+declare dso_local ptr @yk_mt_new(ptr noundef) local_unnamed_addr #3
+
+declare dso_local void @yk_mt_hot_threshold_set(ptr noundef, i32 noundef) local_unnamed_addr #3
+
+declare dso_local i64 @yk_location_new() local_unnamed_addr #3
+
+declare dso_local void @yk_mt_control_point(ptr noundef, ptr noundef) local_unnamed_addr #3
+
+; Function Attrs: nofree nounwind
+declare dso_local noundef i32 @fprintf(ptr nocapture noundef, ptr nocapture noundef readonly, ...) local_unnamed_addr #4
+
+declare dso_local void @yk_location_drop(i64) local_unnamed_addr #3
+
+declare dso_local void @yk_mt_shutdown(ptr noundef) local_unnamed_addr #3
+
+; Function Attrs: noinline nounwind optnone uwtable
+define dso_local i32 @__yk_unopt_foo(i32 noundef %0) local_unnamed_addr #0 !dbg !137 {
+  call void @__yk_trace_basicblock(i32 10, i32 0)
+  %2 = load ptr, ptr @shadowstack_0, align 8
+  %3 = getelementptr i8, ptr %2, i32 4
+  store ptr %3, ptr @shadowstack_0, align 8
+  %4 = getelementptr i8, ptr %2, i32 0
+  store i32 %0, ptr %4, align 4
+  br label %5, !dbg !138
+
+5:                                                ; preds = %1
+  call void @__yk_trace_basicblock(i32 10, i32 1), !dbg !139
+  call void @llvm.dbg.declare(metadata ptr %4, metadata !140, metadata !DIExpression()), !dbg !138
+  %6 = load i32, ptr %4, align 4, !dbg !139
+  %7 = add nsw i32 %6, 3, !dbg !141
+  br label %9, !dbg !142
+
+8:                                                ; preds = %9
+  call void @__yk_trace_basicblock(i32 10, i32 2), !dbg !142
+  store ptr %2, ptr @shadowstack_0, align 8, !dbg !142
+  ret i32 %7, !dbg !142
+
+9:                                                ; preds = %5
+  call void @__yk_trace_basicblock(i32 10, i32 3), !dbg !142
+  br label %8, !dbg !142
+}
+
+; Function Attrs: noinline nounwind optnone uwtable
+define dso_local i32 @__yk_unopt_main(i32 noundef %0, ptr noundef %1) local_unnamed_addr #2 !dbg !143 {
+  call void @__yk_trace_basicblock(i32 11, i32 0)
+  %3 = load ptr, ptr @shadowstack_0, align 8
+  %4 = getelementptr i8, ptr %3, i32 0
+  %5 = getelementptr i8, ptr %3, i32 4
+  %6 = getelementptr i8, ptr %3, i32 8
+  %7 = alloca ptr, align 8
+  %8 = alloca %struct.YkLocation, align 8
+  %9 = getelementptr i8, ptr %3, i32 16
+  %10 = getelementptr i8, ptr %3, i32 20
+  %11 = getelementptr i8, ptr %3, i32 24
+  %12 = getelementptr i8, ptr %3, i32 28
+  %13 = getelementptr i8, ptr %3, i32 32
+  %14 = getelementptr i8, ptr %3, i32 36
+  %15 = getelementptr i8, ptr %3, i32 40
+  %16 = getelementptr i8, ptr %3, i32 44
+  %17 = getelementptr i8, ptr %3, i32 48
+  store i32 0, ptr %4, align 4
+  store i32 %0, ptr %5, align 4
+  br label %18, !dbg !144
+
+18:                                               ; preds = %2
+  call void @__yk_trace_basicblock(i32 11, i32 1)
+  call void @llvm.dbg.declare(metadata ptr %5, metadata !145, metadata !DIExpression()), !dbg !144
+  store ptr %1, ptr %6, align 8
+  call void @llvm.dbg.declare(metadata ptr %6, metadata !146, metadata !DIExpression()), !dbg !147
+  call void @llvm.dbg.declare(metadata ptr %7, metadata !148, metadata !DIExpression()), !dbg !149
+  %19 = call ptr @yk_mt_new(ptr noundef null), !dbg !150
+  br label %20, !dbg !149
+
+20:                                               ; preds = %18
+  call void @__yk_trace_basicblock(i32 11, i32 2), !dbg !149
+  store ptr %19, ptr %7, align 8, !dbg !149
+  %21 = load ptr, ptr %7, align 8, !dbg !151
+  call void @yk_mt_hot_threshold_set(ptr noundef %21, i32 noundef 0), !dbg !152
+  br label %22, !dbg !153
+
+22:                                               ; preds = %20
+  call void @__yk_trace_basicblock(i32 11, i32 3), !dbg !154
+  call void @llvm.dbg.declare(metadata ptr %8, metadata !155, metadata !DIExpression()), !dbg !153
+  %23 = call i64 @yk_location_new(), !dbg !154
+  br label %24, !dbg !154
+
+24:                                               ; preds = %22
+  call void @__yk_trace_basicblock(i32 11, i32 4), !dbg !154
+  %25 = getelementptr inbounds %struct.YkLocation, ptr %8, i32 0, i32 0, !dbg !154
+  store i64 %23, ptr %25, align 8, !dbg !154
+  call void @llvm.dbg.declare(metadata ptr %9, metadata !156, metadata !DIExpression()), !dbg !157
+  store i32 4, ptr %9, align 4, !dbg !157
+  %26 = load i64, ptr %8, align 8, !dbg !158
+  call void asm sideeffect "", "=*r|m,0,~{memory},~{dirflag},~{fpsr},~{flags}"(ptr elementtype(%struct.YkLocation) %8, i64 %26) #6, !dbg !158, !srcloc !73
+  br label %27, !dbg !159
+
+27:                                               ; preds = %24
+  call void @__yk_trace_basicblock(i32 11, i32 5), !dbg !159
+  %28 = load i32, ptr %9, align 4, !dbg !159
+  call void asm sideeffect "", "=*r|m,0,~{memory},~{dirflag},~{fpsr},~{flags}"(ptr elementtype(i32) %9, i32 %28) #6, !dbg !159, !srcloc !75
+  br label %29, !dbg !160
+
+29:                                               ; preds = %27
+  call void @__yk_trace_basicblock(i32 11, i32 6), !dbg !160
+  br label %30, !dbg !160
+
+30:                                               ; preds = %66, %29
+  call void @__yk_trace_basicblock(i32 11, i32 7), !dbg !161
+  %31 = load i32, ptr %9, align 4, !dbg !161
+  %32 = icmp sgt i32 %31, 0, !dbg !162
+  call void (i64, i32, ...) @llvm.experimental.stackmap(i64 3, i32 0, ptr %7, ptr %8, ptr %9, ptr %10, ptr %11, ptr %12, ptr %13, ptr %14, ptr %15, ptr %16, ptr %17, i1 %32), !dbg !160
+  br i1 %32, label %33, label %69, !dbg !160
+
+33:                                               ; preds = %30
+  call void @__yk_trace_basicblock(i32 11, i32 8), !dbg !163
+  %34 = load ptr, ptr %7, align 8, !dbg !163
+  call void (i64, i32, ptr, i32, ...) @llvm.experimental.patchpoint.void(i64 1, i32 13, ptr @__ykrt_control_point, i32 3, ptr %34, ptr %8, i64 1, ptr %7, ptr %8, ptr %9, ptr %10, ptr %11, ptr %12, ptr %13, ptr %14, ptr %15, ptr %16, ptr %17), !dbg !165
+  br label %35, !dbg !166
+
+35:                                               ; preds = %33
+  call void @__yk_trace_basicblock(i32 11, i32 9), !dbg !167
+  call void @llvm.dbg.declare(metadata ptr %10, metadata !168, metadata !DIExpression()), !dbg !166
+  %36 = load i32, ptr %9, align 4, !dbg !167
+  %37 = and i32 %36, 1, !dbg !169
+  store i32 %37, ptr %10, align 4, !dbg !166
+  call void @llvm.dbg.declare(metadata ptr %11, metadata !170, metadata !DIExpression()), !dbg !171
+  %38 = load i32, ptr %9, align 4, !dbg !172
+  %39 = or i32 %38, 1, !dbg !173
+  store i32 %39, ptr %11, align 4, !dbg !171
+  call void @llvm.dbg.declare(metadata ptr %12, metadata !174, metadata !DIExpression()), !dbg !175
+  %40 = load i32, ptr %9, align 4, !dbg !176
+  %41 = lshr i32 %40, 1, !dbg !177
+  store i32 %41, ptr %12, align 4, !dbg !175
+  call void @llvm.dbg.declare(metadata ptr %13, metadata !178, metadata !DIExpression()), !dbg !179
+  %42 = load i32, ptr %9, align 4, !dbg !180
+  %43 = ashr i32 %42, 1, !dbg !181
+  store i32 %43, ptr %13, align 4, !dbg !179
+  %44 = load ptr, ptr @stderr, align 8, !dbg !182
+  %45 = load i32, ptr %10, align 4, !dbg !183
+  %46 = load i32, ptr %11, align 4, !dbg !184
+  %47 = load i32, ptr %12, align 4, !dbg !185
+  %48 = load i32, ptr %13, align 4, !dbg !186
+  %49 = call i32 (ptr, ptr, ...) @fprintf(ptr noundef %44, ptr noundef @.str, i32 noundef %45, i32 noundef %46, i32 noundef %47, i32 noundef %48), !dbg !187
+  br label %50, !dbg !188
+
+50:                                               ; preds = %35
+  call void @__yk_trace_basicblock(i32 11, i32 10), !dbg !189
+  call void @llvm.dbg.declare(metadata ptr %14, metadata !190, metadata !DIExpression()), !dbg !188
+  %51 = load i32, ptr %9, align 4, !dbg !189
+  %52 = sub nsw i32 0, %51, !dbg !191
+  %53 = ashr i32 %52, 1, !dbg !192
+  store i32 %53, ptr %14, align 4, !dbg !188
+  call void @llvm.dbg.declare(metadata ptr %15, metadata !193, metadata !DIExpression()), !dbg !194
+  %54 = load i32, ptr %9, align 4, !dbg !195
+  %55 = xor i32 %54, 1, !dbg !196
+  store i32 %55, ptr %15, align 4, !dbg !194
+  call void @llvm.dbg.declare(metadata ptr %16, metadata !197, metadata !DIExpression()), !dbg !198
+  %56 = load i32, ptr %9, align 4, !dbg !199
+  %57 = xor i32 %56, -1, !dbg !200
+  store i32 %57, ptr %16, align 4, !dbg !198
+  call void @llvm.dbg.declare(metadata ptr %17, metadata !201, metadata !DIExpression()), !dbg !202
+  %58 = load i32, ptr %9, align 4, !dbg !203
+  %59 = shl i32 %58, 1, !dbg !204
+  store i32 %59, ptr %17, align 4, !dbg !202
+  %60 = load ptr, ptr @stderr, align 8, !dbg !205
+  %61 = load i32, ptr %14, align 4, !dbg !206
+  %62 = load i32, ptr %15, align 4, !dbg !207
+  %63 = load i32, ptr %16, align 4, !dbg !208
+  %64 = load i32, ptr %17, align 4, !dbg !209
+  %65 = call i32 (ptr, ptr, ...) @fprintf(ptr noundef %60, ptr noundef @.str.1, i32 noundef %61, i32 noundef %62, i32 noundef %63, i32 noundef %64), !dbg !210
+  br label %66, !dbg !211
+
+66:                                               ; preds = %50
+  call void @__yk_trace_basicblock(i32 11, i32 11), !dbg !211
+  %67 = load i32, ptr %9, align 4, !dbg !211
+  %68 = add nsw i32 %67, -1, !dbg !211
+  store i32 %68, ptr %9, align 4, !dbg !211
+  br label %30, !dbg !160, !llvm.loop !212
+
+69:                                               ; preds = %30
+  call void @__yk_trace_basicblock(i32 11, i32 12), !dbg !214
+  %70 = load ptr, ptr @stderr, align 8, !dbg !214
+  %71 = call i32 (ptr, ptr, ...) @fprintf(ptr noundef %70, ptr noundef @.str.2), !dbg !215
+  br label %72, !dbg !216
+
+72:                                               ; preds = %69
+  call void @__yk_trace_basicblock(i32 11, i32 13), !dbg !216
+  %73 = getelementptr inbounds %struct.YkLocation, ptr %8, i32 0, i32 0, !dbg !216
+  %74 = load i64, ptr %73, align 8, !dbg !216
+  call void @yk_location_drop(i64 %74), !dbg !216
+  br label %75, !dbg !217
+
+75:                                               ; preds = %72
+  call void @__yk_trace_basicblock(i32 11, i32 14), !dbg !217
+  %76 = load ptr, ptr %7, align 8, !dbg !217
+  call void @yk_mt_shutdown(ptr noundef %76), !dbg !218
+  br label %77, !dbg !219
+
+77:                                               ; preds = %75
+  call void @__yk_trace_basicblock(i32 11, i32 15), !dbg !219
+  br label %79, !dbg !219
+
+78:                                               ; preds = %79
+  call void @__yk_trace_basicblock(i32 11, i32 16), !dbg !219
+  ret i32 0, !dbg !219
+
+79:                                               ; preds = %77
+  call void @__yk_trace_basicblock(i32 11, i32 17), !dbg !219
+  br label %78, !dbg !219
+}
+
+declare ptr @malloc(i64)
+
+declare void @__ykrt_control_point(ptr, ptr, i64)
+
+declare void @llvm.experimental.patchpoint.void(i64, i32, ptr, i32, ...)
+
+; Function Attrs: nocallback nofree nosync willreturn
+declare void @llvm.experimental.stackmap(i64, i32, ...) #5
+
+declare void @__yk_trace_basicblock(i32, i32)
+
+declare void @__yk_trace_basicblock_dummy(i32, i32)
+
+attributes #0 = { noinline nounwind optnone uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+attributes #1 = { mustprogress nocallback nofree nosync nounwind speculatable willreturn memory(none) }
+attributes #2 = { noinline nounwind optnone uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" "yk_outline" }
+attributes #3 = { "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+attributes #4 = { nofree nounwind "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+attributes #5 = { nocallback nofree nosync willreturn }
+attributes #6 = { nounwind }
+
+!llvm.dbg.cu = !{!17}
+!llvm.ident = !{!24}
+!llvm.module.flags = !{!25, !26, !27, !28, !29, !30, !31}
+
+!0 = !DIGlobalVariableExpression(var: !1, expr: !DIExpression())
+!1 = distinct !DIGlobalVariable(scope: null, file: !2, line: 82, type: !3, isLocal: true, isDefinition: true)
+!2 = !DIFile(filename: "c/simple_binop.c", directory: "/home/pd/yk-fork/tests", checksumkind: CSK_MD5, checksum: "0a2956d88da36a6984bf58bb70b4bbbe")
+!3 = !DICompositeType(tag: DW_TAG_array_type, baseType: !4, size: 240, elements: !5)
+!4 = !DIBasicType(name: "char", size: 8, encoding: DW_ATE_signed_char)
+!5 = !{!6}
+!6 = !DISubrange(count: 30)
+!7 = !DIGlobalVariableExpression(var: !8, expr: !DIExpression())
+!8 = distinct !DIGlobalVariable(scope: null, file: !2, line: 87, type: !9, isLocal: true, isDefinition: true)
+!9 = !DICompositeType(tag: DW_TAG_array_type, baseType: !4, size: 288, elements: !10)
+!10 = !{!11}
+!11 = !DISubrange(count: 36)
+!12 = !DIGlobalVariableExpression(var: !13, expr: !DIExpression())
+!13 = distinct !DIGlobalVariable(scope: null, file: !2, line: 91, type: !14, isLocal: true, isDefinition: true)
+!14 = !DICompositeType(tag: DW_TAG_array_type, baseType: !4, size: 48, elements: !15)
+!15 = !{!16}
+!16 = !DISubrange(count: 6)
+!17 = distinct !DICompileUnit(language: DW_LANG_C11, file: !18, producer: "clang version 18.0.0 (git@github.com:ykjit/ykllvm 4acdd7c2a3d7bc4ccaa829043aa18ca55549477c)", isOptimized: true, runtimeVersion: 0, emissionKind: FullDebug, retainedTypes: !19, globals: !23, splitDebugInlining: false, nameTableKind: None)
+!18 = !DIFile(filename: "/home/pd/yk-fork/tests/c/simple_binop.c", directory: "/home/pd/yk-fork/tests", checksumkind: CSK_MD5, checksum: "0a2956d88da36a6984bf58bb70b4bbbe")
+!19 = !{!20}
+!20 = !DIDerivedType(tag: DW_TAG_typedef, name: "uint", file: !21, line: 150, baseType: !22)
+!21 = !DIFile(filename: "/usr/include/x86_64-linux-gnu/sys/types.h", directory: "", checksumkind: CSK_MD5, checksum: "e62424071ad3f1b4d088c139fd9ccfd1")
+!22 = !DIBasicType(name: "unsigned int", size: 32, encoding: DW_ATE_unsigned)
+!23 = !{!0, !7, !12}
+!24 = !{!"clang version 18.0.0 (git@github.com:ykjit/ykllvm 4acdd7c2a3d7bc4ccaa829043aa18ca55549477c)"}
+!25 = !{i32 7, !"Dwarf Version", i32 5}
+!26 = !{i32 2, !"Debug Info Version", i32 3}
+!27 = !{i32 1, !"wchar_size", i32 4}
+!28 = !{i32 7, !"uwtable", i32 2}
+!29 = !{i32 7, !"frame-pointer", i32 2}
+!30 = !{i32 1, !"ThinLTO", i32 0}
+!31 = !{i32 1, !"EnableSplitLTOUnit", i32 1}
+!32 = distinct !DISubprogram(name: "foo", scope: !2, file: !2, line: 66, type: !33, scopeLine: 66, flags: DIFlagPrototyped, spFlags: DISPFlagDefinition, unit: !17, retainedNodes: !36)
+!33 = !DISubroutineType(types: !34)
+!34 = !{!35, !35}
+!35 = !DIBasicType(name: "int", size: 32, encoding: DW_ATE_signed)
+!36 = !{}
+!37 = !DILocation(line: 66, column: 39, scope: !32)
+!38 = !DILocation(line: 66, column: 51, scope: !32)
+!39 = !DILocalVariable(name: "i", arg: 1, scope: !32, file: !2, line: 66, type: !35)
+!40 = !DILocation(line: 66, column: 53, scope: !32)
+!41 = !DILocation(line: 66, column: 44, scope: !32)
+!42 = distinct !DISubprogram(name: "main", scope: !2, file: !2, line: 68, type: !43, scopeLine: 68, flags: DIFlagPrototyped, spFlags: DISPFlagDefinition, unit: !17, retainedNodes: !36)
+!43 = !DISubroutineType(types: !44)
+!44 = !{!35, !35, !45}
+!45 = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !46, size: 64)
+!46 = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !4, size: 64)
+!47 = !DILocation(line: 68, column: 14, scope: !42)
+!48 = !DILocalVariable(name: "argc", arg: 1, scope: !42, file: !2, line: 68, type: !35)
+!49 = !DILocalVariable(name: "argv", arg: 2, scope: !42, file: !2, line: 68, type: !45)
+!50 = !DILocation(line: 68, column: 27, scope: !42)
+!51 = !DILocalVariable(name: "mt", scope: !42, file: !2, line: 69, type: !52)
+!52 = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !53, size: 64)
+!53 = !DIDerivedType(tag: DW_TAG_typedef, name: "YkMT", file: !54, line: 32, baseType: !55)
+!54 = !DIFile(filename: "../bin/../ykcapi/yk.h", directory: "/home/pd/yk-fork/tests", checksumkind: CSK_MD5, checksum: "c62985f19054a6706a5dcb25ea1aaef6")
+!55 = !DICompositeType(tag: DW_TAG_structure_type, name: "YkMT", file: !54, line: 32, flags: DIFlagFwdDecl)
+!56 = !DILocation(line: 69, column: 9, scope: !42)
+!57 = !DILocation(line: 69, column: 14, scope: !42)
+!58 = !DILocation(line: 70, column: 27, scope: !42)
+!59 = !DILocation(line: 70, column: 3, scope: !42)
+!60 = !DILocation(line: 71, column: 14, scope: !42)
+!61 = !DILocation(line: 71, column: 20, scope: !42)
+!62 = !DILocalVariable(name: "loc", scope: !42, file: !2, line: 71, type: !63)
+!63 = !DIDerivedType(tag: DW_TAG_typedef, name: "YkLocation", file: !54, line: 22, baseType: !64)
+!64 = distinct !DICompositeType(tag: DW_TAG_structure_type, file: !54, line: 20, size: 64, elements: !65)
+!65 = !{!66}
+!66 = !DIDerivedType(tag: DW_TAG_member, name: "state", scope: !64, file: !54, line: 21, baseType: !67, size: 64)
+!67 = !DIDerivedType(tag: DW_TAG_typedef, name: "uintptr_t", file: !68, line: 90, baseType: !69)
+!68 = !DIFile(filename: "/usr/include/stdint.h", directory: "", checksumkind: CSK_MD5, checksum: "a48e64edacc5b19f56c99745232c963c")
+!69 = !DIBasicType(name: "unsigned long", size: 64, encoding: DW_ATE_unsigned)
+!70 = !DILocalVariable(name: "i", scope: !42, file: !2, line: 73, type: !35)
+!71 = !DILocation(line: 73, column: 7, scope: !42)
+!72 = !DILocation(line: 74, column: 3, scope: !42)
+!73 = !{i64 2147872665}
+!74 = !DILocation(line: 75, column: 3, scope: !42)
+!75 = !{i64 2147872712}
+!76 = !DILocation(line: 76, column: 3, scope: !42)
+!77 = !DILocation(line: 76, column: 10, scope: !42)
+!78 = !DILocation(line: 76, column: 12, scope: !42)
+!79 = !DILocation(line: 77, column: 25, scope: !80)
+!80 = distinct !DILexicalBlock(scope: !42, file: !2, line: 76, column: 17)
+!81 = !DILocation(line: 77, column: 5, scope: !80)
+!82 = !DILocation(line: 78, column: 9, scope: !80)
+!83 = !DILocation(line: 78, column: 15, scope: !80)
+!84 = !DILocalVariable(name: "and", scope: !80, file: !2, line: 78, type: !35)
+!85 = !DILocation(line: 78, column: 17, scope: !80)
+!86 = !DILocalVariable(name: "or", scope: !80, file: !2, line: 79, type: !35)
+!87 = !DILocation(line: 79, column: 9, scope: !80)
+!88 = !DILocation(line: 79, column: 14, scope: !80)
+!89 = !DILocation(line: 79, column: 16, scope: !80)
+!90 = !DILocalVariable(name: "lshr", scope: !80, file: !2, line: 80, type: !35)
+!91 = !DILocation(line: 80, column: 9, scope: !80)
+!92 = !DILocation(line: 80, column: 22, scope: !80)
+!93 = !DILocation(line: 80, column: 24, scope: !80)
+!94 = !DILocalVariable(name: "ashr", scope: !80, file: !2, line: 81, type: !35)
+!95 = !DILocation(line: 81, column: 9, scope: !80)
+!96 = !DILocation(line: 81, column: 16, scope: !80)
+!97 = !DILocation(line: 81, column: 18, scope: !80)
+!98 = !DILocation(line: 82, column: 13, scope: !80)
+!99 = !DILocation(line: 82, column: 58, scope: !80)
+!100 = !DILocation(line: 82, column: 63, scope: !80)
+!101 = !DILocation(line: 82, column: 67, scope: !80)
+!102 = !DILocation(line: 82, column: 73, scope: !80)
+!103 = !DILocation(line: 82, column: 5, scope: !80)
+!104 = !DILocation(line: 83, column: 9, scope: !80)
+!105 = !DILocation(line: 83, column: 18, scope: !80)
+!106 = !DILocalVariable(name: "ashr2", scope: !80, file: !2, line: 83, type: !35)
+!107 = !DILocation(line: 83, column: 17, scope: !80)
+!108 = !DILocation(line: 83, column: 20, scope: !80)
+!109 = !DILocalVariable(name: "xor", scope: !80, file: !2, line: 84, type: !35)
+!110 = !DILocation(line: 84, column: 9, scope: !80)
+!111 = !DILocation(line: 84, column: 15, scope: !80)
+!112 = !DILocation(line: 84, column: 17, scope: !80)
+!113 = !DILocalVariable(name: "xor2", scope: !80, file: !2, line: 85, type: !35)
+!114 = !DILocation(line: 85, column: 9, scope: !80)
+!115 = !DILocation(line: 85, column: 17, scope: !80)
+!116 = !DILocation(line: 85, column: 16, scope: !80)
+!117 = !DILocalVariable(name: "shl", scope: !80, file: !2, line: 86, type: !35)
+!118 = !DILocation(line: 86, column: 9, scope: !80)
+!119 = !DILocation(line: 86, column: 15, scope: !80)
+!120 = !DILocation(line: 86, column: 17, scope: !80)
+!121 = !DILocation(line: 87, column: 13, scope: !80)
+!122 = !DILocation(line: 87, column: 65, scope: !80)
+!123 = !DILocation(line: 87, column: 72, scope: !80)
+!124 = !DILocation(line: 88, column: 13, scope: !80)
+!125 = !DILocation(line: 88, column: 19, scope: !80)
+!126 = !DILocation(line: 87, column: 5, scope: !80)
+!127 = !DILocation(line: 89, column: 6, scope: !80)
+!128 = distinct !{!128, !76, !129, !130}
+!129 = !DILocation(line: 90, column: 3, scope: !42)
+!130 = !{!"llvm.loop.mustprogress"}
+!131 = !DILocation(line: 91, column: 11, scope: !42)
+!132 = !DILocation(line: 91, column: 3, scope: !42)
+!133 = !DILocation(line: 92, column: 3, scope: !42)
+!134 = !DILocation(line: 93, column: 18, scope: !42)
+!135 = !DILocation(line: 93, column: 3, scope: !42)
+!136 = !DILocation(line: 94, column: 3, scope: !42)
+!137 = distinct !DISubprogram(name: "foo", scope: !2, file: !2, line: 66, type: !33, scopeLine: 66, flags: DIFlagPrototyped, spFlags: DISPFlagDefinition, unit: !17, retainedNodes: !36)
+!138 = !DILocation(line: 66, column: 39, scope: !137)
+!139 = !DILocation(line: 66, column: 51, scope: !137)
+!140 = !DILocalVariable(name: "i", arg: 1, scope: !137, file: !2, line: 66, type: !35)
+!141 = !DILocation(line: 66, column: 53, scope: !137)
+!142 = !DILocation(line: 66, column: 44, scope: !137)
+!143 = distinct !DISubprogram(name: "main", scope: !2, file: !2, line: 68, type: !43, scopeLine: 68, flags: DIFlagPrototyped, spFlags: DISPFlagDefinition, unit: !17, retainedNodes: !36)
+!144 = !DILocation(line: 68, column: 14, scope: !143)
+!145 = !DILocalVariable(name: "argc", arg: 1, scope: !143, file: !2, line: 68, type: !35)
+!146 = !DILocalVariable(name: "argv", arg: 2, scope: !143, file: !2, line: 68, type: !45)
+!147 = !DILocation(line: 68, column: 27, scope: !143)
+!148 = !DILocalVariable(name: "mt", scope: !143, file: !2, line: 69, type: !52)
+!149 = !DILocation(line: 69, column: 9, scope: !143)
+!150 = !DILocation(line: 69, column: 14, scope: !143)
+!151 = !DILocation(line: 70, column: 27, scope: !143)
+!152 = !DILocation(line: 70, column: 3, scope: !143)
+!153 = !DILocation(line: 71, column: 14, scope: !143)
+!154 = !DILocation(line: 71, column: 20, scope: !143)
+!155 = !DILocalVariable(name: "loc", scope: !143, file: !2, line: 71, type: !63)
+!156 = !DILocalVariable(name: "i", scope: !143, file: !2, line: 73, type: !35)
+!157 = !DILocation(line: 73, column: 7, scope: !143)
+!158 = !DILocation(line: 74, column: 3, scope: !143)
+!159 = !DILocation(line: 75, column: 3, scope: !143)
+!160 = !DILocation(line: 76, column: 3, scope: !143)
+!161 = !DILocation(line: 76, column: 10, scope: !143)
+!162 = !DILocation(line: 76, column: 12, scope: !143)
+!163 = !DILocation(line: 77, column: 25, scope: !164)
+!164 = distinct !DILexicalBlock(scope: !143, file: !2, line: 76, column: 17)
+!165 = !DILocation(line: 77, column: 5, scope: !164)
+!166 = !DILocation(line: 78, column: 9, scope: !164)
+!167 = !DILocation(line: 78, column: 15, scope: !164)
+!168 = !DILocalVariable(name: "and", scope: !164, file: !2, line: 78, type: !35)
+!169 = !DILocation(line: 78, column: 17, scope: !164)
+!170 = !DILocalVariable(name: "or", scope: !164, file: !2, line: 79, type: !35)
+!171 = !DILocation(line: 79, column: 9, scope: !164)
+!172 = !DILocation(line: 79, column: 14, scope: !164)
+!173 = !DILocation(line: 79, column: 16, scope: !164)
+!174 = !DILocalVariable(name: "lshr", scope: !164, file: !2, line: 80, type: !35)
+!175 = !DILocation(line: 80, column: 9, scope: !164)
+!176 = !DILocation(line: 80, column: 22, scope: !164)
+!177 = !DILocation(line: 80, column: 24, scope: !164)
+!178 = !DILocalVariable(name: "ashr", scope: !164, file: !2, line: 81, type: !35)
+!179 = !DILocation(line: 81, column: 9, scope: !164)
+!180 = !DILocation(line: 81, column: 16, scope: !164)
+!181 = !DILocation(line: 81, column: 18, scope: !164)
+!182 = !DILocation(line: 82, column: 13, scope: !164)
+!183 = !DILocation(line: 82, column: 58, scope: !164)
+!184 = !DILocation(line: 82, column: 63, scope: !164)
+!185 = !DILocation(line: 82, column: 67, scope: !164)
+!186 = !DILocation(line: 82, column: 73, scope: !164)
+!187 = !DILocation(line: 82, column: 5, scope: !164)
+!188 = !DILocation(line: 83, column: 9, scope: !164)
+!189 = !DILocation(line: 83, column: 18, scope: !164)
+!190 = !DILocalVariable(name: "ashr2", scope: !164, file: !2, line: 83, type: !35)
+!191 = !DILocation(line: 83, column: 17, scope: !164)
+!192 = !DILocation(line: 83, column: 20, scope: !164)
+!193 = !DILocalVariable(name: "xor", scope: !164, file: !2, line: 84, type: !35)
+!194 = !DILocation(line: 84, column: 9, scope: !164)
+!195 = !DILocation(line: 84, column: 15, scope: !164)
+!196 = !DILocation(line: 84, column: 17, scope: !164)
+!197 = !DILocalVariable(name: "xor2", scope: !164, file: !2, line: 85, type: !35)
+!198 = !DILocation(line: 85, column: 9, scope: !164)
+!199 = !DILocation(line: 85, column: 17, scope: !164)
+!200 = !DILocation(line: 85, column: 16, scope: !164)
+!201 = !DILocalVariable(name: "shl", scope: !164, file: !2, line: 86, type: !35)
+!202 = !DILocation(line: 86, column: 9, scope: !164)
+!203 = !DILocation(line: 86, column: 15, scope: !164)
+!204 = !DILocation(line: 86, column: 17, scope: !164)
+!205 = !DILocation(line: 87, column: 13, scope: !164)
+!206 = !DILocation(line: 87, column: 65, scope: !164)
+!207 = !DILocation(line: 87, column: 72, scope: !164)
+!208 = !DILocation(line: 88, column: 13, scope: !164)
+!209 = !DILocation(line: 88, column: 19, scope: !164)
+!210 = !DILocation(line: 87, column: 5, scope: !164)
+!211 = !DILocation(line: 89, column: 6, scope: !164)
+!212 = distinct !{!212, !160, !213, !130}
+!213 = !DILocation(line: 90, column: 3, scope: !143)
+!214 = !DILocation(line: 91, column: 11, scope: !143)
+!215 = !DILocation(line: 91, column: 3, scope: !143)
+!216 = !DILocation(line: 92, column: 3, scope: !143)
+!217 = !DILocation(line: 93, column: 18, scope: !143)
+!218 = !DILocation(line: 93, column: 3, scope: !143)
+!219 = !DILocation(line: 94, column: 3, scope: !143)

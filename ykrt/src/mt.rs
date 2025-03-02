@@ -20,6 +20,9 @@ use parking_lot::{Condvar, Mutex, MutexGuard};
 #[cfg(not(all(feature = "yk_testing", not(test))))]
 use parking_lot_core::SpinWait;
 
+#[cfg(tracer_swt)]
+use crate::trace::swt::cp::{swt_module_cp_transition, CPTransition, CPTransitionDirection};
+
 use crate::{
     aotsmp::{load_aot_stackmaps, AOT_STACKMAPS},
     compile::{default_compiler, CompilationError, CompiledTrace, Compiler, GuardIdx},
@@ -45,6 +48,7 @@ type AtomicHotThreshold = AtomicU32;
 pub type TraceCompilationErrorThreshold = u16;
 pub type AtomicTraceCompilationErrorThreshold = AtomicU16;
 
+const SWT_CP_TRANSITION: bool = true;
 /// How many basic blocks long can a trace be before we give up trying to compile it? Note that the
 /// slower our compiler, the lower this will have to be in order to give the perception of
 /// reasonable performance.
@@ -292,6 +296,7 @@ impl MT {
                 trace_iter.2,
             ) {
                 Ok(ctr) => {
+                    // println!("@@ Trace compiled successfully: {:?}", ctr.ctrid());
                     mt.compiled_traces
                         .lock()
                         .insert(ctr.ctrid(), Arc::clone(&ctr));
@@ -301,6 +306,7 @@ impl MT {
                     mt.stats.trace_compiled_ok();
                 }
                 Err(e) => {
+                    // println!("@@ Trace compilation error: {:?}", e);
                     mt.stats.trace_compiled_err();
                     let mut hl = hl_arc.lock();
                     debug_assert_matches!(hl.kind, HotLocationKind::Compiling);
@@ -449,9 +455,27 @@ impl MT {
                 });
                 self.stats.timing_state(TimingState::JitExecuting);
 
+                if SWT_CP_TRANSITION {
+                    #[cfg(tracer_swt)]
+                    unsafe {
+                        // Transition to unopt before trace execution since``
+                        // the trace was collected un unopt version.
+                        // This function will call __yk_exec_trace when live variables are restored.
+                        swt_module_cp_transition(CPTransition {
+                            direction: CPTransitionDirection::OptToUnopt,
+                            frameaddr,
+                            rsp,
+                            trace_addr: trace_addr,
+                            exec_trace: true,
+                            exec_trace_fn: __yk_exec_trace,
+                        });
+                    }
+                }
                 // FIXME: Calling this function overwrites the current (Rust) function frame,
                 // rather than unwinding it. https://github.com/ykjit/yk/issues/778.
-                unsafe { __yk_exec_trace(frameaddr, rsp, trace_addr) };
+                unsafe {
+                    __yk_exec_trace(frameaddr, rsp, trace_addr);
+                };
             }
             TransitionControlPoint::StartTracing(hl) => {
                 self.log.log(Verbosity::JITEvent, "start-tracing");
@@ -493,6 +517,22 @@ impl MT {
                         todo!("{e:?}");
                     }
                 }
+                if SWT_CP_TRANSITION {
+                    #[cfg(tracer_swt)]
+                    unsafe {
+                        // Transition to unopt before start tracing cause
+                        // we need the intepreter version with tracing calls..
+                        swt_module_cp_transition(CPTransition {
+                            direction: CPTransitionDirection::OptToUnopt,
+                            frameaddr,
+                            rsp: 0 as *const c_void,
+                            trace_addr: 0 as *const c_void,
+                            exec_trace: false,
+                            exec_trace_fn: __yk_exec_trace,
+                        });
+                    }
+                }
+                // self.log.log(Verbosity::JITEvent, "returning into unopt cp");
             }
             TransitionControlPoint::StopTracing => {
                 // Assuming no bugs elsewhere, the `unwrap`s cannot fail, because `StartTracing`
@@ -528,6 +568,20 @@ impl MT {
                         self.stats.trace_recorded_err();
                         self.log
                             .log(Verbosity::Warning, &format!("stop-tracing-aborted: {e}"));
+                    }
+                }
+                if SWT_CP_TRANSITION {
+                    #[cfg(tracer_swt)]
+                    unsafe {
+                        // Transition into opt interpreter when we stop tracing.
+                        swt_module_cp_transition(CPTransition {
+                            direction: CPTransitionDirection::UnoptToOpt,
+                            frameaddr,
+                            rsp: 0 as *const c_void,
+                            trace_addr: 0 as *const c_void,
+                            exec_trace: false,
+                            exec_trace_fn: __yk_exec_trace,
+                        });
                     }
                 }
             }
@@ -691,6 +745,7 @@ impl MT {
                                 // This thread is tracing something, so bail out as quickly as possible
                                 TransitionControlPoint::AbortTracing
                             } else {
+                                // println!("@@ Executing compiled trace for location: {:?}", loc);
                                 TransitionControlPoint::Execute(Arc::clone(ctr))
                             }
                         }
@@ -938,7 +993,7 @@ impl MT {
 #[cfg(target_arch = "x86_64")]
 #[naked]
 #[no_mangle]
-unsafe extern "C" fn __yk_exec_trace(
+pub unsafe extern "C" fn __yk_exec_trace(
     frameaddr: *const c_void,
     rsp: *const c_void,
     trace: *const c_void,
@@ -951,6 +1006,7 @@ unsafe extern "C" fn __yk_exec_trace(
         "mov rsp, rsi",
         "sub rsp, 8",   // Return address of control point call
         "sub rsp, 104", // Registers pushed in naked cp call (includes alignment)
+        // "int3",
         // Restore registers which were pushed to the stack in [ykcapi::__ykrt_control_point].
         "pop r15",
         "pop r14",
@@ -973,7 +1029,7 @@ unsafe extern "C" fn __yk_exec_trace(
 }
 
 /// [MTThread]'s major job is to record what state in the "interpreting/tracing/executing"
-/// state-machine this thread is in. This enum contains the states.
+/// state-machine this thread is in. This enum contains the states.bf.
 #[derive(Debug)]
 enum MTThreadState {
     /// This thread is executing in the normal interpreter: it is not executing a trace or
