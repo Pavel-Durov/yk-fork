@@ -12,7 +12,9 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
+mod cfg;
 pub mod cp;
+mod live_vars;
 pub use cp::ControlPointStackMapId;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
