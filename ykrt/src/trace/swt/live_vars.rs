@@ -256,6 +256,10 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
     };
     let mut src_var_indirect_index = 0;
     let mut variables = HashMap::new();
+    // Set up the pointer to the temporary buffer
+    dynasm!(asm
+        ; mov rcx, QWORD temp_live_vars_buffer.0 as i64
+    );
     for (_, src_var) in src_rec.live_vars.iter().enumerate() {
         let src_location = src_var.get(0).unwrap();
         match src_location {
@@ -266,7 +270,6 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
                 );
                 let temp_buffer_offset = (src_var_indirect_index * (*src_val_size as i32)) as i32;
                 dynasm!(asm
-                    ; mov rcx, QWORD temp_live_vars_buffer.0 as i64
                     ; mov rax, QWORD [rbp + i32::try_from(*src_off).unwrap()]
                     ; mov QWORD [rcx + temp_buffer_offset], rax
                 );
@@ -534,5 +537,39 @@ mod live_vars_tests {
         assert_eq!("mov rax, qword ptr [rcx + 8]", instructions[1]);
         assert_eq!("mov qword ptr [rbp + 6], rax", instructions[2]);
         assert!(dest_reg_nums.is_empty());
+    }
+
+    #[test]
+    fn test_copy_live_vars_to_temp_buffer() {
+        let src_rec = Record {
+            offset: 0,
+            size: 0,
+            id: 0,
+            live_vars: vec![
+                LiveVar::new(vec![Location::Indirect(6, 56, 8)]),
+                LiveVar::new(vec![Location::Indirect(6, 72, 8)]),
+                LiveVar::new(vec![Location::Indirect(6, 172, 8)]),
+            ]
+        };
+
+        let mut asm = Assembler::new().unwrap();
+        let lvb = copy_live_vars_to_temp_buffer(&mut asm, &src_rec);
+        assert_eq!(32, lvb.size);
+        assert_eq!(3, lvb.variables.len());
+
+        // Finalise and disassemble the code.
+        let buffer = asm.finalize().unwrap();
+        let instructions = get_asm_instructions(&buffer);
+
+        assert_eq!(format!("movabs rcx, 0x{:x}", lvb.ptr as i64), instructions[0]);
+        // 1st indirect
+        assert_eq!("mov rax, qword ptr [rbp + 0x38]", instructions[1]);
+        assert_eq!("mov qword ptr [rcx], rax", instructions[2]);
+        // 2nd indirect
+        assert_eq!("mov rax, qword ptr [rbp + 0x48]", instructions[3]);
+        assert_eq!("mov qword ptr [rcx + 8], rax", instructions[4]);
+        // 3rd indirect
+        assert_eq!("mov rax, qword ptr [rbp + 0xac]", instructions[5]);
+        assert_eq!("mov qword ptr [rcx + 0x10], rax", instructions[6]);
     }
 }
