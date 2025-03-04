@@ -290,11 +290,8 @@ impl CodeGen for X64CodeGen {
         m: Module,
         mt: Arc<MT>,
         hl: Arc<Mutex<HotLocation>>,
-        sp_offset: Option<usize>,
-        root_offset: Option<usize>,
-        prevguards: Option<Vec<GuardIdx>>,
     ) -> Result<Arc<dyn CompiledTrace>, CompilationError> {
-        Assemble::new(&m, sp_offset, root_offset)?.codegen(mt, hl, prevguards)
+        Assemble::new(&m)?.codegen(mt, hl)
     }
 }
 
@@ -325,24 +322,17 @@ struct Assemble<'a> {
     ///
     /// Each assembly offset can have zero or more comment lines.
     comments: Cell<IndexMap<usize, Vec<String>>>,
-    /// Stack pointer offset from the base pointer of the interpreter frame. If this is a root
-    /// trace it's initialised to the size of the interpreter frame. Otherwise its value is passed
-    /// in via [YkSideTraceInfo::sp_offset].
+    /// Stack pointer offset from the base pointer of the interpreter frame:
+    ///   * For a root trace, this will be the size of the interpreter frame.
+    ///   * For side traces, it will be the parent frame's stack offset.
     sp_offset: usize,
-    /// The stack pointer offset of the root trace's frame from the base pointer of the interpreter
-    /// frame. If this is the root trace, this will be None.
-    root_offset: Option<usize>,
     /// The offset after the trace's prologue. This is the re-entry point when returning from
     /// side-traces.
     prologue_offset: AssemblyOffset,
 }
 
 impl<'a> Assemble<'a> {
-    fn new(
-        m: &'a jit_ir::Module,
-        sp_offset: Option<usize>,
-        root_offset: Option<usize>,
-    ) -> Result<Box<Assemble<'a>>, CompilationError> {
+    fn new(m: &'a jit_ir::Module) -> Result<Box<Assemble<'a>>, CompilationError> {
         #[cfg(debug_assertions)]
         m.assert_well_formed();
 
@@ -350,35 +340,42 @@ impl<'a> Assemble<'a> {
             .map_err(|e| CompilationError::ResourceExhausted(Box::new(e)))?;
         // Since we are executing the trace in the main interpreter frame we need this to
         // initialise the trace's register allocator in order to access local variables.
-        let sp_offset = if let Some(off) = sp_offset {
-            // This is a side-trace. Use the passed in stack size to initialise the register
-            // allocator.
-            off
-        } else {
-            // This is a normal trace, so we need to retrieve the stack size of the main
-            // interpreter frame.
-            // FIXME: For now the control point stackmap id is always 0. Though
-            // we likely want to support multiple control points in the future. We can either pass
-            // the correct stackmap id in via the control point, or compute the stack size
-            // dynamically upon entering the control point (e.g. by subtracting the current RBP
-            // from the previous RBP).
-            if let Ok(sm) = AOT_STACKMAPS.as_ref() {
-                let (rec, pinfo) = sm.get(0);
-                let size = if pinfo.hasfp {
-                    // The frame size includes the pushed RBP, but since we only care about the size of
-                    // the local variables we need to subtract it again.
-                    rec.size - u64::try_from(REG64_BYTESIZE).unwrap()
+        let sp_offset = match m.tracekind() {
+            TraceKind::HeaderOnly | TraceKind::HeaderAndBody => {
+                // This is a normal trace, so we need to retrieve the stack size of the main
+                // interpreter frame.
+                // FIXME: For now the control point stackmap id is always 0. Though
+                // we likely want to support multiple control points in the future. We can either pass
+                // the correct stackmap id in via the control point, or compute the stack size
+                // dynamically upon entering the control point (e.g. by subtracting the current RBP
+                // from the previous RBP).
+                if let Ok(sm) = AOT_STACKMAPS.as_ref() {
+                    let (rec, pinfo) = sm.get(0);
+                    let size = if pinfo.hasfp {
+                        // The frame size includes the pushed RBP, but since we only care about the size of
+                        // the local variables we need to subtract it again.
+                        rec.size - u64::try_from(REG64_BYTESIZE).unwrap()
+                    } else {
+                        rec.size
+                    };
+                    usize::try_from(size).unwrap()
                 } else {
-                    rec.size
-                };
-                usize::try_from(size).unwrap()
-            } else {
-                // The unit tests in this file don't have AOT code. So if we don't find stackmaps here
-                // that's ok. In real-world programs and our C-tests this shouldn't happen though.
-                #[cfg(not(test))]
-                panic!("Couldn't find AOT stackmaps.");
-                #[cfg(test)]
-                0
+                    // The unit tests in this file don't have AOT code. So if we don't find stackmaps here
+                    // that's ok. In real-world programs and our C-tests this shouldn't happen though.
+                    #[cfg(not(test))]
+                    panic!("Couldn't find AOT stackmaps.");
+                    #[cfg(test)]
+                    0
+                }
+            }
+            TraceKind::Sidetrace(sti) => {
+                // This is a side-trace. Use the passed in stack size to initialise the register
+                // allocator.
+                let sti = Arc::clone(sti)
+                    .as_any()
+                    .downcast::<YkSideTraceInfo<Register>>()
+                    .unwrap();
+                sti.sp_offset
             }
         };
 
@@ -392,7 +389,6 @@ impl<'a> Assemble<'a> {
             patch_reg: HashMap::new(),
             comments: Cell::new(IndexMap::new()),
             sp_offset,
-            root_offset,
             prologue_offset: AssemblyOffset(0),
         }))
     }
@@ -401,7 +397,6 @@ impl<'a> Assemble<'a> {
         mut self: Box<Self>,
         mt: Arc<MT>,
         hl: Arc<Mutex<HotLocation>>,
-        prevguards: Option<Vec<GuardIdx>>,
     ) -> Result<Arc<dyn CompiledTrace>, CompilationError> {
         let alloc_off = self.emit_prologue();
 
@@ -428,10 +423,7 @@ impl<'a> Assemble<'a> {
             let deopt_label = self.asm.new_dynamic_label();
             let guardcheck_label = self.asm.new_dynamic_label();
             for (deoptid, fail_label) in infos {
-                self.comment(
-                    self.asm.offset(),
-                    format!("Deopt ID and patch point for guard {:?}", deoptid),
-                );
+                self.comment(format!("Deopt ID and patch point for guard {:?}", deoptid));
                 self.ra
                     .get_ready_for_deopt(&mut self.asm, &self.deoptinfo[&deoptid].0);
                 // FIXME: Why are `deoptid`s 64 bit? We're not going to have that many guards!
@@ -485,7 +477,7 @@ impl<'a> Assemble<'a> {
                 );
             }
 
-            self.comment(self.asm.offset(), "Call __yk_deopt".to_string());
+            self.comment("Call __yk_deopt".to_string());
             // Clippy points out that `__yk_depot as i64` isn't portable, but since this entire module
             // is x86 only, we don't need to worry about portability.
             #[allow(clippy::fn_to_numeric_cast)]
@@ -539,11 +531,13 @@ impl<'a> Assemble<'a> {
         let buf = self.asm.finalize().unwrap();
 
         // Patch deopt addresses into the mov preceeding mov instruction.
-        for (mov_off, deopt_off) in patch_deopts {
-            let deopt_addr = buf.ptr(deopt_off);
-            let mov_addr = buf.ptr(AssemblyOffset(mov_off.0 + 2));
-            patch_address(mov_addr, deopt_addr as u64);
-        }
+        patch_addresses(
+            patch_deopts
+                .into_iter()
+                .map(|(mov, deopt)| (buf.ptr(AssemblyOffset(mov.0 + 2)), buf.ptr(deopt) as u64))
+                .collect::<Vec<_>>()
+                .as_slice(),
+        );
 
         #[cfg(any(debug_assertions, test))]
         let gdb_ctx = gdb::register_jitted_code(
@@ -562,7 +556,6 @@ impl<'a> Assemble<'a> {
                 .into_iter()
                 .map(|(id, (_gsnap, di))| (id, di))
                 .collect::<HashMap<_, _>>(),
-            prevguards,
             sp_offset: self.ra.stack_size(),
             prologue_offset: self.prologue_offset.0,
             entry_vars: self.header_start_locs.clone(),
@@ -583,7 +576,7 @@ impl<'a> Assemble<'a> {
                 next = iter.next();
                 continue;
             }
-            self.comment_inst(self.asm.offset(), iidx, inst);
+            self.comment_inst(iidx, inst);
             self.ra.expire_regs(iidx);
 
             match &inst {
@@ -660,46 +653,44 @@ impl<'a> Assemble<'a> {
 
     /// Add a comment to the trace. Note: for instructions, use [Self::comment_inst] which formats
     /// things more appropriately for instructions.
-    fn comment(&mut self, off: AssemblyOffset, line: String) {
-        self.comments.get_mut().entry(off.0).or_default().push(line);
+    fn comment(&mut self, line: String) {
+        self.comments
+            .get_mut()
+            .entry(self.asm.offset().0)
+            .or_default()
+            .push(line);
     }
 
     /// Add a comment to the trace for a "JIT IR" instruction. This function will format some
     /// instructions differently to the normal trace IR, because this x64 backend has some
     /// non-generic optimisations / modifications.
-    fn comment_inst(&mut self, off: AssemblyOffset, iidx: InstIdx, inst: Inst) {
+    fn comment_inst(&mut self, iidx: InstIdx, inst: Inst) {
         match inst {
             Inst::Load(_) => {
                 if let Some(painst) = self.ra.ptradd(iidx) {
-                    self.comment(
-                        off,
-                        format!(
-                            "%{iidx}: {} = load {} + {}",
-                            self.m.type_(inst.tyidx(self.m)).display(self.m),
-                            painst.ptr(self.m).display(self.m),
-                            painst.off()
-                        ),
-                    );
+                    self.comment(format!(
+                        "%{iidx}: {} = load {} + {}",
+                        self.m.type_(inst.tyidx(self.m)).display(self.m),
+                        painst.ptr(self.m).display(self.m),
+                        painst.off()
+                    ));
                     return;
                 }
             }
             Inst::Store(sinst) => {
                 if let Some(painst) = self.ra.ptradd(iidx) {
-                    self.comment(
-                        off,
-                        format!(
-                            "*({} + {}) = {}",
-                            painst.ptr(self.m).display(self.m),
-                            painst.off(),
-                            sinst.val(self.m).display(self.m)
-                        ),
-                    );
+                    self.comment(format!(
+                        "*({} + {}) = {}",
+                        painst.ptr(self.m).display(self.m),
+                        painst.off(),
+                        sinst.val(self.m).display(self.m)
+                    ));
                     return;
                 }
             }
             _ => (),
         }
-        self.comment(off, inst.display(self.m, iidx).to_string())
+        self.comment(inst.display(self.m, iidx).to_string())
     }
 
     /// Emit the prologue of the JITted code.
@@ -714,7 +705,7 @@ impl<'a> Assemble<'a> {
     ///
     /// Returns the offset at which to patch up the stack allocation later.
     fn emit_prologue(&mut self) -> AssemblyOffset {
-        self.comment(self.asm.offset(), "prologue".to_owned());
+        self.comment("prologue".to_owned());
 
         // Emit a dummy frame allocation instruction that initially allocates 0 bytes, but will be
         // patched later when we know how big the frame needs to be.
@@ -727,7 +718,7 @@ impl<'a> Assemble<'a> {
         // clobbers r11 (a caller saved register).
         #[cfg(debug_assertions)]
         {
-            self.comment(self.asm.offset(), "Breakpoint hack".into());
+            self.comment("Breakpoint hack".into());
             // Clippy points out that `__yk_depot as i64` isn't portable, but since this entire
             // module is x86 only, we don't need to worry about portability.
             #[allow(clippy::fn_to_numeric_cast)]
@@ -2074,10 +2065,7 @@ impl<'a> Assemble<'a> {
             .assign_gp_regs(&mut self.asm, ic_iidx, [GPConstraint::Temporary]);
         self.patch_reg.insert(g_inst.gidx.into(), patch_reg);
         let fail_label = self.guard_to_deopt(&g_inst);
-        self.comment(
-            self.asm.offset(),
-            Inst::Guard(g_inst).display(self.m, g_iidx).to_string(),
-        );
+        self.comment(Inst::Guard(g_inst).display(self.m, g_iidx).to_string());
 
         if g_inst.expect() {
             match pred {
@@ -2506,7 +2494,7 @@ impl<'a> Assemble<'a> {
                 // traces that don't loop.
                 #[cfg(test)]
                 {
-                    self.comment(self.asm.offset(), "Unterminated trace".to_owned());
+                    self.comment("Unterminated trace".to_owned());
                     dynasm!(self.asm; ud2);
                 }
                 #[cfg(not(test))]
@@ -3030,57 +3018,6 @@ struct DeoptInfo {
     guard: Guard,
 }
 
-/// Patches 8 bytes of a given address with the given value.
-/// - `target`: The address we want to patch. Needs to be 8-byte aligned and must not cross the
-///   cache-line boundary.
-/// - `val`: The new value.
-fn patch_address(target: *const u8, val: u64) {
-    // Find the beginning of the page that the patch address is in to be passed into
-    // `mprotect`.
-    let patch_addr = target as usize;
-    let mprot_addr = patch_addr - (patch_addr % page_size::get());
-
-    // Make the trace writable while keeping it executable.
-    // FIXME: This might not work on other architectures or operating systems. However, the
-    // solution is very involved and requires changing `mt.rs` to make sure no other thread is
-    // accessing the trace (which includes executing the trace itself or any of it's
-    // side-traces, or side-tracig a guard failure).
-    let res = unsafe {
-        libc::mprotect(
-            mprot_addr as *mut libc::c_void,
-            // Since we are only patching 8-bytes which are aligned, we know we can't span two
-            // pages. Passing a size of 1 still marks the entire page which is what we need.
-            1,
-            libc::PROT_EXEC | libc::PROT_READ | libc::PROT_WRITE,
-        )
-    };
-    // Check that the target address is 8-byte aligned. This is required so we can patch
-    // this atomically.
-    assert!(patch_addr % 8 == 0);
-    // Check that the target `mov` instruction does not cross a cache-line boundary.
-    let clsize = cache_size::cache_line_size(1, cache_size::CacheType::Instruction).unwrap();
-    assert!(patch_addr + 8 <= patch_addr.next_multiple_of(clsize));
-    if res == 0 {
-        // Patch the new 64-bit address into the mov instruction.
-        let patch_addr = patch_addr as *mut u64;
-        unsafe { *patch_addr = val };
-        fence(std::sync::atomic::Ordering::SeqCst);
-    } else {
-        panic!("Couldn't make trace writeable.");
-    }
-    // Make the trace unwritable again.
-    let res = unsafe {
-        libc::mprotect(
-            mprot_addr as *mut libc::c_void,
-            1,
-            libc::PROT_EXEC | libc::PROT_READ,
-        )
-    };
-    if res != 0 {
-        panic!("Couldn't make trace executable.");
-    }
-}
-
 #[derive(Debug)]
 pub(super) struct X64CompiledTrace {
     ctrid: CompiledTraceId,
@@ -3090,8 +3027,6 @@ pub(super) struct X64CompiledTrace {
     buf: ExecutableBuffer,
     /// Deoptimisation info: maps a [GuardIdx] to [DeoptInfo].
     deoptinfo: HashMap<usize, DeoptInfo>,
-    /// [GuardIdx]'s of all failing guards leading up to this trace.
-    prevguards: Option<Vec<GuardIdx>>,
     /// Stack pointer offset from the base pointer of interpreter frame as defined in
     /// [YkSideTraceInfo::sp_offset].
     sp_offset: usize,
@@ -3156,19 +3091,8 @@ impl CompiledTrace for X64CompiledTrace {
         // FIXME: Check if RPython has found a solution to this (if there is any).
         let root_addr = unsafe { root_ctr.entry().add(root_ctr.prologue_offset) };
 
-        // Pass along [GuardIdx]'s of previous guard failures and add this guard failure's
-        // [GuardIdx] to the list.
-        let guards = if let Some(v) = &self.prevguards {
-            let mut v = v.clone();
-            v.push(gidx);
-            v
-        } else {
-            vec![gidx]
-        };
-
         Arc::new(YkSideTraceInfo {
             bid: deoptinfo.bid.clone(),
-            guards,
             lives,
             callframes,
             root_addr: RootTracePtr(root_addr),
@@ -3196,7 +3120,7 @@ impl CompiledTrace for X64CompiledTrace {
         let patch_addr = unsafe { self.buf.ptr(patch_offset).offset(2) };
         // FIXME: Is it better/faster to protect the entire buffer in one go and then patch each
         // address, rather than mark single pages writeable, patch, and mark readable again?
-        patch_address(patch_addr, staddr as u64);
+        patch_addresses(&[(patch_addr, staddr as u64)]);
     }
 
     fn hl(&self) -> &std::sync::Weak<parking_lot::Mutex<crate::location::HotLocation>> {
@@ -3209,6 +3133,79 @@ impl CompiledTrace for X64CompiledTrace {
 
     fn disassemble(&self, with_addrs: bool) -> Result<String, Box<dyn Error>> {
         AsmPrinter::new(&self.buf, &self.comments, with_addrs).to_string()
+    }
+}
+
+/// Patch multiple addresses in contiguous memory. The slice is a sequence of pairs `(tgt, val)`:
+/// - `tgt`: The address we want to patch. Needs to be 8-byte aligned and must not cross a
+///   cache-line boundary.
+/// - `val`: The value to be written to `tgt`.
+///
+/// This function `mprotect`s a single chunk of memory, potentially spanning multiple pages: all
+/// the addresses passed in the slice *must* be in contiguously allocated pages. Failing to do so
+/// will lead to undefined behaviour (including poor performance and outright crashes).
+///
+/// This function does not perform any locking but is not itself thread safe: if you call this in a
+/// context where other threads may also try to call this function, you must use an external lock
+/// to ensure that two instances of this function cannot run simultaneously doing so. Failing to do
+/// so will lead to undefined behaviour.
+fn patch_addresses(patches: &[(*const u8, u64)]) {
+    if patches.is_empty() {
+        return;
+    }
+
+    // Calculate the lowest page address in the patches as `mprotect` requires a page-aligned
+    // address.
+    let page_size = page_size::get();
+    let low = patches
+        .iter()
+        .map(|(x, _)| ((*x as usize) / page_size) * page_size)
+        .min()
+        .unwrap();
+    // Calculate the number of bytes from the lowest page address we will need to `mprotect`.
+    let high = patches.iter().map(|(x, _)| *x as usize).max().unwrap();
+    let len = high - low;
+
+    // Mark the range of memory as writeable.
+    if unsafe {
+        libc::mprotect(
+            low as *mut libc::c_void,
+            len,
+            libc::PROT_EXEC | libc::PROT_READ | libc::PROT_WRITE,
+        )
+    } != 0
+    {
+        todo!();
+    }
+
+    // Patch addresses.
+    for (tgt, val) in patches {
+        // The target address must be 8-byte aligned so that we do a single write. By definition,
+        // this means that we also cannot span a cache-line.
+        assert!((*tgt as usize) % 8 == 0);
+        unsafe { *(*tgt as *mut u64) = *val };
+    }
+    // This `fence` serves two purposes:
+    //   1. In all cases, it makes sure that the compiler doesn't remove any of the writes in the
+    //      `for` loop.
+    //   2. In multi-threaded contexts, it will ensure that other threads using the accompanying
+    //      lock have the same view of memory.
+    //
+    // Note: this `fence` does not, and cannot, force other threads to immediately see the same
+    // view of memory as this thread. In other words, other threads executing the same machine code
+    // may go arbitrarily long without observing the writes performed in this thread.
+    fence(std::sync::atomic::Ordering::Release);
+
+    // Mark the range of memory as unwriteable.
+    if unsafe {
+        libc::mprotect(
+            low as *mut libc::c_void,
+            len,
+            libc::PROT_EXEC | libc::PROT_READ,
+        )
+    } != 0
+    {
+        todo!();
     }
 }
 
@@ -3479,9 +3476,9 @@ mod tests {
             tracecompilation_errors: 0,
         };
         match_asm(
-            Assemble::new(&m, None, None)
+            Assemble::new(&m)
                 .unwrap()
-                .codegen(mt, Arc::new(Mutex::new(hl)), None)
+                .codegen(mt, Arc::new(Mutex::new(hl)))
                 .unwrap()
                 .as_any()
                 .downcast::<X64CompiledTrace>()
@@ -5633,9 +5630,9 @@ mod tests {
             tracecompilation_errors: 0,
         };
 
-        Assemble::new(&m, None, None)
+        Assemble::new(&m)
             .unwrap()
-            .codegen(mt, Arc::new(Mutex::new(hl)), None)
+            .codegen(mt, Arc::new(Mutex::new(hl)))
             .unwrap()
             .as_any()
             .downcast::<X64CompiledTrace>()
