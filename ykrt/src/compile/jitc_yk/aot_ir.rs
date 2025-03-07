@@ -658,6 +658,8 @@ pub(crate) enum CastKind {
     FPExt = 4,
     FPToSI = 5,
     BitCast = 6,
+    PtrToInt = 7,
+    IntToPtr = 8,
 }
 
 impl Display for CastKind {
@@ -670,6 +672,8 @@ impl Display for CastKind {
             Self::FPExt => "fp_ext",
             Self::FPToSI => "fp_to_si",
             Self::BitCast => "bitcast",
+            Self::IntToPtr => "int_to_ptr",
+            Self::PtrToInt => "ptr_to_int",
         };
         write!(f, "{}", s)
     }
@@ -982,6 +986,8 @@ pub(crate) enum Inst {
     FNeg { val: Operand },
     #[deku(id = "21")]
     DebugStr { msg: Operand },
+    #[deku(id = "22")]
+    IdempotentPromote { tyidx: TyIdx, val: Operand },
     #[deku(id = "255")]
     Unimplemented {
         tyidx: TyIdx,
@@ -1076,6 +1082,7 @@ impl Inst {
             Self::Promote { tyidx, .. } => Some(m.type_(*tyidx)),
             Self::FNeg { val } => Some(val.type_(m)),
             Self::DebugStr { .. } => None,
+            Self::IdempotentPromote { tyidx, .. } => Some(m.type_(*tyidx)),
         }
     }
 
@@ -1365,6 +1372,9 @@ impl fmt::Display for DisplayableInst<'_> {
                 write!(f, "fneg {}", val.display(self.m),)
             }
             Inst::DebugStr { msg } => write!(f, "debug_str {}", msg.display(self.m)),
+            Inst::IdempotentPromote { val, .. } => {
+                write!(f, "idempotent_promote {}", val.display(self.m),)
+            }
         }
     }
 }
@@ -1445,6 +1455,7 @@ pub(crate) struct Func {
 }
 
 const FUNCFLAG_OUTLINE: u8 = 1;
+const FUNCFLAG_IDEMPOTENT: u8 = 1 << 1;
 
 impl Func {
     fn is_declaration(&self) -> bool {
@@ -1453,6 +1464,10 @@ impl Func {
 
     pub(crate) fn is_outline(&self) -> bool {
         self.flags & FUNCFLAG_OUTLINE != 0
+    }
+
+    pub(crate) fn is_idempotent(&self) -> bool {
+        self.flags & FUNCFLAG_IDEMPOTENT != 0
     }
 
     /// Return the [BBlock] at the specified index.
@@ -1500,8 +1515,15 @@ impl fmt::Display for DisplayableFunc<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let ty = &self.m.types[self.func_.tyidx];
         if let Ty::Func(fty) = ty {
-            let attrs = if self.func_.is_outline() {
-                "#[yk_outline]\n"
+            let mut attrs = Vec::new();
+            if self.func_.is_idempotent() {
+                attrs.push("yk_idempotent");
+            }
+            if self.func_.is_outline() {
+                attrs.push("yk_outline");
+            }
+            let attrs = if !attrs.is_empty() {
+                &format!("#[{}]\n", attrs.join(", "))
             } else {
                 ""
             };

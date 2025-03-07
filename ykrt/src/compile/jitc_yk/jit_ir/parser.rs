@@ -19,9 +19,9 @@ use super::super::{
     jit_ir::{
         BinOpInst, BitCastInst, BlackBoxInst, Const, DirectCallInst, DynPtrAddInst, FCmpInst,
         FNegInst, FPExtInst, FPToSIInst, FloatTy, FuncDecl, FuncTy, GuardInfo, GuardInst, ICmpInst,
-        IndirectCallInst, Inst, InstIdx, LoadInst, Module, Operand, PackedOperand, ParamIdx,
-        ParamInst, PtrAddInst, SExtInst, SIToFPInst, SelectInst, StoreInst, TruncInst, Ty, TyIdx,
-        ZExtInst,
+        IndirectCallInst, Inst, InstIdx, IntToPtrInst, LoadInst, Module, Operand, PackedOperand,
+        ParamIdx, ParamInst, PtrAddInst, PtrToIntInst, SExtInst, SIToFPInst, SelectInst, StoreInst,
+        TruncInst, Ty, TyIdx, ZExtInst,
     },
 };
 use fm::FMBuilder;
@@ -179,11 +179,19 @@ impl<'lexer, 'input: 'lexer> JITIRParser<'lexer, 'input, '_> {
                         assign,
                         name: name_span,
                         args,
+                        idem_const,
                     } => {
                         let name = &self.lexer.span_str(name_span)[1..];
                         let fd_idx = self.m.find_func_decl_idx_by_name(name);
                         let ops = self.process_operands(args)?;
-                        let inst = DirectCallInst::new(self.m, fd_idx, ops)
+                        let idem_const = match idem_const {
+                            Some(x) => match self.process_operand(x) {
+                                Ok(Operand::Var(_)) | Err(_) => panic!(),
+                                Ok(Operand::Const(cidx)) => Some(cidx),
+                            },
+                            None => None,
+                        };
+                        let inst = DirectCallInst::new(self.m, fd_idx, ops, idem_const)
                             .map_err(|e| self.error_at_span(name_span, &e.to_string()))?;
                         if let Some(x) = assign {
                             self.push_assign(inst.into(), x)?;
@@ -381,6 +389,17 @@ impl<'lexer, 'input: 'lexer> JITIRParser<'lexer, 'input, '_> {
                     ASTInst::ZExt { assign, type_, val } => {
                         let inst =
                             ZExtInst::new(&self.process_operand(val)?, self.process_type(type_)?);
+                        self.push_assign(inst.into(), assign)?;
+                    }
+                    ASTInst::PtrToInt { assign, type_, val } => {
+                        let inst = PtrToIntInst::new(
+                            &self.process_operand(val)?,
+                            self.process_type(type_)?,
+                        );
+                        self.push_assign(inst.into(), assign)?;
+                    }
+                    ASTInst::IntToPtr { assign, val, .. } => {
+                        let inst = IntToPtrInst::new(&self.process_operand(val)?);
                         self.push_assign(inst.into(), assign)?;
                     }
                     ASTInst::BitCast { assign, type_, val } => {
@@ -736,6 +755,7 @@ enum ASTInst {
         assign: Option<Span>,
         name: Span,
         args: Vec<ASTOperand>,
+        idem_const: Option<ASTOperand>,
     },
     Guard {
         cond: ASTOperand,
@@ -795,6 +815,18 @@ enum ASTInst {
         val: ASTOperand,
     },
     ZExt {
+        assign: Span,
+        #[allow(dead_code)]
+        type_: ASTType,
+        val: ASTOperand,
+    },
+    PtrToInt {
+        assign: Span,
+        #[allow(dead_code)]
+        type_: ASTType,
+        val: ASTOperand,
+    },
+    IntToPtr {
         assign: Span,
         #[allow(dead_code)]
         type_: ASTType,

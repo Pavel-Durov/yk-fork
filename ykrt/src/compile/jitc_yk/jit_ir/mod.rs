@@ -1506,6 +1506,8 @@ pub(crate) enum Inst {
     BitCast(BitCastInst),
     FNeg(FNegInst),
     DebugStr(DebugStrInst),
+    IntToPtr(IntToPtrInst),
+    PtrToInt(PtrToIntInst),
 }
 
 impl Inst {
@@ -1568,6 +1570,8 @@ impl Inst {
             Self::FPToSI(i) => i.dest_tyidx(),
             Self::FNeg(i) => i.val(m).tyidx(m),
             Self::DebugStr(..) => m.void_tyidx(),
+            Self::PtrToInt(i) => i.dest_tyidx(),
+            Self::IntToPtr(_) => m.ptr_tyidx(),
         }
     }
 
@@ -1722,6 +1726,8 @@ impl Inst {
             Inst::FPToSI(FPToSIInst { val, .. }) => val.unpack(m).map_iidx(f),
             Inst::FNeg(FNegInst { val }) => val.unpack(m).map_iidx(f),
             Inst::DebugStr(..) => (),
+            Inst::PtrToInt(PtrToIntInst { val, .. }) => val.unpack(m).map_iidx(f),
+            Inst::IntToPtr(IntToPtrInst { val }) => val.unpack(m).map_iidx(f),
         }
     }
 
@@ -1762,7 +1768,7 @@ impl Inst {
                     .iter_args_idx()
                     .map(|x| op_mapper(m, &m.arg(x)))
                     .collect::<Vec<_>>();
-                let dc = DirectCallInst::new(m, dc.target, args)?;
+                let dc = DirectCallInst::new(m, dc.target, args, dc.idem_const)?;
                 Inst::Call(dc)
             }
             Inst::IndirectCall(iidx) => {
@@ -1918,7 +1924,14 @@ impl Inst {
             Inst::FNeg(FNegInst { val }) => Inst::FNeg(FNegInst {
                 val: mapper(m, val),
             }),
-            e => todo!("{:?}", e),
+            Inst::PtrToInt(PtrToIntInst { val, dest_tyidx }) => Inst::PtrToInt(PtrToIntInst {
+                val: mapper(m, val),
+                dest_tyidx: *dest_tyidx,
+            }),
+            Inst::IntToPtr(IntToPtrInst { val }) => Inst::IntToPtr(IntToPtrInst {
+                val: mapper(m, val),
+            }),
+            Inst::TraceHeaderStart => todo!(),
         };
         Ok(inst)
     }
@@ -2000,6 +2013,8 @@ impl Inst {
             (Self::FCmp(x), Self::FCmp(y)) => x.decopy_eq(m, y),
             (Self::FPToSI(x), Self::FPToSI(y)) => x.decopy_eq(m, y),
             (Self::FNeg(x), Self::FNeg(y)) => x.decopy_eq(m, y),
+            (Self::PtrToInt(x), Self::PtrToInt(y)) => x.decopy_eq(m, y),
+            (Self::IntToPtr(x), Self::IntToPtr(y)) => x.decopy_eq(m, y),
             (x, y) => todo!("{x:?} {y:?}"),
         }
     }
@@ -2047,14 +2062,20 @@ impl fmt::Display for DisplayableInst<'_> {
                     .unwrap_or("<not valid UTF-8>")
             ),
             Inst::Call(x) => {
+                let idem_const = if let Some(cidx) = x.idem_const {
+                    &format!(" <idem_const {}>", self.m.const_(cidx).display(self.m))
+                } else {
+                    ""
+                };
                 write!(
                     f,
-                    "call @{}({})",
+                    "call @{}({}){}",
                     self.m.func_decl(x.target).name(),
                     (0..x.num_args())
                         .map(|y| format!("{}", x.operand(self.m, y).display(self.m)))
                         .collect::<Vec<_>>()
-                        .join(", ")
+                        .join(", "),
+                    idem_const
                 )
             }
             Inst::IndirectCall(x) => {
@@ -2206,6 +2227,12 @@ impl fmt::Display for DisplayableInst<'_> {
             Inst::FPToSI(i) => write!(f, "fp_to_si {}", i.val(self.m).display(self.m)),
             Inst::FNeg(i) => write!(f, "fneg {}", i.val(self.m).display(self.m)),
             Inst::DebugStr(i) => write!(f, "; debug_str: {}", i.msg(self.m)),
+            Inst::PtrToInt(i) => {
+                write!(f, "ptr_to_int {}", i.val(self.m).display(self.m),)
+            }
+            Inst::IntToPtr(i) => {
+                write!(f, "int_to_ptr {}", i.val(self.m).display(self.m),)
+            }
         }
     }
 }
@@ -2243,6 +2270,8 @@ inst!(FPToSI, FPToSIInst);
 inst!(BitCast, BitCastInst);
 inst!(FNeg, FNegInst);
 inst!(DebugStr, DebugStrInst);
+inst!(PtrToInt, PtrToIntInst);
+inst!(IntToPtr, IntToPtrInst);
 
 /// The operands for a [Instruction::BinOp]
 ///
@@ -2539,6 +2568,9 @@ pub struct DirectCallInst {
     args_idx: ArgsIdx,
     /// How many arguments in [Module::args] is this call passing?
     num_args: u16,
+    /// If this is a call to an idempotent function, then this will contain the [ConstIdx] of the
+    /// return value (dynamically captured during tracing).
+    idem_const: Option<ConstIdx>,
 }
 
 impl DirectCallInst {
@@ -2546,6 +2578,7 @@ impl DirectCallInst {
         m: &mut Module,
         target: FuncDeclIdx,
         args: Vec<Operand>,
+        idem_const: Option<ConstIdx>,
     ) -> Result<DirectCallInst, CompilationError> {
         let num_args = u16::try_from(args.len()).map_err(|_| {
             CompilationError::LimitExceeded(format!(
@@ -2559,6 +2592,7 @@ impl DirectCallInst {
             target,
             args_idx,
             num_args,
+            idem_const,
         })
     }
 
@@ -2585,6 +2619,11 @@ impl DirectCallInst {
     /// Panics if the operand index is out of bounds.
     pub(crate) fn operand(&self, m: &Module, idx: usize) -> Operand {
         m.arg(ArgsIdx::try_from(usize::from(self.args_idx) + idx).unwrap())
+    }
+
+    /// Return this function call's idempotent constant, if one exists.
+    pub(crate) fn idem_const(&self) -> Option<ConstIdx> {
+        self.idem_const
     }
 }
 
@@ -2723,6 +2762,69 @@ impl DebugStrInst {
     /// Returns the message.
     pub(crate) fn msg<'a>(&self, m: &'a Module) -> &'a str {
         &m.debug_strs[usize::from(self.idx)]
+    }
+}
+
+/// The operands for a [Inst::PtrToInt]
+///
+/// # Semantics
+///
+/// Converts a pointer to an integer, zero extending or truncating as necessary if the destination
+/// integer is not exactly pointer-sized.
+#[derive(Clone, Copy, Debug)]
+pub struct PtrToIntInst {
+    /// The pointer operand to convert.
+    val: PackedOperand,
+    /// The integer type to convert the pointer to.
+    dest_tyidx: TyIdx,
+}
+
+impl PtrToIntInst {
+    pub(crate) fn new(val: &Operand, dest_tyidx: TyIdx) -> Self {
+        Self {
+            val: PackedOperand::new(val),
+            dest_tyidx,
+        }
+    }
+
+    pub(crate) fn val(&self, m: &Module) -> Operand {
+        self.val.unpack(m)
+    }
+
+    pub(crate) fn dest_tyidx(&self) -> TyIdx {
+        self.dest_tyidx
+    }
+
+    fn decopy_eq(&self, m: &Module, other: Self) -> bool {
+        self.val(m) == other.val(m)
+    }
+}
+
+/// The operands for a [Inst::IntToPtr]
+///
+/// # Semantics
+///
+/// Converts a integer to a pointer, zero extending or truncating as necessary if the source
+/// integer is not exactly pointer-sized.
+#[derive(Clone, Copy, Debug)]
+pub struct IntToPtrInst {
+    /// The value to convert to a pointer.
+    val: PackedOperand,
+}
+
+impl IntToPtrInst {
+    pub(crate) fn new(val: &Operand) -> Self {
+        Self {
+            val: PackedOperand::new(val),
+        }
+    }
+
+    pub(crate) fn val(&self, m: &Module) -> Operand {
+        self.val.unpack(m)
+    }
+
+    fn decopy_eq(&self, m: &Module, other: Self) -> bool {
+        self.val(m) == other.val(m)
     }
 }
 
@@ -3243,7 +3345,7 @@ mod tests {
             i32_tyidx,
         )))
         .unwrap();
-        let ci = DirectCallInst::new(&mut m, func_decl_idx, args).unwrap();
+        let ci = DirectCallInst::new(&mut m, func_decl_idx, args, None).unwrap();
 
         // Now request the operands and check they all look as they should.
         assert_eq!(ci.operand(&m, 0), Operand::Var(InstIdx(0)));
@@ -3270,7 +3372,7 @@ mod tests {
             Operand::Var(InstIdx(1)),
             Operand::Var(InstIdx(2)),
         ];
-        let ci = DirectCallInst::new(&mut m, func_decl_idx, args).unwrap();
+        let ci = DirectCallInst::new(&mut m, func_decl_idx, args, None).unwrap();
 
         // Request an operand with an out-of-bounds index.
         ci.operand(&m, 3);
