@@ -40,10 +40,49 @@ pub(crate) fn set_destination_live_vars(
 
                 match dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
-                        assert!(
-                            src_add_locs.len() == 0 && dst_add_locs.len() == 0,
-                            "Register2Register - deal with additional info"
-                        );
+                        // Handle additional locations
+                        for location in dst_add_locs {
+                            // Write any additional locations that were tracked for this variable.
+                            // Numbers greater or equal to zero are registers in Dwarf notation.
+                            // Negative numbers are offsets relative to RBP.
+                            if *CP_VERBOSE {
+                                println!("Register2Register - additional location: {:?}", location);
+                            }
+                            if *location >= 0 {
+                                let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
+                                match *src_val_size {
+                                    1 => dynasm!(asm; mov Rb(dst_reg), BYTE [rbp - src_reg_val_rbp_offset]),
+                                    2 => dynasm!(asm; mov Rw(dst_reg), WORD [rbp - src_reg_val_rbp_offset]),
+                                    4 => dynasm!(asm; mov Rd(dst_reg), DWORD [rbp - src_reg_val_rbp_offset]),
+                                    8 => dynasm!(asm; mov Rq(dst_reg), QWORD [rbp - src_reg_val_rbp_offset]),
+                                    _ => panic!("unexpect Register to Register value size {}", src_val_size)
+                                }
+                            } else if *location < 0 {
+                                let rbp_offset = i32::try_from(*location).unwrap();
+                                match *src_val_size {
+                                    1 => dynasm!(asm
+                                        ; mov al, BYTE [rbp - src_reg_val_rbp_offset]
+                                        ; mov BYTE [rbp + rbp_offset], al
+                                    ),
+                                    2 => dynasm!(asm
+                                        ; mov ax, WORD [rbp - src_reg_val_rbp_offset]
+                                        ; mov WORD [rbp + rbp_offset], ax
+                                    ),
+                                    4 => dynasm!(asm
+                                        ; mov eax, DWORD [rbp - src_reg_val_rbp_offset]
+                                        ; mov DWORD [rbp + rbp_offset], eax
+                                    ),
+                                    8 => dynasm!(asm
+                                        ; mov rax, QWORD [rbp - src_reg_val_rbp_offset]
+                                        ; mov QWORD [rbp + rbp_offset], rax
+                                    ),
+                                    _ => panic!(
+                                        "Unexpected Indirect to Register value size: {}",
+                                        src_val_size
+                                    ),
+                                }
+                            }
+                        }
                         assert!(
                             dst_val_size == src_val_size,
                             "Register2Register - src and dst val size must match. Got src: {} and dst: {}",
@@ -51,15 +90,15 @@ pub(crate) fn set_destination_live_vars(
                             dst_val_size
                         );
                         dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
+                        if *CP_VERBOSE {
+                            println!(
+                                "Register2Register - src: {:?} dst: {:?}, extras: {:?}",
+                                src_location, dst_location, dst_add_locs
+                            );
+                        }
                         // skip copying to the same register with the same value size
                         if src_reg_num == dst_reg_num && src_val_size == dst_val_size {
                             continue;
-                        }
-                        if *CP_VERBOSE {
-                            println!(
-                                "Register2Register - src: {:?} dst: {:?}",
-                                src_location, dst_location
-                            );
                         }
                         let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
                         match *src_val_size {
@@ -133,11 +172,11 @@ pub(crate) fn set_destination_live_vars(
                     );
                 }
                 match dst_location {
-                    Register(dst_reg_num, dst_val_size, _dst_add_locs) => {
+                    Register(dst_reg_num, dst_val_size, dst_add_locs) => {
                         if *CP_VERBOSE {
                             println!(
-                                "Indirect2Register - src: {:?} dst: {:?}",
-                                src_location, dst_location
+                                "Indirect2Register - src: {:?} dst: {:?}, extras: {:?}",
+                                src_location, dst_location, dst_add_locs
                             );
                         }
                         dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
@@ -549,7 +588,7 @@ mod live_vars_tests {
                 LiveVar::new(vec![Location::Indirect(6, 56, 8)]),
                 LiveVar::new(vec![Location::Indirect(6, 72, 8)]),
                 LiveVar::new(vec![Location::Indirect(6, 172, 8)]),
-            ]
+            ],
         };
 
         let mut asm = Assembler::new().unwrap();
@@ -561,7 +600,10 @@ mod live_vars_tests {
         let buffer = asm.finalize().unwrap();
         let instructions = get_asm_instructions(&buffer);
 
-        assert_eq!(format!("movabs rcx, 0x{:x}", lvb.ptr as i64), instructions[0]);
+        assert_eq!(
+            format!("movabs rcx, 0x{:x}", lvb.ptr as i64),
+            instructions[0]
+        );
         // 1st indirect
         assert_eq!("mov rax, qword ptr [rbp + 0x38]", instructions[1]);
         assert_eq!("mov qword ptr [rcx], rax", instructions[2]);
