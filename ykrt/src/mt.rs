@@ -21,7 +21,9 @@ use parking_lot::{Condvar, Mutex, MutexGuard};
 use parking_lot_core::SpinWait;
 
 #[cfg(tracer_swt)]
-use crate::trace::swt::cp::{swt_module_cp_transition, CPTransition, CPTransitionDirection};
+use crate::trace::swt::cfg::CPTransitionDirection;
+#[cfg(tracer_swt)]
+use crate::trace::swt::cp::{swt_module_cp_transition, CPTransition};
 
 use crate::{
     aotsmp::{load_aot_stackmaps, AOT_STACKMAPS},

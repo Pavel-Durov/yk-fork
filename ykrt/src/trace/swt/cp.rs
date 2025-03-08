@@ -3,6 +3,7 @@ use crate::trace::swt::cfg::{
     dwarf_to_dynasm_reg, reg_num_to_ykrt_control_point_rsp_offset, CP_BREAK, CP_VERBOSE,
     REG64_BYTESIZE, REG_OFFSETS,
 };
+use crate::trace::swt::cfg::{CPTransitionDirection, ControlPointStackMapId};
 use crate::trace::swt::live_vars::{copy_live_vars_to_temp_buffer, set_destination_live_vars};
 use capstone::prelude::*;
 use dynasmrt::{dynasm, x64::Assembler, DynasmApi};
@@ -10,22 +11,6 @@ use std::alloc::{dealloc, Layout};
 use std::collections::HashMap;
 use std::error::Error;
 use std::ffi::c_void;
-
-#[repr(usize)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ControlPointStackMapId {
-    // unoptimised (original functions) control point stack map id
-    Opt = 0,
-    // optimised (cloned functions) control point stack map id
-    UnOpt = 1,
-}
-
-#[repr(usize)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CPTransitionDirection {
-    UnoptToOpt = 0,
-    OptToUnopt = 1,
-}
 
 pub struct CPTransition {
     // The direction of the transition.
@@ -118,8 +103,9 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
         rbp_offset_reg_store,
         temp_live_vars_buffer.clone(),
     );
-    restore_registers(&mut asm, used_registers, rbp_offset_reg_store as i32);
-
+    if *CP_VERBOSE {
+        println!("@@@ used_registers: {:?}", used_registers);
+    }
     // Ensure that RSP remains 16-byte aligned throughout transitions to comply with the x86-64 ABI.
     assert_eq!(
         (frameaddr as i64 - dst_frame_size as i64) % 16,
@@ -135,28 +121,29 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
 
     // Deallocate the buffer
     if temp_live_vars_buffer.variables.len() > 0 {
-        if *CP_BREAK {
-            dynasm!(asm; .arch x64; int3);
-        }
-        dynasm!(asm
-            ; .arch x64
-            ; mov rdi, QWORD temp_live_vars_buffer.ptr as i64
-            ; mov rsi, QWORD temp_live_vars_buffer.layout.size() as i64
-            ; mov rdx, QWORD temp_live_vars_buffer.layout.align() as i64
-            ; mov rax, QWORD __yk_swt_dealloc_buffer as i64
-            ; call rax
-        );
+        // if *CP_BREAK {
+        //     dynasm!(asm; .arch x64; int3);
+        // }
+        // calling __yk_swt_dealloc_buffer overrides the register store values.
+        // dynasm!(asm
+        //     ; .arch x64
+        //     ; mov rdi, QWORD temp_live_vars_buffer.ptr as i64
+        //     ; mov rsi, QWORD temp_live_vars_buffer.layout.size() as i64
+        //     ; mov rdx, QWORD temp_live_vars_buffer.layout.align() as i64
+        //     ; mov rax, QWORD __yk_swt_dealloc_buffer as i64
+        //     ; call rax
+        // );
     }
     if transition.exec_trace {
         if *CP_VERBOSE {
             println!("@@ calling exec_trace");
         }
-        if *CP_BREAK {
-            dynasm!(asm; .arch x64; int3); // breakpoint
-        }
+        // if *CP_BREAK {
+        //     dynasm!(asm; .arch x64; int3); // breakpoint
+        // }
         dynasm!(asm
             ; .arch x64
-            ; sub rsp, 0x8                // Align rsp to 16-byte boundary after call
+            // ; sub rsp, 0x8                // Align rsp to 16-byte boundary after call
             // ; add rsp, src_val_buffer_size // remove the temporary buffer from the stack
             ; mov rdi, QWORD frameaddr as i64              // First argument
             ; mov rsi, QWORD transition.rsp as i64    //   Second argument
@@ -165,6 +152,7 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
             ; call rcx // Call the function - we don't care about rcx because its overridden in the __yk_exec_trace
         );
     } else {
+        restore_registers(&mut asm, used_registers, rbp_offset_reg_store as i32);
         let call_offset = calc_after_cp_offset(dst_rec.offset).unwrap();
         let dst_target_addr = i64::try_from(dst_rec.offset).unwrap() + call_offset;
         dynasm!(asm
@@ -286,6 +274,34 @@ mod swt_cp_tests {
                 )
             })
             .collect();
+    }
+
+    #[test]
+    fn test_restore_registers_rbx() {
+        let mut asm = Assembler::new().unwrap();
+        let mut used_regs = HashMap::new();
+        used_regs.insert(0, 8);
+        // used_regs.insert(1, 8); // not used:
+        used_regs.insert(2, 8);
+        // used_regs.insert(3, 8); // used
+        used_regs.insert(4, 8);
+        used_regs.insert(5, 8);
+        // used_regs.insert(6, 8); // not used:
+        // used_regs.insert(7, 8); // not used:
+        used_regs.insert(8, 8);
+        used_regs.insert(9, 8);
+        used_regs.insert(10, 8);
+        used_regs.insert(11, 8);
+        used_regs.insert(12, 8);
+        used_regs.insert(13, 8);
+        used_regs.insert(14, 8);
+        used_regs.insert(15, 8);
+
+        restore_registers(&mut asm, used_regs, 0);
+        let buffer: dynasmrt::ExecutableBuffer = asm.finalize().unwrap();
+        let instructions = get_asm_instructions(&buffer);
+        assert_eq!(instructions.len(), 1);
+        assert_eq!(instructions[0], "mov rbx, qword ptr [rbp + 0x50]");
     }
 
     #[test]

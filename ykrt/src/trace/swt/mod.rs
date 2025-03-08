@@ -12,10 +12,10 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
-mod cfg;
+pub mod cfg;
 pub mod cp;
-mod live_vars;
-pub use cp::ControlPointStackMapId;
+pub mod live_vars;
+pub use cfg::{CPTransitionDirection, ControlPointStackMapId};
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 struct TracingBBlock {

@@ -49,13 +49,25 @@ pub(crate) fn set_destination_live_vars(
                                 println!("Register2Register - additional location: {:?}", location);
                             }
                             if *location >= 0 {
-                                let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
+                                let dst_reg =
+                                    dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
                                 match *src_val_size {
-                                    1 => dynasm!(asm; mov Rb(dst_reg), BYTE [rbp - src_reg_val_rbp_offset]),
-                                    2 => dynasm!(asm; mov Rw(dst_reg), WORD [rbp - src_reg_val_rbp_offset]),
-                                    4 => dynasm!(asm; mov Rd(dst_reg), DWORD [rbp - src_reg_val_rbp_offset]),
-                                    8 => dynasm!(asm; mov Rq(dst_reg), QWORD [rbp - src_reg_val_rbp_offset]),
-                                    _ => panic!("unexpect Register to Register value size {}", src_val_size)
+                                    1 => {
+                                        dynasm!(asm; mov Rb(dst_reg), BYTE [rbp - src_reg_val_rbp_offset])
+                                    }
+                                    2 => {
+                                        dynasm!(asm; mov Rw(dst_reg), WORD [rbp - src_reg_val_rbp_offset])
+                                    }
+                                    4 => {
+                                        dynasm!(asm; mov Rd(dst_reg), DWORD [rbp - src_reg_val_rbp_offset])
+                                    }
+                                    8 => {
+                                        dynasm!(asm; mov Rq(dst_reg), QWORD [rbp - src_reg_val_rbp_offset])
+                                    }
+                                    _ => panic!(
+                                        "unexpect Register to Register value size {}",
+                                        src_val_size
+                                    ),
                                 }
                             } else if *location < 0 {
                                 let rbp_offset = i32::try_from(*location).unwrap();
