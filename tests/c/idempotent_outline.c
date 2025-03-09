@@ -25,7 +25,7 @@
 //     --- End aot ---
 //     --- Begin jit-pre-opt ---
 //     ...
-//     %{{_}}: i{{size}} = call @idem1(%{{_}}, %{{_}}) <idem_const 10i{{size}}>
+//     %{{_}}: i{{size}} = call @__yk_unopt_idem1(%{{_}}, %{{_}}) <idem_const 10i{{size}}>
 //     ...
 //     --- End jit-pre-opt ---
 //     --- Begin jit-post-opt ---
@@ -40,6 +40,12 @@
 //     yk-jit-event: enter-jit-code
 //     yk-jit-event: deoptimise
 //     1: 16
+
+// Failing tests on 2nd deoptimisation:
+//  |2: 20
+//  |yk-jit-event: enter-jit-code
+//  |yk-jit-event: deoptimise
+//  |4222429319: 16889717288
 
 // Check that idempotent functions work when an idempotent function itself
 // calls more idempotent functions. This forces the trace builder to outline

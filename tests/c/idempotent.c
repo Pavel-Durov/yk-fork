@@ -1,4 +1,3 @@
-// ignore-if: test $SWT_MODULE_CLONE_SKIP_FAILING_TEST=true
 // Compiler:
 //   env-var: YKB_EXTRA_CC_FLAGS=-O2
 // Run-time:
@@ -22,14 +21,14 @@
 //     --- End aot ---
 //     --- Begin jit-pre-opt ---
 //     ...
-//     %{{_}}: i{{size}} = call @add(%{{_}}, 2i{{size}}) <idem_const 39i{{size}}>
+//     %{{_}}: i{{size}} = call @__yk_unopt_add(%{{_}}, 2i{{size}}) <idem_const 39i{{size}}>
 //     ...
-//     %{{_}}: i{{size}} = call @add(%{{_}}, 2i{{size}}) <idem_const 39i{{size}}>
+//     %{{_}}: i{{size}} = call @__yk_unopt_add(%{{_}}, 2i{{size}}) <idem_const 39i{{size}}>
 //     ...
 //     --- End jit-pre-opt ---
 //     --- Begin jit-post-opt ---
 //     ...
-//     %{{_}}: i{{size}} = call @add(%{{_}}, 2i{{size}}) <idem_const 39i{{size}}>
+//     %{{_}}: i{{size}} = call @__yk_unopt_add(%{{_}}, 2i{{size}}) <idem_const 39i{{size}}>
 //     ...
 //     %{{_}}: i32 = call @fprintf(%{{_}}, %{{_}}, %{{_}}, %{{_}}, 39i{{size}})
 //     ...
