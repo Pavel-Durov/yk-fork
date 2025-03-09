@@ -34,6 +34,7 @@
 //     yk-jit-event: enter-jit-code
 //     yk-jit-event: deoptimise
 
+
 // Check that promotion works in traces.
 
 #include <inttypes.h>

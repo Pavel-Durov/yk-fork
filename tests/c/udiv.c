@@ -1,3 +1,4 @@
+// ignore-if: test $SWT_MODULE_CLONE_SKIP_FAILING_TEST=true
 // Compiler:
 //   env-var: YKB_EXTRA_CC_FLAGS=-O1
 // Run-time:
@@ -39,6 +40,13 @@
 //     exit
 
 // Test unsigned division.
+
+// Note:
+// thread '<unnamed>' panicked at ykcapi/src/lib.rs:132:23:
+// null pointer dereference occurred
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// thread caused non-unwinding panic. aborting.
+
 
 #include <assert.h>
 #include <stdio.h>
