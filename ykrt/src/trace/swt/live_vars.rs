@@ -1,12 +1,37 @@
 use dynasmrt::{dynasm, x64::Assembler, DynasmApi};
 use std::alloc::{alloc, handle_alloc_error, Layout};
 use std::collections::HashMap;
+use std::sync::OnceLock;
 use yksmp::Location::{Direct, Indirect, Register};
 use yksmp::Record;
 
 use crate::trace::swt::cfg::{
-    dwarf_to_dynasm_reg, reg_num_to_ykrt_control_point_rsp_offset, LiveVarsBuffer, CP_VERBOSE,
+    dwarf_to_dynasm_reg, reg_num_to_ykrt_control_point_rsp_offset, CPTransitionDirection,
+    LiveVarsBuffer, CP_VERBOSE,
 };
+
+// Create a thread-safe wrapper for the buffer pointer
+#[derive(Debug, Clone)]
+struct ThreadSafeBuffer {
+    ptr: *mut u8,
+    layout: Layout,
+    size: i32,
+}
+
+// Explicitly mark our wrapper as thread-safe
+// This is safe because we control all access to the raw pointer and ensure there's
+// no data race (each thread uses a different buffer for optimized vs unoptimized)
+unsafe impl Sync for ThreadSafeBuffer {}
+unsafe impl Send for ThreadSafeBuffer {}
+
+impl ThreadSafeBuffer {
+    unsafe fn new(ptr: *mut u8, layout: Layout, size: i32) -> Self {
+        ThreadSafeBuffer { ptr, layout, size }
+    }
+}
+
+static OPT_BUFFER: OnceLock<ThreadSafeBuffer> = OnceLock::new();
+static UNOPT_BUFFER: OnceLock<ThreadSafeBuffer> = OnceLock::new();
 
 pub(crate) fn set_destination_live_vars(
     asm: &mut Assembler,
@@ -45,9 +70,6 @@ pub(crate) fn set_destination_live_vars(
                             // Write any additional locations that were tracked for this variable.
                             // Numbers greater or equal to zero are registers in Dwarf notation.
                             // Negative numbers are offsets relative to RBP.
-                            if *CP_VERBOSE {
-                                println!("Register2Register - additional location: {:?}", location);
-                            }
                             if *location >= 0 {
                                 let dst_reg =
                                     dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
@@ -104,7 +126,7 @@ pub(crate) fn set_destination_live_vars(
                         dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
                         if *CP_VERBOSE {
                             println!(
-                                "Register2Register - src: {:?} dst: {:?}, extras: {:?}",
+                                "Register2Register - src: {:?} dst: {:?}, additional location: {:?}",
                                 src_location, dst_location, dst_add_locs
                             );
                         }
@@ -187,7 +209,7 @@ pub(crate) fn set_destination_live_vars(
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
                         if *CP_VERBOSE {
                             println!(
-                                "Indirect2Register - src: {:?} dst: {:?}, extras: {:?}",
+                                "Indirect2Register - src: {:?} dst: {:?}, additional locations: {:?}",
                                 src_location, dst_location, dst_add_locs
                             );
                         }
@@ -282,34 +304,65 @@ fn calculate_live_vars_buffer_size(src_rec: &Record) -> i32 {
     }
 }
 
-pub(crate) fn copy_live_vars_to_temp_buffer(
-    asm: &mut Assembler,
-    src_rec: &Record,
-) -> LiveVarsBuffer {
+fn allocate_buffer(src_rec: &Record, cp_direction: CPTransitionDirection) -> Option<&ThreadSafeBuffer> {
     let src_val_buffer_size = calculate_live_vars_buffer_size(src_rec);
 
-    let temp_live_vars_buffer = if src_val_buffer_size > 0 {
+    if src_val_buffer_size == 0 {
+        return None;
+    }
+
+    let buffer_cell = if cp_direction == CPTransitionDirection::UnoptToOpt {
+        &OPT_BUFFER
+    } else {
+        &UNOPT_BUFFER
+    };
+
+    // Get the buffer - either from the OnceLock or create it
+    let thread_safe_buffer = buffer_cell.get_or_init(|| {
+        if *CP_VERBOSE {
+            println!("Allocating new buffer for direction {:?}", cp_direction);
+        }
         unsafe {
             let layout = Layout::from_size_align(src_val_buffer_size as usize, 16).unwrap();
             let ptr = alloc(layout);
             if ptr.is_null() {
                 handle_alloc_error(layout);
             }
-            (ptr, layout)
+            ThreadSafeBuffer::new(ptr, layout, src_val_buffer_size)
         }
-    } else {
+    });
+    return Some(thread_safe_buffer);
+
+}
+pub(crate) fn copy_live_vars_to_temp_buffer(
+    asm: &mut Assembler,
+    src_rec: &Record,
+    cp_direction: CPTransitionDirection,
+) -> LiveVarsBuffer {
+    let thread_safe_buffer = allocate_buffer(src_rec, cp_direction);
+    if thread_safe_buffer.is_none() {
         return LiveVarsBuffer {
             ptr: 0 as *mut u8,
             layout: Layout::new::<u8>(),
             variables: HashMap::new(),
             size: 0,
         };
-    };
+    }
+    if *CP_VERBOSE {
+        if let Some(buffer) = thread_safe_buffer {
+            println!(
+                "Using buffer at {:p} for direction {:?}",
+                buffer.ptr, cp_direction
+            );
+        }
+    }
+
+    let temp_live_vars_buffer = thread_safe_buffer.unwrap();
     let mut src_var_indirect_index = 0;
     let mut variables = HashMap::new();
     // Set up the pointer to the temporary buffer
     dynasm!(asm
-        ; mov rcx, QWORD temp_live_vars_buffer.0 as i64
+        ; mov rcx, QWORD temp_live_vars_buffer.ptr as i64
     );
     for (_, src_var) in src_rec.live_vars.iter().enumerate() {
         let src_location = src_var.get(0).unwrap();
@@ -339,13 +392,12 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
             ),
         }
     }
-    let live_vars_buffer = LiveVarsBuffer {
-        ptr: temp_live_vars_buffer.0,
-        layout: temp_live_vars_buffer.1,
+    LiveVarsBuffer {
+        ptr: temp_live_vars_buffer.ptr,
+        layout: temp_live_vars_buffer.layout,
         variables: variables,
-        size: src_val_buffer_size,
-    };
-    live_vars_buffer
+        size: temp_live_vars_buffer.size,
+    }
 }
 
 #[cfg(test)]
@@ -604,7 +656,8 @@ mod live_vars_tests {
         };
 
         let mut asm = Assembler::new().unwrap();
-        let lvb = copy_live_vars_to_temp_buffer(&mut asm, &src_rec);
+        let lvb =
+            copy_live_vars_to_temp_buffer(&mut asm, &src_rec, CPTransitionDirection::UnoptToOpt);
         assert_eq!(32, lvb.size);
         assert_eq!(3, lvb.variables.len());
 

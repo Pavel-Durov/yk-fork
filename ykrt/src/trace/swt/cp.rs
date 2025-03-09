@@ -83,7 +83,8 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
     // Calculate the offset from the RBP to the RSP where __ykrt_control_point_real stored the registers.
     let rbp_offset_reg_store = src_frame_size as i64 + (14 * REG64_BYTESIZE) as i64;
 
-    let temp_live_vars_buffer = copy_live_vars_to_temp_buffer(&mut asm, src_rec);
+    let temp_live_vars_buffer =
+        copy_live_vars_to_temp_buffer(&mut asm, src_rec, transition.direction);
     if *CP_VERBOSE {
         println!(
             "src_rbp: 0x{:x}, reg_store: 0x{:x}, src_frame_size: 0x{:x}, dst_frame_size: 0x{:x}",
