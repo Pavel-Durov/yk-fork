@@ -33,6 +33,7 @@ impl ThreadSafeBuffer {
 static OPT_BUFFER: OnceLock<ThreadSafeBuffer> = OnceLock::new();
 static UNOPT_BUFFER: OnceLock<ThreadSafeBuffer> = OnceLock::new();
 
+
 pub(crate) fn set_destination_live_vars(
     asm: &mut Assembler,
     src_rec: &Record,
@@ -159,7 +160,6 @@ pub(crate) fn set_destination_live_vars(
                             "Register2Indirect - src and dst val size must match. got src: {} and dst: {}",
                             src_val_size, dst_val_size
                         );
-                        assert!(src_add_locs.len() == 0, "deal with additional info");
                         if *CP_VERBOSE {
                             println!(
                                 "Register2Indirect - src: {:?} dst: {:?}",
@@ -199,12 +199,6 @@ pub(crate) fn set_destination_live_vars(
             }
             Indirect(src_reg_num, _src_off, src_val_size) => {
                 let temp_buffer_offset = live_vars_buffer.variables[&src_var_indirect_index];
-                if *CP_VERBOSE {
-                    println!(
-                        "Indirect - buffer_index: {:?}, offset: {:?}",
-                        src_var_indirect_index, temp_buffer_offset
-                    );
-                }
                 match dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
                         if *CP_VERBOSE {

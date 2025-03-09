@@ -1007,22 +1007,6 @@ pub unsafe extern "C" fn __yk_exec_trace(
         // just before the control point)
         "mov rsp, rsi",
         "sub rsp, 8",   // Return address of control point call
-        "sub rsp, 104", // Registers pushed in naked cp call (includes alignment)
-        // "int3",
-        // Restore registers which were pushed to the stack in [ykcapi::__ykrt_control_point].
-        "pop r15",
-        "pop r14",
-        "pop r13",
-        "pop r12",
-        "pop r11",
-        "pop r10",
-        "pop r9",
-        "pop r8",
-        "pop rsi",
-        "pop rdi",
-        "pop rbx",
-        "pop rcx",
-        "pop rax",
         "add rsp, 8", // Remove return pointer
         // Call the trace function.
         "jmp rdx",
