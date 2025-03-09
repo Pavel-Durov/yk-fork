@@ -1,4 +1,4 @@
-// ignore-if: echo $RUSTFLAGS | grep "sanitizer" || test $SWT_MODULE_CLONE_SKIP_FAILING_TEST=true
+// ignore-if: echo $RUSTFLAGS | grep "sanitizer"
 // ## The sanitisers fiddle with the generated code and mean we can't write the
 // ## test we want.
 // Compiler:
