@@ -10,6 +10,7 @@
 //     4 -> 3.252033
 //     4 -> 3.252033
 //     4 -> 3.252033
+
 //     yk-jit-event: stop-tracing
 //     --- Begin aot ---
 //     ...
@@ -43,7 +44,14 @@
 //     1 -> 0.813008
 //     yk-jit-event: deoptimise
 
-// SWT Note: Signal 11 - values seems to be overridden after transition...
+// SWT Note: Signal 11 just before  yk-jit-event: stop-tracing
+// yk-jit-event: start-tracing
+// 4 -> 3.252033
+// 4 -> 3.252033
+// 4 -> 3.252033
+// 4 -> 3.252033
+// 4 -> 3.252033
+
 
 // Check basic 32-bit float support.
 

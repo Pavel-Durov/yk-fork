@@ -41,7 +41,12 @@
 
 // Test unsigned division.
 
-// SWT Note: Signal 11 after exec trace
+// Note:
+// thread '<unnamed>' panicked at ykcapi/src/lib.rs:132:23:
+// null pointer dereference occurred
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// thread caused non-unwinding panic. aborting.
+
 
 #include <assert.h>
 #include <stdio.h>

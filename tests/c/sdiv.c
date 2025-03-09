@@ -57,7 +57,38 @@
 
 // Test signed division.
 
-// SWT Note: Signal 11 - Exception in queue_root_compile_job
+// Note: invalid computation:
+// --- End jit-pre-opt ---
+// sdiv1 -10922
+// sdiv2 -715827882
+// sdiv3 -3074457345618258602
+// sdiv4 -42
+// sdiv5 -10922
+// sdiv6 -715827882
+// sdiv7 -3074457345618258602
+// sdiv8 -42
+// yk-jit-event: enter-jit-code
+// sdiv1 -10922
+// sdiv2 -715827882
+// sdiv3 -3074457345618258602
+// sdiv4 -42
+// sdiv5 -10922
+// sdiv6 -715827882
+// sdiv7 0
+// sdiv8 -42
+// sdiv1 -10922
+// sdiv2 -715827882
+// sdiv3 -3074457345618258602
+// sdiv4 -42
+// sdiv5 -10922
+// sdiv6 -715827882
+// sdiv7 0
+// sdiv8 -42
+// yk-jit-event: deoptimise
+// exit
+
+
+
 
 #include <assert.h>
 #include <stdio.h>
