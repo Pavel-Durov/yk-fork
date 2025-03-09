@@ -304,7 +304,10 @@ fn calculate_live_vars_buffer_size(src_rec: &Record) -> i32 {
     }
 }
 
-fn allocate_buffer(src_rec: &Record, cp_direction: CPTransitionDirection) -> Option<&ThreadSafeBuffer> {
+fn allocate_buffer(
+    src_rec: &Record,
+    cp_direction: CPTransitionDirection,
+) -> Option<&ThreadSafeBuffer> {
     let src_val_buffer_size = calculate_live_vars_buffer_size(src_rec);
 
     if src_val_buffer_size == 0 {
@@ -332,7 +335,6 @@ fn allocate_buffer(src_rec: &Record, cp_direction: CPTransitionDirection) -> Opt
         }
     });
     return Some(thread_safe_buffer);
-
 }
 pub(crate) fn copy_live_vars_to_temp_buffer(
     asm: &mut Assembler,
