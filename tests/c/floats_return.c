@@ -1,4 +1,3 @@
-// ignore-if: test $SWT_MODULE_CLONE_SKIP_FAILING_TEST=true
 // Compiler:
 //   env-var: YKB_EXTRA_CC_FLAGS=-O0 -Xclang -disable-O0-optnone -Xlinker --lto-newpm-passes=instcombine<max-iterations=1;no-use-loop-info;no-verify-fixpoint>
 // Run-time:
@@ -10,9 +9,9 @@
 //     2: 6.200000 10.400000
 //   stderr:
 //     ...
-//     %{{_}}: float = call @float_rtn()
+//     %{{_}}: float = call @__yk_unopt_float_rtn()
 //     ...
-//     %{{y}}: double = call @double_rtn()
+//     %{{y}}: double = call @__yk_unopt_double_rtn()
 //     ...
 //     %{{z}}: double = fadd %{{y}}, %{{_}}
 //     ...
