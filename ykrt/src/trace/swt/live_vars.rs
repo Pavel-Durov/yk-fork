@@ -198,6 +198,7 @@ pub(crate) fn set_destination_live_vars(
                 }
             }
             Indirect(src_reg_num, _src_off, src_val_size) => {
+                assert!(!live_vars_buffer.ptr.is_null(), "Live vars buffer is null");
                 let temp_buffer_offset = live_vars_buffer.variables[&src_var_indirect_index];
                 match dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
