@@ -41,11 +41,31 @@
 
 // Test unsigned division.
 
-// Note:
+// SWT Note:
 // thread '<unnamed>' panicked at ykcapi/src/lib.rs:132:23:
 // null pointer dereference occurred
 // note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 // thread caused non-unwinding panic. aborting.
+// --- End jit-pre-opt ---
+// udiv 21845
+// udiv2 715827882
+// udiv3 1431655764
+// udiv4 42
+// mt pointer: 0x1f97f670
+// yk-jit-event: enter-jit-code
+// udiv 21845
+// udiv2 715827882
+// udiv3 1431655764
+// udiv4 42
+// mt pointer: 0x7ff713d2a028
+// udiv 21845
+// udiv2 715827882
+// udiv3 1431655764
+// udiv4 42
+// yk-jit-event: deoptimise
+// exit
+
+
 
 
 #include <assert.h>
@@ -72,6 +92,7 @@ int main(int argc, char **argv) {
   NOOPT_VAL(loc);
   NOOPT_VAL(i);
   while (i > 0) {
+    fprintf(stderr, "mt pointer: %p\n", mt);
     yk_mt_control_point(mt, &loc);
     uint16_t udiv = num1 / 3;
     uint32_t udiv2 = num2 / 3;

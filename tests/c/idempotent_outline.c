@@ -41,7 +41,7 @@
 //     yk-jit-event: deoptimise
 //     1: 16
 
-// Failing tests on 2nd deoptimisation:
+// SWT Note: failing on second deoptimise event.
 //  |2: 20
 //  |yk-jit-event: enter-jit-code
 //  |yk-jit-event: deoptimise
