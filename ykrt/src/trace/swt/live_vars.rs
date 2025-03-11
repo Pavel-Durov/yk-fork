@@ -59,7 +59,7 @@ pub(crate) fn set_destination_live_vars(
         let dst_location = &dst_var.get(0).unwrap();
 
         match src_location {
-            Register(src_reg_num, src_val_size, src_add_locs) => {
+            Register(src_reg_num, src_val_size, _src_add_locs) => {
                 let src_reg_offset = reg_num_to_ykrt_control_point_rsp_offset(*src_reg_num);
                 let src_reg_val_rbp_offset =
                     i32::try_from(rbp_offset_reg_store - src_reg_offset as i64).unwrap();
