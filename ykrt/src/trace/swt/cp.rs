@@ -104,9 +104,6 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
         rbp_offset_reg_store,
         temp_live_vars_buffer.clone(),
     );
-    if *CP_VERBOSE {
-        println!("@@@ used_registers: {:?}", used_registers);
-    }
     // Ensure that RSP remains 16-byte aligned throughout transitions to comply with the x86-64 ABI.
     assert_eq!(
         (frameaddr as i64 - dst_frame_size as i64) % 16,
