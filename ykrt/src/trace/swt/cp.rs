@@ -135,6 +135,7 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
         //     ; call rax
         // );
     }
+    restore_registers(&mut asm, used_registers, rbp_offset_reg_store as i32);
     if transition.exec_trace {
         if *CP_VERBOSE {
             println!("@@ calling exec_trace");
@@ -153,7 +154,6 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
             ; call rcx // Call the function - we don't care about rcx because its overridden in the __yk_exec_trace
         );
     } else {
-        restore_registers(&mut asm, used_registers, rbp_offset_reg_store as i32);
         let call_offset = calc_after_cp_offset(dst_rec.offset).unwrap();
         let dst_target_addr = i64::try_from(dst_rec.offset).unwrap() + call_offset;
         dynasm!(asm
