@@ -24,6 +24,8 @@
 
 // Check that return values of inlined functions are properly mapped.
 
+// SWT Note: Signal 11 after exec trace - not reproducible with gdb
+
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
