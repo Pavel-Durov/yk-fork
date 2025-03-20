@@ -72,6 +72,12 @@
 
 // Check that idempotent functions work.
 
+// SWT Note:
+// ---- lang_tests::idempotent.c stderr ----
+// ld.lld: error: unimplemented idempotent promote type. Only pointer-sized integers are supported.
+// clang: error: linker command failed with exit code 1 (use -v to see invocation)
+
+
 #include <assert.h>
 #include <inttypes.h>
 #include <stdio.h>
