@@ -16,6 +16,7 @@
 
 use super::{
     super::{
+        arbbitint::ArbBitInt,
         jit_ir::{self, BinOp, FloatTy, Inst, InstIdx, Module, Operand, TraceKind, Ty},
         CompilationError,
     },
@@ -1241,25 +1242,7 @@ impl<'a> Assemble<'a> {
         debug_assert!(self.m.inst(iidx).def_bitw(self.m) <= 64);
         match m {
             VarLocation::Register(Register::GP(reg)) => {
-                // If this register is not used by a "meaningful" (i.e. non-`Guard`-or-`*End`)
-                // instruction, we immediately spill it, so that the register allocator has more
-                // free registers to play with from the very beginning.
-                let mut meaningful = false;
-                for iidx in self.ra.rev_an.iter_uses(iidx) {
-                    match self.m.inst(iidx) {
-                        Inst::Guard(_) | Inst::TraceHeaderEnd | Inst::TraceBodyEnd => (),
-                        _ => {
-                            meaningful = true;
-                            break;
-                        }
-                    }
-                }
-                if meaningful {
-                    self.ra.force_assign_inst_gp_reg(&mut self.asm, iidx, reg);
-                } else {
-                    self.ra
-                        .force_assign_and_spill_inst_gp_reg(&mut self.asm, iidx, reg);
-                }
+                self.ra.force_assign_inst_gp_reg(&mut self.asm, iidx, reg);
             }
             VarLocation::Register(Register::FP(reg)) => {
                 self.ra.force_assign_inst_fp_reg(iidx, reg);
@@ -1736,11 +1719,24 @@ impl<'a> Assemble<'a> {
                     .iter()
                     .position(|x| *x == Rq::RAX)
                     .unwrap();
-                gp_cnstrs[rax_i] = GPConstraint::Output {
-                    out_ext: RegExtension::ZeroExtended,
-                    force_reg: Some(Rq::RAX),
-                    can_be_same_as_input: false,
-                };
+                if callee.is_some() {
+                    // Direct call
+                    gp_cnstrs[rax_i] = GPConstraint::Output {
+                        out_ext: RegExtension::ZeroExtended,
+                        force_reg: Some(Rq::RAX),
+                        can_be_same_as_input: false,
+                    };
+                } else if let Some(op) = callee_op.clone() {
+                    // Indirect call
+                    if !fty.is_vararg() {
+                        gp_cnstrs[rax_i] = GPConstraint::InputOutput {
+                            op,
+                            in_ext: RegExtension::ZeroExtended,
+                            out_ext: RegExtension::ZeroExtended,
+                            force_reg: Some(Rq::RAX),
+                        };
+                    }
+                }
             }
             Ty::Func(_) => todo!(),
             Ty::Unimplemented(_) => todo!(),
@@ -1787,23 +1783,33 @@ impl<'a> Assemble<'a> {
             }
             (None, Some(op)) => {
                 // Indirect call
-                gp_cnstrs.push(GPConstraint::Input {
-                    op,
-                    in_ext: RegExtension::ZeroExtended,
-                    force_reg: None,
-                    clobber_reg: false,
-                });
-                let ([.., op_reg], _): ([Rq; CALLER_CLOBBER_REGS.len() + 1], [Rx; 16]) =
-                    self.ra.assign_regs(
-                        &mut self.asm,
-                        iidx,
-                        gp_cnstrs.clone().try_into().unwrap(),
-                        fp_cnstrs,
-                    );
-                if fty.is_vararg() {
-                    dynasm!(self.asm; mov rax, num_float_args); // SysV x64 ABI
+                if !fty.is_vararg() {
+                    let ([..], _): ([Rq; CALLER_CLOBBER_REGS.len()], [Rx; 16]) =
+                        self.ra.assign_regs(
+                            &mut self.asm,
+                            iidx,
+                            gp_cnstrs.clone().try_into().unwrap(),
+                            fp_cnstrs,
+                        );
+                    dynasm!(self.asm; call rax);
+                } else {
+                    gp_cnstrs.push(GPConstraint::Input {
+                        op,
+                        in_ext: RegExtension::ZeroExtended,
+                        force_reg: None,
+                        clobber_reg: false,
+                    });
+                    let ([.., op_reg], _): ([Rq; CALLER_CLOBBER_REGS.len() + 1], [Rx; 16]) =
+                        self.ra.assign_regs(
+                            &mut self.asm,
+                            iidx,
+                            gp_cnstrs.clone().try_into().unwrap(),
+                            fp_cnstrs,
+                        );
+                    dynasm!(self.asm
+                        ; mov rax, num_float_args
+                        ; call Rq(op_reg.code()));
                 }
-                dynasm!(self.asm; call Rq(op_reg.code()));
             }
             _ => unreachable!(),
         }
@@ -1976,11 +1982,16 @@ impl<'a> Assemble<'a> {
     /// zero-extended to 32 bits, otherwise return `None`.
     fn op_to_zero_ext_i32(&self, op: &Operand) -> Option<i32> {
         if let Operand::Const(cidx) = op {
-            if let Const::Int(_, x) = self.m.const_(*cidx) {
-                return x.to_zero_ext_u32().map(|x| x as i32);
+            match self.m.const_(*cidx) {
+                Const::Float(_, _) => todo!(),
+                Const::Int(_, v) => v.to_zero_ext_u32().map(|x| x.cast_signed()),
+                Const::Ptr(v) => ArbBitInt::from_u64(64, u64::try_from(*v).unwrap())
+                    .to_zero_ext_u32()
+                    .map(|x| x.cast_signed()),
             }
+        } else {
+            None
         }
-        None
     }
 
     fn cg_cmp_const(&mut self, bitw: u32, lhs_reg: Rq, rhs: i32) {
@@ -2027,20 +2038,24 @@ impl<'a> Assemble<'a> {
         if bitw == 32 || bitw == 64 {
             in_ext = RegExtension::Undefined;
         }
-        if let Some(v) = imm {
-            let [lhs_reg] = self.ra.assign_gp_regs(
+        let patch_reg = if let Some(v) = imm {
+            let [lhs_reg, patch_reg] = self.ra.assign_gp_regs(
                 &mut self.asm,
                 ic_iidx,
-                [GPConstraint::Input {
-                    op: lhs,
-                    in_ext,
-                    force_reg: None,
-                    clobber_reg: false,
-                }],
+                [
+                    GPConstraint::Input {
+                        op: lhs,
+                        in_ext,
+                        force_reg: None,
+                        clobber_reg: false,
+                    },
+                    GPConstraint::Temporary,
+                ],
             );
             self.cg_cmp_const(bitw, lhs_reg, v);
+            patch_reg
         } else {
-            let [lhs_reg, rhs_reg] = self.ra.assign_gp_regs(
+            let [lhs_reg, rhs_reg, patch_reg] = self.ra.assign_gp_regs(
                 &mut self.asm,
                 ic_iidx,
                 [
@@ -2056,16 +2071,14 @@ impl<'a> Assemble<'a> {
                         force_reg: None,
                         clobber_reg: false,
                     },
+                    GPConstraint::Temporary,
                 ],
             );
             self.cg_cmp_regs(bitw, lhs_reg, rhs_reg);
-        }
+            patch_reg
+        };
 
         // Codegen guard
-        self.ra.expire_regs(g_iidx);
-        let [patch_reg] = self
-            .ra
-            .assign_gp_regs(&mut self.asm, ic_iidx, [GPConstraint::Temporary]);
         self.patch_reg.insert(g_inst.gidx.into(), patch_reg);
         let fail_label = self.guard_to_deopt(&g_inst);
         self.comment(Inst::Guard(g_inst).display(self.m, g_iidx).to_string());
@@ -2376,15 +2389,20 @@ impl<'a> Assemble<'a> {
             .collect::<Vec<_>>();
         for (i, op) in src_ops.iter().enumerate() {
             let op = op.unpack(self.m);
-            let src = self.op_to_var_location(op.clone());
-            let dst = tgt_vars[i];
-            if dst == src {
-                // The value is already in the correct place.
-                continue;
-            }
-            if let VarLocation::Register(reg) = dst {
+            if let VarLocation::Register(reg) = tgt_vars[i] {
                 match reg {
                     Register::GP(r) => {
+                        if let GPConstraint::Input { op: cur_op, .. } =
+                            &gp_regs[usize::from(r.code())]
+                        {
+                            // Two operands both have to end up in the same register: if our
+                            // existing candidate is already in a register (i.e. is cheaper than
+                            // unspilling), we prefer that, otherwise we hope that the "new" one
+                            // we've seen might be in a register.
+                            if self.ra.find_op_in_gp_reg(cur_op).is_some() {
+                                continue;
+                            }
+                        }
                         gp_regs[usize::from(r.code())] = GPConstraint::Input {
                             op: op.clone(),
                             in_ext: RegExtension::Undefined,
@@ -2640,11 +2658,9 @@ impl<'a> Assemble<'a> {
         let [_reg] = self.ra.assign_gp_regs(
             &mut self.asm,
             iidx,
-            [GPConstraint::InputOutput {
+            [GPConstraint::AlignExtension {
                 op: sinst.val(self.m),
-                in_ext: RegExtension::SignExtended,
                 out_ext: RegExtension::SignExtended,
-                force_reg: None,
             }],
         );
     }
@@ -2653,11 +2669,9 @@ impl<'a> Assemble<'a> {
         let [_reg] = self.ra.assign_gp_regs(
             &mut self.asm,
             iidx,
-            [GPConstraint::InputOutput {
+            [GPConstraint::AlignExtension {
                 op: zinst.val(self.m),
-                in_ext: RegExtension::ZeroExtended,
                 out_ext: RegExtension::ZeroExtended,
-                force_reg: None,
             }],
         );
     }
@@ -3289,24 +3303,21 @@ impl<'a> AsmPrinter<'a> {
         let mut out = Vec::new();
         let len = self.buf.len();
         let bptr = self.buf.ptr(AssemblyOffset(0));
+        let start_ip = u64::try_from(bptr.addr()).unwrap();
         let code = unsafe { slice::from_raw_parts(bptr, len) };
         let fmt = zydis::Formatter::intel();
         let dec = zydis::Decoder::new64();
-        for insn_info in dec.decode_all::<zydis::VisibleOperands>(code, 0) {
-            let (off, _raw_bytes, insn) = insn_info.unwrap();
+        for insn_info in dec.decode_all::<zydis::VisibleOperands>(code, start_ip) {
+            let (ip, _raw_bytes, insn) = insn_info.unwrap();
+            let off = ip - start_ip;
             if let Some(lines) = self.comments.get(&usize::try_from(off).unwrap()) {
                 for line in lines {
                     out.push(format!("; {line}"));
                 }
             }
-            let istr = fmt.format(Some(off), &insn).unwrap();
+            let istr = fmt.format(Some(ip), &insn).unwrap();
             if self.with_addrs {
-                out.push(format!(
-                    "{:016x} {:08x}: {}",
-                    (bptr as u64) + off,
-                    off,
-                    istr
-                ));
+                out.push(format!("{:016x} {:08x}: {}", ip, off, istr));
             } else {
                 out.push(istr.to_string());
             }
@@ -3598,7 +3609,7 @@ mod tests {
     }
 
     #[test]
-    fn cg_load_const_ptr() {
+    fn cg_store_const_ptr() {
         codegen_and_test(
             "
               entry:
@@ -3608,10 +3619,27 @@ mod tests {
             "
                 ...
                 ; *%0 = 0x0
-                mov r.64.x, 0x00
-                mov [r.64.y], r.64.x
-                ...
+                mov qword ptr [rax], 0x00
                 ",
+            false,
+        );
+    }
+
+    #[test]
+    fn cg_const_ptr() {
+        codegen_and_test(
+            "
+              entry:
+                %0: ptr = param reg
+                %1: i1 = eq %0, 0x1234
+                black_box %1
+            ",
+            "
+                ...
+                ; %1: i1 = eq %0, 0x1234
+                cmp rax, 0x1234
+                setz r.8._
+            ",
             false,
         );
     }
@@ -4631,6 +4659,55 @@ mod tests {
     }
 
     #[test]
+    fn cg_icall() {
+        codegen_and_test(
+            "
+              func_type f(i8) -> i16
+
+              entry:
+                %0: i8 = param reg
+                %1: ptr = param reg
+                %2: i16 = icall<f> %1(%0)
+                black_box %2
+            ",
+            "
+                ...
+                ; %2: i16 = icall %1(%0)
+                mov rdi, rax
+                mov rax, rcx
+                and edi, 0xff
+                call rax
+            ",
+            false,
+        );
+
+        codegen_and_test(
+            "
+              func_type f(i8, ...) -> i16
+
+              entry:
+                %0: i8 = param reg
+                %1: ptr = param reg
+                %2: double = param reg
+                %3: i16 = icall<f> %1(%0, %0, %2)
+                black_box %3
+            ",
+            "
+                ...
+                ; %3: i16 = icall %1(%0, %0, %2)
+                mov rsi, rax
+                mov rdi, rax
+                mov r15, rcx
+                and esi, 0xff
+                and edi, 0xff
+                mov rax, 0x01
+                call r15
+            ",
+            false,
+        );
+    }
+
+    #[test]
     fn cg_eq() {
         codegen_and_test(
             "
@@ -4707,6 +4784,41 @@ mod tests {
                 ",
             false,
         );
+
+        // Check that `zext`ing zero extended things doesn't allocate a new register.
+        codegen_and_test(
+            "
+              entry:
+                %0: i16 = param reg
+                %1: i32 = param reg
+                %2: i64 = param reg
+                %3: i32 = zext %0
+                %4: i64 = zext %0
+                %5: i64 = zext %3
+                %6: i64 = add %4, %5
+                black_box %0
+                black_box %1
+                black_box %2
+                black_box %3
+                black_box %4
+                black_box %5
+                black_box %6
+                ",
+            "
+                ...
+                ; %0: i16 = param ...
+                ; %1: i32 = param ...
+                ; %2: i64 = param ...
+                ; %3: i32 = zext %0
+                and eax, 0xffff
+                ; %4: i64 = zext %0
+                ; %5: i64 = zext %3
+                ; %6: i64 = add %4, %5
+                mov r.64._, rax
+                add rax, rax
+                ",
+            false,
+        );
     }
 
     #[test]
@@ -4744,7 +4856,6 @@ mod tests {
             "
                 ...
                 ; guard true, %0, [] ; ...
-                movzx r.64._, byte ptr ...
                 bt r.32._, 0x00
                 jnb 0x...
                 ...
@@ -4776,7 +4887,6 @@ mod tests {
             "
                 ...
                 ; guard false, %0, [] ; ...
-                movzx r.64._, byte ptr ...
                 bt r.32._, 0x00
                 jb 0x...
                 ...
@@ -4811,7 +4921,6 @@ mod tests {
             "
                 ...
                 ; guard false, %0, [0:%0_0: %0, 0:%0_1: 10i8, 0:%0_2: 32i8, 0:%0_3: 42i8] ; trace_gidx 0 safepoint_id 0
-                movzx r.64._, byte ptr ...
                 bt r.32._, 0x00
                 jb 0x...
                 ...
@@ -4984,11 +5093,11 @@ mod tests {
                 ...
                 ; header_start [%0]
                 ; %2: i8 = add %0, %0
-                {{_}} {{off}}: ...
+                {{addr}} {{_}}: ...
                 ...
                 ; header_end [%0]
                 ...
-                {{_}} {{_}}: jmp 0x00000000{{off}}
+                {{_}} {{_}}: jmp 0x{{addr}}
             ",
             true,
         );
@@ -5082,12 +5191,12 @@ mod tests {
                 ...
                 ; %3: float = %2 ? %0 : %1
                 {{_}} {{_}}: bt r.32._, 0x00
-                {{_}} {{_}}: jb 0x00000000{{true_label}}
+                {{_}} {{_}}: jb 0x{{true_label}}
                 {{_}} {{_}}: movss fp.128.x, fp.128.y
-                {{_}} {{_}}: jmp 0x00000000{{done_label}}
-                {{_}} {{true_label}}: movss fp.128.x, fp.128.z
+                {{_}} {{_}}: jmp 0x{{done_label}}
+                {{true_label}} {{_}}: movss fp.128.x, fp.128.z
                 ; %4: float = fadd %0, %1
-                {{_}} {{done_label}}: ...
+                {{done_label}} {{_}}: ...
             ",
             true,
         );
@@ -5107,12 +5216,12 @@ mod tests {
                 ...
                 ; %3: double = %2 ? %0 : %1
                 {{_}} {{_}}: bt r.32._, 0x00
-                {{_}} {{_}}: jb 0x00000000{{true_label}}
+                {{_}} {{_}}: jb 0x{{true_label}}
                 {{_}} {{_}}: movsd fp.128.x, fp.128.y
-                {{_}} {{_}}: jmp 0x00000000{{done_label}}
-                {{_}} {{true_label}}: movsd fp.128.x, fp.128.z
+                {{_}} {{_}}: jmp 0x{{done_label}}
+                {{true_label}} {{_}}: movsd fp.128.x, fp.128.z
                 ; %4: double = fadd %0, %1
-                {{_}} {{done_label}}: ...
+                {{done_label}} {{_}}: ...
             ",
             true,
         );
@@ -5646,7 +5755,7 @@ mod tests {
                 ...
                 ; header_start [%0]
                 ; header_end [42i8]
-                mov byte ptr [rbp-0x01], 0x2a
+                mov eax, 0x2a
                 jmp ...
             ",
             false,

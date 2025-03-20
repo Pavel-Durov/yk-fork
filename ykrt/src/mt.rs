@@ -1,7 +1,7 @@
 //! The main end-user interface to the meta-tracing system.
 
 use std::{
-    assert_matches::{assert_matches, debug_assert_matches},
+    assert_matches::debug_assert_matches,
     cell::RefCell,
     cmp,
     collections::{HashMap, HashSet, VecDeque},
@@ -430,13 +430,14 @@ impl MT {
     pub fn control_point(self: &Arc<Self>, loc: &Location, frameaddr: *mut c_void, smid: u64) {
         match self.transition_control_point(loc, frameaddr) {
             TransitionControlPoint::NoAction => (),
-            TransitionControlPoint::AbortTracing => {
+            TransitionControlPoint::AbortTracing(ak) => {
                 let thread_tracer = MTThread::with_borrow_mut(|mtt| match mtt.pop_tstate() {
                     MTThreadState::Tracing { thread_tracer, .. } => thread_tracer,
                     _ => unreachable!(),
                 });
                 thread_tracer.stop().ok();
-                self.log.log(Verbosity::JITEvent, "tracing-aborted");
+                self.log
+                    .log(Verbosity::Warning, &format!("tracing-aborted: {ak}"));
             }
             TransitionControlPoint::Execute(ctr) => {
                 self.log.log(Verbosity::JITEvent, "enter-jit-code");
@@ -508,7 +509,7 @@ impl MT {
                                     // FIXME: This is stupidly brutal.
                                     lk.kind = HotLocationKind::DontTrace;
                                     drop(lk);
-                                    self.log.log(Verbosity::JITEvent, "start-tracing-abort");
+                                    self.log.log(Verbosity::Warning, "start-tracing-abort");
                                 } else {
                                     todo!("{e:?}");
                                 }
@@ -652,23 +653,23 @@ impl MT {
                             ..
                         } = mtt.peek_mut_tstate()
                         {
-                            let mut abort = false;
+                            let mut akind = None;
                             if frameaddr != *tracing_frameaddr {
                                 // We're tracing but no longer in the frame we started in, so we
                                 // need to stop tracing and report the original [HotLocation] as
                                 // having failed to trace properly.
-                                abort = true;
+                                akind = Some(AbortKind::OutOfFrame);
                             }
 
                             if let Some(x) =
                                 loc.hot_location().map(|x| x as *const Mutex<HotLocation>)
                             {
                                 if !seen_hls.insert(x) {
-                                    abort = true;
+                                    akind = Some(AbortKind::Unrolled);
                                 }
                             }
 
-                            if abort {
+                            if let Some(akind) = akind {
                                 self.stats.trace_recorded_err();
                                 let mut lk = tracing_hl.lock();
                                 match &lk.kind {
@@ -691,7 +692,7 @@ impl MT {
                                     }
                                 }
 
-                                return TransitionControlPoint::AbortTracing;
+                                return TransitionControlPoint::AbortTracing(akind);
                             }
                         }
                     }
@@ -745,7 +746,9 @@ impl MT {
                         HotLocationKind::Compiled(ref ctr) => {
                             if is_tracing {
                                 // This thread is tracing something, so bail out as quickly as possible
-                                TransitionControlPoint::AbortTracing
+                                TransitionControlPoint::AbortTracing(
+                                    AbortKind::EncounteredCompiledTrace,
+                                )
                             } else {
                                 // println!("@@ Executing compiled trace for location: {:?}", loc);
                                 TransitionControlPoint::Execute(Arc::clone(ctr))
@@ -869,10 +872,10 @@ impl MT {
                                 // We're tracing but no longer in the frame we started in, so we
                                 // need to stop tracing and report the original [HotLocation] as
                                 // having failed to trace properly.
-                                return TransitionControlPoint::AbortTracing;
+                                return TransitionControlPoint::AbortTracing(AbortKind::OutOfFrame);
                             }
                             if !seen_hls.insert(hl_ptr) {
-                                return TransitionControlPoint::AbortTracing;
+                                return TransitionControlPoint::AbortTracing(AbortKind::Unrolled);
                             }
                         }
                         return TransitionControlPoint::NoAction;
@@ -949,10 +952,41 @@ impl MT {
     /// Inform this `MT` instance that `deopt` has occurred: this updates the stack of
     /// [MTThreadState]s.
     pub(crate) fn deopt(self: &Arc<Self>) {
-        MTThread::with_borrow_mut(|mtt| {
-            let st = mtt.pop_tstate();
-            assert_matches!(st, MTThreadState::Executing { .. });
-        });
+        loop {
+            let st = MTThread::with_borrow_mut(|mtt| mtt.pop_tstate());
+            match st {
+                MTThreadState::Interpreting => todo!(),
+                MTThreadState::Tracing {
+                    hl, thread_tracer, ..
+                } => {
+                    let mut lk = hl.lock();
+                    match &lk.kind {
+                        HotLocationKind::Compiled(_) => todo!(),
+                        HotLocationKind::Compiling => todo!(),
+                        HotLocationKind::Counting(_) => todo!(),
+                        HotLocationKind::DontTrace => todo!(),
+                        HotLocationKind::Tracing => match lk.tracecompilation_error(self) {
+                            TraceFailed::KeepTrying => {
+                                lk.kind = HotLocationKind::Counting(0);
+                            }
+                            TraceFailed::DontTrace => {
+                                lk.kind = HotLocationKind::DontTrace;
+                            }
+                        },
+                        HotLocationKind::SideTracing { root_ctr, .. } => {
+                            lk.kind = HotLocationKind::Compiled(Arc::clone(root_ctr));
+                        }
+                    }
+                    drop(lk);
+                    thread_tracer.stop().ok();
+                    self.log.log(
+                        Verbosity::Warning,
+                        &format!("tracing-aborted: {}", AbortKind::BackIntoExecution),
+                    );
+                }
+                MTThreadState::Executing { .. } => return,
+            }
+        }
     }
 
     /// Inform this meta-tracer that guard `gidx` has failed.
@@ -1015,8 +1049,7 @@ pub unsafe extern "C" fn __yk_exec_trace(
 }
 
 /// [MTThread]'s major job is to record what state in the "interpreting/tracing/executing"
-/// state-machine this thread is in. This enum contains the states.bf.
-#[derive(Debug)]
+/// state-machine this thread is in. This enum contains the states.
 enum MTThreadState {
     /// This thread is executing in the normal interpreter: it is not executing a trace or
     /// recording a trace.
@@ -1061,6 +1094,16 @@ enum MTThreadState {
         /// [MT] instance.
         ctr: Arc<dyn CompiledTrace>,
     },
+}
+
+impl std::fmt::Debug for MTThreadState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Interpreting => write!(f, "Interpreting"),
+            Self::Tracing { .. } => write!(f, "Tracing"),
+            Self::Executing { .. } => write!(f, "Executing"),
+        }
+    }
 }
 
 /// Meta-tracer per-thread state. Note that this struct is neither `Send` nor `Sync`: it can only
@@ -1112,7 +1155,9 @@ impl MTThread {
     /// If the stack is empty. There should always be at least one element on the stack, so a panic
     /// here means that something has gone wrong elsewhere.
     pub(crate) fn is_tracing(&self) -> bool {
-        matches!(self.tstate.last().unwrap(), &MTThreadState::Tracing { .. })
+        self.tstate
+            .iter()
+            .any(|x| matches!(x, &MTThreadState::Tracing { .. }))
     }
 
     /// Return a reference to the [CompiledTrace] with ID `ctrid`.
@@ -1122,10 +1167,12 @@ impl MTThread {
     /// If the stack is empty. There should always be at least one element on the stack, so a panic
     /// here means that something has gone wrong elsewhere.
     pub(crate) fn running_trace(&self, ctrid: CompiledTraceId) -> Arc<dyn CompiledTrace> {
-        let MTThreadState::Executing { ctr } = self.peek_tstate() else {
-            panic!()
-        };
-        Arc::clone(&ctr.mt().as_ref().compiled_traces.lock()[&ctrid])
+        for tstate in self.tstate.iter().rev() {
+            if let MTThreadState::Executing { ctr } = tstate {
+                return Arc::clone(&ctr.mt().as_ref().compiled_traces.lock()[&ctrid]);
+            }
+        }
+        panic!();
     }
 
     /// Return a reference to the last element on the stack of [MTThreadState]s.
@@ -1269,7 +1316,7 @@ impl MTThread {
 #[derive(Debug)]
 enum TransitionControlPoint {
     NoAction,
-    AbortTracing,
+    AbortTracing(AbortKind),
     Execute(Arc<dyn CompiledTrace>),
     StartTracing(Arc<Mutex<HotLocation>>),
     StopTracing,
@@ -1278,6 +1325,30 @@ enum TransitionControlPoint {
         parent_ctr: Arc<dyn CompiledTrace>,
         root_ctr: Arc<dyn CompiledTrace>,
     },
+}
+
+/// Why did we abort tracing?
+#[derive(Debug)]
+enum AbortKind {
+    /// While tracing we fell back from an interpreter to a JIT frame.
+    BackIntoExecution,
+    /// While tracing, we encountered a compiled trace.
+    EncounteredCompiledTrace,
+    /// Tracing continued while the interpreter frame address changed.
+    OutOfFrame,
+    /// We unrolled a loop (i.e. we traced a [Location] more than once).
+    Unrolled,
+}
+
+impl std::fmt::Display for AbortKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            AbortKind::BackIntoExecution => write!(f, "tracing continued into a JIT frame"),
+            AbortKind::EncounteredCompiledTrace => write!(f, "encountered compiled trace"),
+            AbortKind::OutOfFrame => write!(f, "tracing went outside of starting frame"),
+            AbortKind::Unrolled => write!(f, "tracing unrolled a loop"),
+        }
+    }
 }
 
 /// What action should a caller of [MT::transition_guard_failure] take?
@@ -1747,7 +1818,7 @@ mod tests {
                 for _ in 0..THRESHOLD {
                     match mt.transition_control_point(&loc, ptr::null_mut()) {
                         TransitionControlPoint::NoAction => (),
-                        TransitionControlPoint::AbortTracing => panic!(),
+                        TransitionControlPoint::AbortTracing(_) => panic!(),
                         TransitionControlPoint::Execute(_) => (),
                         TransitionControlPoint::StartTracing(hl) => {
                             num_starts.fetch_add(1, Ordering::Relaxed);
@@ -1950,7 +2021,7 @@ mod tests {
         expect_start_tracing(&mt, &loc2);
         assert_matches!(
             mt.transition_control_point(&loc1, ptr::null_mut()),
-            TransitionControlPoint::AbortTracing
+            TransitionControlPoint::AbortTracing(AbortKind::EncounteredCompiledTrace)
         );
 
         expect_stop_tracing(&mt, &loc2);

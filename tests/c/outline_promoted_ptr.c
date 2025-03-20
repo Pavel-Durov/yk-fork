@@ -1,40 +1,29 @@
-// Compiler:
-//   env-var: YKB_EXTRA_CC_FLAGS=-O1
 // Run-time:
-//   env-var: YKD_LOG_IR=jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   env-var: YKD_LOG=4
 //   stderr:
 //     yk-jit-event: start-tracing
-//     foo 7
+//     4: 0x...
 //     yk-jit-event: stop-tracing
-//     --- Begin jit-pre-opt ---
-//     ...
-//     %{{result}}: i32 = add %{{1}}, 3i32
-//     ...
-//     %{{2}}: i32 = call @fprintf(%{{3}}, %{{4}}, %{{result}})
-//     ...
-//     --- End jit-pre-opt ---
-//     foo 6
+//     3: 0x...
 //     yk-jit-event: enter-jit-code
-//     foo 5
-//     foo 4
+//     2: 0x...
+//     1: 0x...
 //     yk-jit-event: deoptimise
 //     exit
 
-// Check that return values of fucntions inlined into the trace are properly
-// mapped.
+// Check that outlining over a promoted pointer works.
 
-// SWT Note: Signal 11 after exec trace - not reproducible with gdb
-
-#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <yk.h>
 #include <yk_testing.h>
 
-__attribute__((noinline)) int foo(int i) { return i + 3; }
+__attribute__((yk_outline))
+void *f(void *p) {
+  p = yk_promote(p);
+  return p;
+}
 
 int main(int argc, char **argv) {
   YkMT *mt = yk_mt_new(NULL);
@@ -46,8 +35,7 @@ int main(int argc, char **argv) {
   NOOPT_VAL(i);
   while (i > 0) {
     yk_mt_control_point(mt, &loc);
-    int x = foo(i);
-    fprintf(stderr, "foo %d\n", x);
+    fprintf(stderr, "%d: %p\n", i, f(&i));
     i--;
   }
   fprintf(stderr, "exit\n");
