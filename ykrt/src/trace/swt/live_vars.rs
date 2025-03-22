@@ -32,7 +32,8 @@ impl ThreadSafeBuffer {
 
 static OPT_BUFFER: OnceLock<ThreadSafeBuffer> = OnceLock::new();
 static UNOPT_BUFFER: OnceLock<ThreadSafeBuffer> = OnceLock::new();
-
+// Use RAX as a temporary register
+static TEMP_REG: u8 = 0;
 
 pub(crate) fn set_destination_live_vars(
     asm: &mut Assembler,
@@ -72,6 +73,7 @@ pub(crate) fn set_destination_live_vars(
                             // Numbers greater or equal to zero are registers in Dwarf notation.
                             // Negative numbers are offsets relative to RBP.
                             if *location >= 0 {
+                                // Handle register additional locations
                                 let dst_reg =
                                     dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
                                 match *src_val_size {
@@ -92,24 +94,25 @@ pub(crate) fn set_destination_live_vars(
                                         src_val_size
                                     ),
                                 }
-                            } else if *location < 0 {
+                            } else {
+                                // Handle indirect additional locations
                                 let rbp_offset = i32::try_from(*location).unwrap();
                                 match *src_val_size {
                                     1 => dynasm!(asm
-                                        ; mov al, BYTE [rbp - src_reg_val_rbp_offset]
-                                        ; mov BYTE [rbp + rbp_offset], al
+                                        ; mov Rb(TEMP_REG), BYTE [rbp - src_reg_val_rbp_offset]
+                                        ; mov BYTE [rbp + rbp_offset], Rb(TEMP_REG)
                                     ),
                                     2 => dynasm!(asm
-                                        ; mov ax, WORD [rbp - src_reg_val_rbp_offset]
-                                        ; mov WORD [rbp + rbp_offset], ax
+                                        ; mov Rw(TEMP_REG), WORD [rbp - src_reg_val_rbp_offset]
+                                        ; mov WORD [rbp + rbp_offset], Rw(TEMP_REG)
                                     ),
                                     4 => dynasm!(asm
-                                        ; mov eax, DWORD [rbp - src_reg_val_rbp_offset]
-                                        ; mov DWORD [rbp + rbp_offset], eax
+                                        ; mov Rd(TEMP_REG), DWORD [rbp - src_reg_val_rbp_offset]
+                                        ; mov DWORD [rbp + rbp_offset], Rd(TEMP_REG)
                                     ),
                                     8 => dynasm!(asm
-                                        ; mov rax, QWORD [rbp - src_reg_val_rbp_offset]
-                                        ; mov QWORD [rbp + rbp_offset], rax
+                                        ; mov Rq(TEMP_REG), QWORD [rbp - src_reg_val_rbp_offset]
+                                        ; mov QWORD [rbp + rbp_offset], Rq(TEMP_REG)
                                     ),
                                     _ => panic!(
                                         "Unexpected Indirect to Register value size: {}",
@@ -168,20 +171,20 @@ pub(crate) fn set_destination_live_vars(
                         }
                         match *src_val_size {
                             1 => dynasm!(asm
-                                ; mov al, BYTE [rbp - src_reg_val_rbp_offset]
+                                ; mov Rb(TEMP_REG), BYTE [rbp - src_reg_val_rbp_offset]
                                 ; mov BYTE [rbp + *dst_off], al
                             ),
                             2 => dynasm!(asm
-                                ; mov ax, WORD [rbp - src_reg_val_rbp_offset]
+                                ; mov Rw(TEMP_REG), WORD [rbp - src_reg_val_rbp_offset]
                                 ; mov WORD [rbp + *dst_off], ax
                             ),
                             4 => dynasm!(asm
-                                ; mov eax, DWORD [rbp - src_reg_val_rbp_offset]
+                                ; mov Rd(TEMP_REG), DWORD [rbp - src_reg_val_rbp_offset]
                                 ; mov DWORD [rbp + *dst_off], eax
                             ),
                             8 => {
                                 dynasm!(asm
-                                    ; mov rax, QWORD [rbp - src_reg_val_rbp_offset]
+                                    ; mov Rq(TEMP_REG), QWORD [rbp - src_reg_val_rbp_offset]
                                     ; mov QWORD [rbp + *dst_off], rax
                                 );
                             }
@@ -213,17 +216,17 @@ pub(crate) fn set_destination_live_vars(
                         let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
                         match *dst_val_size {
                             1 => dynasm!(asm
-                                ; mov rcx, QWORD live_vars_buffer.ptr as i64
-                                ; mov Rb(dst_reg), BYTE [rcx + temp_buffer_offset]),
+                                ; mov Rq(TEMP_REG), QWORD live_vars_buffer.ptr as i64
+                                ; mov Rb(dst_reg), BYTE [Rq(TEMP_REG) + temp_buffer_offset]),
                             2 => dynasm!(asm
-                                ; mov rcx, QWORD live_vars_buffer.ptr as i64
-                                ; mov Rw(dst_reg), WORD [rcx + temp_buffer_offset]),
+                                ; mov Rq(TEMP_REG), QWORD live_vars_buffer.ptr as i64
+                                ; mov Rw(dst_reg), WORD [Rq(TEMP_REG) + temp_buffer_offset]),
                             4 => dynasm!(asm
-                                ; mov rcx, QWORD live_vars_buffer.ptr as i64
-                                ; mov Rd(dst_reg), DWORD [rcx + temp_buffer_offset]),
+                                ; mov Rq(TEMP_REG), QWORD live_vars_buffer.ptr as i64
+                                ; mov Rd(dst_reg), DWORD [Rq(TEMP_REG) + temp_buffer_offset]),
                             8 => dynasm!(asm
-                                ; mov rcx, QWORD live_vars_buffer.ptr as i64
-                                ; mov Rq(dst_reg), QWORD [rcx + temp_buffer_offset]),
+                                ; mov Rq(TEMP_REG), QWORD live_vars_buffer.ptr as i64
+                                ; mov Rq(dst_reg), QWORD [Rq(TEMP_REG) + temp_buffer_offset]),
                             _ => panic!(
                                 "Unexpected Indirect to Register value size: {}",
                                 src_val_size
@@ -241,25 +244,25 @@ pub(crate) fn set_destination_live_vars(
                         let min_size = src_val_size.min(dst_val_size);
                         match min_size {
                             1 => dynasm!(asm
-                                ; mov rcx, QWORD live_vars_buffer.ptr as i64
-                                ; mov al, BYTE [rcx + temp_buffer_offset]
-                                ; mov BYTE [rbp + i32::try_from(*dst_off).unwrap()], al
+                                ; mov Rq(TEMP_REG), QWORD live_vars_buffer.ptr as i64
+                                ; mov Rb(TEMP_REG), BYTE [Rq(TEMP_REG) + temp_buffer_offset]
+                                ; mov BYTE [rbp + i32::try_from(*dst_off).unwrap()], Rb(TEMP_REG)
                             ),
                             2 => dynasm!(asm
-                                ; mov rcx, QWORD live_vars_buffer.ptr as i64
-                                ; mov ax, WORD [rcx + temp_buffer_offset]
-                                ; mov WORD [rbp + i32::try_from(*dst_off).unwrap()], ax
+                                ; mov Rq(TEMP_REG), QWORD live_vars_buffer.ptr as i64
+                                ; mov Rw(TEMP_REG), WORD [Rq(TEMP_REG) + temp_buffer_offset]
+                                ; mov WORD [rbp + i32::try_from(*dst_off).unwrap()], Rw(TEMP_REG)
                             ),
                             4 => dynasm!(asm
-                                ; mov rcx, QWORD live_vars_buffer.ptr as i64
-                                ; mov eax, DWORD [rcx + temp_buffer_offset]
-                                ; mov DWORD [rbp + i32::try_from(*dst_off).unwrap()], eax
+                                ; mov Rq(TEMP_REG), QWORD live_vars_buffer.ptr as i64
+                                ; mov Rd(TEMP_REG), DWORD [Rq(TEMP_REG) + temp_buffer_offset]
+                                ; mov DWORD [rbp + i32::try_from(*dst_off).unwrap()], Rd(TEMP_REG)
                             ),
                             8 => {
                                 dynasm!(asm
-                                    ; mov rcx, QWORD live_vars_buffer.ptr as i64
-                                    ; mov rax, QWORD [rcx + temp_buffer_offset]
-                                    ; mov QWORD [rbp + i32::try_from(*dst_off).unwrap()], rax
+                                    ; mov Rq(TEMP_REG), QWORD live_vars_buffer.ptr as i64
+                                    ; mov Rq(TEMP_REG), QWORD [Rq(TEMP_REG) + temp_buffer_offset]
+                                    ; mov QWORD [rbp + i32::try_from(*dst_off).unwrap()], Rq(TEMP_REG)
                                 );
                             }
                             _ => panic!("Unexpected Indirect to Indirect value size: {}", min_size),
@@ -592,8 +595,8 @@ mod live_vars_tests {
         let buffer = asm.finalize().unwrap();
         let instructions = get_asm_instructions(&buffer);
 
-        assert_eq!(format!("movabs rcx, 0x{:x}", ptr as i64), instructions[0]);
-        assert_eq!("mov r15, qword ptr [rcx + 8]", instructions[1]);
+        assert_eq!(format!("movabs rax, 0x{:x}", ptr as i64), instructions[0]);
+        assert_eq!("mov r15, qword ptr [rax + riz + 8]", instructions[1]);
         assert_eq!(
             dest_reg_nums.get(&15),
             Some(&8),
@@ -633,8 +636,8 @@ mod live_vars_tests {
         let buffer = asm.finalize().unwrap();
         let instructions = get_asm_instructions(&buffer);
 
-        assert_eq!(format!("movabs rcx, 0x{:x}", ptr as i64), instructions[0]);
-        assert_eq!("mov rax, qword ptr [rcx + 8]", instructions[1]);
+        assert_eq!(format!("movabs rax, 0x{:x}", ptr as i64), instructions[0]);
+        assert_eq!("mov rax, qword ptr [rax + riz + 8]", instructions[1]);
         assert_eq!("mov qword ptr [rbp + 6], rax", instructions[2]);
         assert!(dest_reg_nums.is_empty());
     }

@@ -1040,7 +1040,7 @@ pub unsafe extern "C" fn __yk_exec_trace(
         // Reset RSP to the end of the control point frame (this includes the registers we pushed
         // just before the control point)
         "mov rsp, rsi",
-        "sub rsp, 8",   // Return address of control point call
+        "sub rsp, 8", // Return address of control point call
         "add rsp, 8", // Remove return pointer
         // Call the trace function.
         "jmp rdx",
