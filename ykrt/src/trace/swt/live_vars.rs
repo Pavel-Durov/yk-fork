@@ -445,6 +445,7 @@ pub(crate) fn set_destination_live_vars(
                             continue;
                         }
                         let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
+                        assert!(*dst_val_size == *src_val_size, "Indirect2Register value size mismatch. Got src: {} and dst: {}", src_val_size, dst_val_size);
                         match *src_val_size {
                             1 => {
                                 dynasm!(asm; mov Rb(dst_reg), BYTE [rbp - src_reg_val_rbp_offset])
@@ -482,6 +483,7 @@ pub(crate) fn set_destination_live_vars(
                         }
                         assert!(*src_reg_num == 6, "Indirect register is expected to be rbp");
                         let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
+                        assert!(*dst_val_size == *src_val_size, "Indirect2Register value size mismatch. Got src: {} and dst: {}", src_val_size, dst_val_size);
                         match *dst_val_size {
                             1 => dynasm!(asm
                                     ; mov Rq(TEMP_REG_PRIMARY), QWORD live_vars_buffer.ptr as i64
@@ -599,6 +601,7 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
         let src_location = src_var.get(0).unwrap();
         match src_location {
             Indirect(_, src_off, src_val_size) => {
+                // TODO: handle different value sizes
                 assert!(
                     *src_val_size == 8,
                     "Only 8-byte Indirect values supported in this example"
