@@ -71,10 +71,7 @@ fn handle_register_to_register_additional_locations(
                 8 => {
                     dynasm!(asm; mov Rq(dst_reg), QWORD [rbp - src_reg_val_rbp_offset])
                 }
-                _ => panic!(
-                    "unexpect Register to Register value size {}",
-                    src_val_size
-                ),
+                _ => panic!("unexpect Register to Register value size {}", src_val_size),
             }
         } else {
             let rbp_offset = i32::try_from(*location).unwrap();
@@ -215,7 +212,13 @@ pub(crate) fn set_destination_live_vars(
                             });
                         } else {
                             // Handle additional locations
-                            handle_register_to_register_additional_locations(asm, src_reg_val_rbp_offset, dst_add_locs, src_val_size, dst_reg_num);
+                            handle_register_to_register_additional_locations(
+                                asm,
+                                src_reg_val_rbp_offset,
+                                dst_add_locs,
+                                src_val_size,
+                                dst_reg_num,
+                            );
                             assert!(
                             dst_val_size == src_val_size,
                             "Register2Register - src and dst val size must match. Got src: {} and dst: {}",
@@ -321,6 +324,15 @@ pub(crate) fn set_destination_live_vars(
                         } else {
                             dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
                             assert!(*src_reg_num == 6, "Indirect register is expected to be rbp");
+                            // Set register additional locations
+                            handle_indirect_to_register_additional_locations(
+                                asm,
+                                dst_add_locs,
+                                src_val_size,
+                                dst_reg_num,
+                                temp_buffer_offset,
+                                &live_vars_buffer,
+                            );
                             let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
                             match *dst_val_size {
                                 1 => dynasm!(asm
@@ -340,9 +352,6 @@ pub(crate) fn set_destination_live_vars(
                                     src_val_size
                                 ),
                             }
-
-                            // Set register additional locations
-                            handle_indirect_to_register_additional_locations(asm, dst_add_locs, src_val_size, dst_reg_num, temp_buffer_offset, &live_vars_buffer);
                         }
                     }
                     Indirect(_dst_reg_num, dst_off, dst_val_size) => {
@@ -411,7 +420,13 @@ pub(crate) fn set_destination_live_vars(
                 match dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
                         // Handle additional locations
-                        handle_register_to_register_additional_locations(asm, src_reg_val_rbp_offset, dst_add_locs, src_val_size, dst_reg_num);
+                        handle_register_to_register_additional_locations(
+                            asm,
+                            src_reg_val_rbp_offset,
+                            dst_add_locs,
+                            src_val_size,
+                            dst_reg_num,
+                        );
                         assert!(
                                 dst_val_size == src_val_size,
                                 "Register2Register - src and dst val size must match. Got src: {} and dst: {}",
