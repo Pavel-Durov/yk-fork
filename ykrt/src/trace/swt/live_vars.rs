@@ -232,10 +232,10 @@ pub(crate) fn set_destination_live_vars(
                                 src_location, dst_location, dst_add_locs
                             );
                             }
-                            // skip copying to the same register with the same value size
-                            if src_reg_num == dst_reg_num && src_val_size == dst_val_size {
-                                continue;
-                            }
+                            // TODO: skip copying to the same register with the same value size
+                            // if src_reg_num == dst_reg_num && src_val_size == dst_val_size {
+                            //     continue;
+                            // }
                             let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
                             match *src_val_size {
                                 1 => {
@@ -440,10 +440,10 @@ pub(crate) fn set_destination_live_vars(
                                     src_location, dst_location, dst_add_locs
                                 );
                         }
-                        // skip copying to the same register with the same value size
-                        if src_reg_num == dst_reg_num && src_val_size == dst_val_size {
-                            continue;
-                        }
+                        // TODO: skip copying to the same register with the same value size
+                        // if src_reg_num == dst_reg_num && src_val_size == dst_val_size {
+                        //     continue;
+                        // }
                         let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
                         assert!(*dst_val_size == *src_val_size, "Indirect2Register value size mismatch. Got src: {} and dst: {}", src_val_size, dst_val_size);
                         match *src_val_size {
