@@ -93,7 +93,6 @@ int main(int argc, char **argv) {
   NOOPT_VAL(loc);
   NOOPT_VAL(i);
   while (i > 0) {
-    fprintf(stderr, "mt pointer: %p\n", mt);
     yk_mt_control_point(mt, &loc);
     uint16_t udiv = num1 / 3;
     uint32_t udiv2 = num2 / 3;

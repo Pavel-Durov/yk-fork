@@ -307,12 +307,6 @@ pub(crate) fn set_destination_live_vars(
                 let temp_buffer_offset = live_vars_buffer.variables[&src_var_indirect_index];
                 match dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
-                        if *CP_VERBOSE {
-                            println!(
-                                "Indirect2Register - src: {:?} dst: {:?}, additional locations: {:?}",
-                                src_location, dst_location, dst_add_locs
-                            );
-                        }
                         if *dst_reg_num == TEMP_REG_PRIMARY.into()
                             || *dst_reg_num == TEMP_REG_SECONDARY.into()
                         {
@@ -322,6 +316,12 @@ pub(crate) fn set_destination_live_vars(
                                 src_var_indirect_index: src_var_indirect_index,
                             });
                         } else {
+                            if *CP_VERBOSE {
+                                println!(
+                                    "Indirect2Register - src: {:?} dst: {:?}, additional locations: {:?}",
+                                    src_location, dst_location, dst_add_locs
+                                );
+                            }
                             dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
                             assert!(*src_reg_num == 6, "Indirect register is expected to be rbp");
                             // Set register additional locations
@@ -482,6 +482,14 @@ pub(crate) fn set_destination_live_vars(
                                 );
                         }
                         assert!(*src_reg_num == 6, "Indirect register is expected to be rbp");
+                        handle_indirect_to_register_additional_locations(
+                            asm,
+                            dst_add_locs,
+                            src_val_size,
+                            dst_reg_num,
+                            temp_buffer_offset,
+                            &live_vars_buffer,
+                        );
                         let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
                         assert!(*dst_val_size == *src_val_size, "Indirect2Register value size mismatch. Got src: {} and dst: {}", src_val_size, dst_val_size);
                         match *dst_val_size {
