@@ -86,7 +86,7 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
     let temp_live_vars_buffer =
         copy_live_vars_to_temp_buffer(&mut asm, src_rec, transition.direction);
     if *CP_VERBOSE {
-        // println!("Transition direction: {:?}", transition.direction);
+        println!("Transition: {:?}", transition.direction);
         println!(
             "src_rbp: 0x{:x}, reg_store: 0x{:x}, src_frame_size: 0x{:x}, dst_frame_size: 0x{:x}",
             frameaddr as i64,
