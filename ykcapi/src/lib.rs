@@ -82,6 +82,7 @@ pub extern "C" fn __ykrt_control_point(
             // trace (at the moment we just rip out the control point's stack), which means we then
             // no longer need to recover callee-saved registers as the control point will do this
             // for us.
+            // "int3",
             "push rax",
             "push rcx",
             "push rbx",
@@ -128,6 +129,10 @@ pub extern "C" fn __ykrt_control_point_real(
     // Frame address of caller.
     frameaddr: *mut c_void,
 ) {
+    // println!(
+    //     "__ykrt_control_point_real - mt: {:p}, loc: {:p}, smid: {}, rbp: {:p}",
+    //     mt, loc, smid, frameaddr
+    // );
     let mt = unsafe { &*mt };
     let loc = unsafe { &*loc };
     if !loc.is_null() {
