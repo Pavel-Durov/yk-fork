@@ -1,7 +1,7 @@
 use crate::aotsmp::AOT_STACKMAPS;
 use crate::trace::swt::cfg::{
     dwarf_to_dynasm_reg, reg_num_to_ykrt_control_point_rsp_offset, CP_BREAK, CP_VERBOSE,
-    REG64_BYTESIZE, REG_OFFSETS,
+    CP_VERBOSE_ASM, REG64_BYTESIZE, REG_OFFSETS,
 };
 use crate::trace::swt::cfg::{CPTransitionDirection, ControlPointStackMapId};
 use crate::trace::swt::live_vars::{copy_live_vars_to_temp_buffer, set_destination_live_vars};
@@ -86,6 +86,7 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
     let temp_live_vars_buffer =
         copy_live_vars_to_temp_buffer(&mut asm, src_rec, transition.direction);
     if *CP_VERBOSE {
+        // println!("Transition direction: {:?}", transition.direction);
         println!(
             "src_rbp: 0x{:x}, reg_store: 0x{:x}, src_frame_size: 0x{:x}, dst_frame_size: 0x{:x}",
             frameaddr as i64,
@@ -133,6 +134,7 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
         // );
     }
     restore_registers(&mut asm, used_registers, rbp_offset_reg_store as i32);
+
     if transition.exec_trace {
         if *CP_VERBOSE {
             println!("@@ calling exec_trace");
@@ -164,8 +166,38 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
             ; ret // loads 8 bytes from rsp and jumps to it
         );
     }
+
     let buffer = asm.finalize().unwrap();
     let func: unsafe fn() = std::mem::transmute(buffer.as_ptr());
+    if *CP_VERBOSE_ASM {
+        let cs = Capstone::new()
+            .x86()
+            .mode(arch::x86::ArchMode::Mode64)
+            .build()
+            .unwrap();
+
+        let instructions = cs
+            .disasm_all(
+                unsafe {
+                    std::slice::from_raw_parts(
+                        buffer.ptr(dynasmrt::AssemblyOffset(0)) as *const u8,
+                        buffer.len(),
+                    )
+                },
+                0,
+            )
+            .unwrap();
+
+        println!("ASM DUMP:");
+        for i in instructions.iter() {
+            println!(
+                "  {:x}: {} {}",
+                i.address(),
+                i.mnemonic().unwrap(),
+                i.op_str().unwrap()
+            );
+        }
+    }
     func();
 }
 

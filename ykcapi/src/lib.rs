@@ -129,6 +129,10 @@ pub extern "C" fn __ykrt_control_point_real(
     // Frame address of caller.
     frameaddr: *mut c_void,
 ) {
+    // println!(
+    //     "__ykrt_control_point_real - mt: {:p}, loc: {:p}, smid: {}, rbp: {:p}",
+    //     mt, loc, smid, frameaddr
+    // );
     let mt = unsafe { &*mt };
     let loc = unsafe { &*loc };
     if !loc.is_null() {
