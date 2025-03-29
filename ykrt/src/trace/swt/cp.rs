@@ -223,15 +223,6 @@ fn restore_register(asm: &mut Assembler, dwarf_reg_num: u16, rbp_offset_reg_stor
     dynasm!(asm
         ; mov Rq(dest_reg), QWORD [rbp - reg_val_rbp_offset]
     );
-    // if *CP_VERBOSE {
-    //     println!(
-    //         "@@ Restoring reg_num: {:?}, dest_reg: {:?}, reg_offset: 0x{:x}, reg_val_rbp_offset: 0x{:x}",
-    //         dwarf_reg_num,
-    //         dest_reg,
-    //         reg_offset,
-    //         reg_val_rbp_offset
-    //     );
-    // }
 }
 
 // Example:
