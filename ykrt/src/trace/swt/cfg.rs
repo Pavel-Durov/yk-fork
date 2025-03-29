@@ -27,9 +27,11 @@ pub(crate) static CP_VERBOSE: LazyLock<bool> =
     LazyLock::new(|| env::var("CP_VERBOSE").map(|v| v == "1").unwrap_or(false));
 
 // Flag for verbose logging of asm
-pub(crate) static CP_VERBOSE_ASM: LazyLock<bool> =
-    LazyLock::new(|| env::var("CP_VERBOSE_ASM").map(|v| v == "1").unwrap_or(false));
-
+pub(crate) static CP_VERBOSE_ASM: LazyLock<bool> = LazyLock::new(|| {
+    env::var("CP_VERBOSE_ASM")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+});
 
 // Flag for asm breakpoints
 pub(crate) static CP_BREAK: LazyLock<bool> =

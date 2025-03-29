@@ -655,7 +655,7 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
 #[cfg(test)]
 mod live_vars_tests {
     use super::*;
-    use crate::trace::swt::cfg::REG64_BYTESIZE;
+    use crate::trace::swt::cfg::{REG64_BYTESIZE, REG_OFFSETS};
     use capstone::prelude::*;
     use dynasmrt::x64::Assembler;
     use yksmp::{LiveVar, Location, Record};
@@ -740,7 +740,145 @@ mod live_vars_tests {
             );
         }
     }
+    #[test]
+    fn test_register_to_register_restore_temp_registers() {
+        let src_rec = Record {
+            offset: 0,
+            size: 0,
+            id: 0,
+            live_vars: vec![
+                LiveVar::new(vec![Location::Register(14, 8, vec![])]),
+                LiveVar::new(vec![Location::Register(13, 8, vec![-80, -200])]),
+                LiveVar::new(vec![Location::Register(15, 8, vec![-72])]),
+                LiveVar::new(vec![Location::Register(12, 8, vec![-56])]),
+                LiveVar::new(vec![Location::Register(0, 8, vec![8, -16, -88])]),
+                LiveVar::new(vec![Location::Register(3, 8, vec![-64])]),
+            ],
+        };
 
+        let dst_rec = Record {
+            offset: 0,
+            size: 0,
+            id: 0,
+            live_vars: vec![
+                LiveVar::new(vec![Location::Register(13, 8, vec![])]),
+                LiveVar::new(vec![Location::Register(14, 8, vec![-80])]),
+                LiveVar::new(vec![Location::Register(12, 8, vec![-64])]),
+                LiveVar::new(vec![Location::Register(15, 8, vec![-72])]),
+                LiveVar::new(vec![Location::Register(0, 8, vec![])]),
+                LiveVar::new(vec![Location::Register(3, 8, vec![-88, -8])]),
+            ],
+        };
+        let mut asm = Assembler::new().unwrap();
+        let temp_live_vars_buffer = LiveVarsBuffer {
+            ptr: std::ptr::null_mut(),
+            layout: Layout::new::<u8>(),
+            variables: HashMap::new(),
+            size: 0,
+        };
+
+        let dest_reg_nums =
+            set_destination_live_vars(&mut asm, &src_rec, &dst_rec, 0, temp_live_vars_buffer);
+        let buffer = asm.finalize().unwrap();
+        let instructions = get_asm_instructions(&buffer);
+        assert_eq!(instructions.len(), 16);
+        // r14 -> r13
+        assert_eq!(
+            instructions[0],
+            format!(
+                "mov r13, qword ptr [rbp + {}]",
+                REG_OFFSETS.get(&14).unwrap()
+            )
+        );
+        // r13 -> r14 - additional location
+        assert_eq!(
+            instructions[1],
+            format!(
+                "mov rax, qword ptr [rbp + 0x{0:x}]",
+                REG_OFFSETS.get(&13).unwrap()
+            )
+        );
+        assert_eq!(
+            instructions[2],
+            format!("mov qword ptr [rbp - 0x{0:x}], rax", 80)
+        );
+        // r13 -> r14
+        assert_eq!(
+            instructions[3],
+            format!(
+                "mov r14, qword ptr [rbp + 0x{0:x}]",
+                REG_OFFSETS.get(&13).unwrap()
+            )
+        );
+        // r15 -> r12 - additional location
+        assert_eq!(instructions[4], "mov rax, qword ptr [rbp]");
+        assert_eq!(
+            instructions[5],
+            format!("mov qword ptr [rbp - 0x{0:x}], rax", 64)
+        );
+        // r15 -> r12
+        assert_eq!(instructions[6], "mov r12, qword ptr [rbp]");
+        // r12 -> r15 - additional location
+        assert_eq!(
+            instructions[7],
+            format!(
+                "mov rax, qword ptr [rbp + 0x{0:x}]",
+                REG_OFFSETS.get(&12).unwrap()
+            )
+        );
+        assert_eq!(
+            instructions[8],
+            format!("mov qword ptr [rbp - 0x{0:x}], rax", 72)
+        );
+        // r12 -> r15
+        assert_eq!(
+            instructions[9],
+            format!(
+                "mov r15, qword ptr [rbp + 0x{0:x}]",
+                REG_OFFSETS.get(&12).unwrap()
+            )
+        );
+        // rbx -> rbx - additional location -88
+        assert_eq!(
+            instructions[10],
+            format!(
+                "mov rax, qword ptr [rbp + 0x{0:x}]",
+                REG_OFFSETS.get(&3).unwrap()
+            )
+        );
+        assert_eq!(
+            instructions[11],
+            format!("mov qword ptr [rbp - 0x{0:x}], rax", 88)
+        );
+        assert_eq!(
+            instructions[12],
+            format!(
+                "mov rax, qword ptr [rbp + 0x{0:x}]",
+                REG_OFFSETS.get(&3).unwrap()
+            )
+        );
+        // rbx -> rbx - additional location -8
+        assert_eq!(
+            instructions[13],
+            format!("mov qword ptr [rbp - {}], rax", 8)
+        );
+        // // rbx -> rbx
+        assert_eq!(
+            instructions[14],
+            format!(
+                "mov rbx, qword ptr [rbp + 0x{0:x}]",
+                REG_OFFSETS.get(&3).unwrap()
+            )
+        );
+        // rax -> rax
+        assert_eq!(
+            instructions[15],
+            format!(
+                "mov rax, qword ptr [rbp + 0x{0:x}]",
+                REG_OFFSETS.get(&0).unwrap()
+            )
+        );
+    }
     #[test]
     fn test_set_destination_live_vars_register_to_register() {
         let src_rec = Record {
