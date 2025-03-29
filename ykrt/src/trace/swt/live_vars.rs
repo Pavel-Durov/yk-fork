@@ -51,12 +51,14 @@ fn handle_register_to_register_additional_locations(
     dst_add_locs: &Vec<i16>,
     src_val_size: &u16,
     dst_reg_num: &u16,
+    dest_reg_nums: &mut HashMap<u16, u16>,
 ) {
     for location in dst_add_locs {
         // Write any additional locations that were tracked for this variable.
         // Numbers greater or equal to zero are registers in Dwarf notation.
         // Negative numbers are offsets relative to RBP.
         if *location >= 0 {
+            dest_reg_nums.insert(*dst_reg_num, *src_val_size);
             let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
             // TODO: add dst_reg to used registers
             match *src_val_size {
@@ -110,12 +112,14 @@ fn handle_indirect_to_register_additional_locations(
     dst_reg_num: &u16,
     temp_buffer_offset: i32,
     live_vars_buffer: &LiveVarsBuffer,
+    dest_reg_nums: &mut HashMap<u16, u16>,
 ) {
     for location in dst_add_locs {
         // Write any additional locations that were tracked for this variable.
         // Numbers greater or equal to zero are registers in Dwarf notation.
         // Negative numbers are offsets relative to RBP.
         if *location >= 0 {
+            dest_reg_nums.insert(*dst_reg_num, *src_val_size);
             let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
             // TODO: add dst_reg to used registers
             match *src_val_size {
@@ -220,24 +224,21 @@ pub(crate) fn set_destination_live_vars(
                                 dst_add_locs,
                                 src_val_size,
                                 dst_reg_num,
+                                &mut dest_reg_nums,
                             );
                             assert!(
-                            dst_val_size == src_val_size,
-                            "Register2Register - src and dst val size must match. Got src: {} and dst: {}",
-                            src_val_size,
-                            dst_val_size
-                        );
-                            dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
+                                dst_val_size == src_val_size,
+                                "Register2Register - src and dst val size must match. Got src: {} and dst: {}",
+                                src_val_size,
+                                dst_val_size
+                            );
                             if *CP_VERBOSE {
                                 println!(
                                     "Register2Register - src: {:?} dst: {:?}",
                                     src_location, dst_location
                                 );
                             }
-                            // TODO: skip copying to the same register with the same value size
-                            // if src_reg_num == dst_reg_num && src_val_size == dst_val_size {
-                            //     continue;
-                            // }
+                            dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
                             let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
                             match *src_val_size {
                                 1 => {
@@ -324,7 +325,6 @@ pub(crate) fn set_destination_live_vars(
                                     src_location, dst_location
                                 );
                             }
-                            dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
                             assert!(*src_reg_num == 6, "Indirect register is expected to be rbp");
                             // Set register additional locations
                             handle_indirect_to_register_additional_locations(
@@ -334,7 +334,9 @@ pub(crate) fn set_destination_live_vars(
                                 dst_reg_num,
                                 temp_buffer_offset,
                                 &live_vars_buffer,
+                                &mut dest_reg_nums,
                             );
+                            dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
                             let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
                             match *dst_val_size {
                                 1 => dynasm!(asm
@@ -428,24 +430,21 @@ pub(crate) fn set_destination_live_vars(
                             dst_add_locs,
                             src_val_size,
                             dst_reg_num,
+                            &mut dest_reg_nums,
                         );
                         assert!(
-                                dst_val_size == src_val_size,
-                                "Register2Register - src and dst val size must match. Got src: {} and dst: {}",
-                                src_val_size,
-                                dst_val_size
-                            );
-                        dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
+                            dst_val_size == src_val_size,
+                            "Register2Register - src and dst val size must match. Got src: {} and dst: {}",
+                            src_val_size,
+                            dst_val_size
+                        );
                         if *CP_VERBOSE {
                             println!(
                                 "Register2Register - src: {:?} dst: {:?}",
                                 src_location, dst_location
                             );
                         }
-                        // TODO: skip copying to the same register with the same value size
-                        // if src_reg_num == dst_reg_num && src_val_size == dst_val_size {
-                        //     continue;
-                        // }
+                        dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
                         let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
                         assert!(
                             *dst_val_size == *src_val_size,
@@ -496,9 +495,10 @@ pub(crate) fn set_destination_live_vars(
                             dst_reg_num,
                             temp_buffer_offset,
                             &live_vars_buffer,
+                            &mut dest_reg_nums,
                         );
+                        dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
                         let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
-                        // TODO: add dst_reg to used registers
                         assert!(
                             *dst_val_size == *src_val_size,
                             "Indirect2Register value size mismatch. Got src: {} and dst: {}",
@@ -523,7 +523,6 @@ pub(crate) fn set_destination_live_vars(
                                 src_val_size
                             ),
                         }
-                        dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
                     }
                     _ => panic!(
                         "Unexpected target for Indirect source location - src: {:?}, dst: {:?}",
@@ -892,7 +891,6 @@ mod live_vars_tests {
         assert_eq!(
             instructions[14],
             format!(
-                // TODO: question why + here?
                 "mov rbx, qword ptr [rbp - 0x{0:x}]",
                 rbp_offset_reg_store - REG_OFFSETS.get(&3).unwrap()
             )
