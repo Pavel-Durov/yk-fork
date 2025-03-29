@@ -33,9 +33,9 @@ impl ThreadSafeBuffer {
 static OPT_BUFFER: OnceLock<ThreadSafeBuffer> = OnceLock::new();
 static UNOPT_BUFFER: OnceLock<ThreadSafeBuffer> = OnceLock::new();
 // Primary temporary register - used in buffer copy and destination live vars copy.
-static TEMP_REG_PRIMARY: u8 = 0;
-// Secondary temporary register - used in buffer copy.
-static TEMP_REG_SECONDARY: u8 = 1;
+static TEMP_REG_PRIMARY: u8 = 0; // RAX
+                                 // Secondary temporary register - used in buffer copy.
+static TEMP_REG_SECONDARY: u8 = 1; // RDX
 
 #[derive(Debug, Clone)]
 struct RestoreTempRegisters<'a> {
@@ -58,6 +58,7 @@ fn handle_register_to_register_additional_locations(
         // Negative numbers are offsets relative to RBP.
         if *location >= 0 {
             let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
+            // TODO: add dst_reg to used registers
             match *src_val_size {
                 1 => {
                     dynasm!(asm; mov Rb(dst_reg), BYTE [rbp - src_reg_val_rbp_offset])
@@ -116,6 +117,7 @@ fn handle_indirect_to_register_additional_locations(
         // Negative numbers are offsets relative to RBP.
         if *location >= 0 {
             let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
+            // TODO: add dst_reg to used registers
             match *src_val_size {
                 1 => dynasm!(asm
                     ; mov Rq(TEMP_REG_PRIMARY), QWORD live_vars_buffer.ptr as i64
@@ -496,6 +498,7 @@ pub(crate) fn set_destination_live_vars(
                             &live_vars_buffer,
                         );
                         let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
+                        // TODO: add dst_reg to used registers
                         assert!(
                             *dst_val_size == *src_val_size,
                             "Indirect2Register value size mismatch. Got src: {} and dst: {}",
@@ -740,8 +743,12 @@ mod live_vars_tests {
             );
         }
     }
+    // #[test]
+    // fn test_register_to_register_with_additional_location_register() {
+    //     todo!()
+    // }
     #[test]
-    fn test_register_to_register_restore_temp_registers() {
+    fn test_register_to_register_with_additional_location_indirect() {
         let src_rec = Record {
             offset: 0,
             size: 0,
@@ -777,25 +784,32 @@ mod live_vars_tests {
             size: 0,
         };
 
-        let dest_reg_nums =
-            set_destination_live_vars(&mut asm, &src_rec, &dst_rec, 0, temp_live_vars_buffer);
+        let rbp_offset_reg_store: i32 = 200;
+        let dest_reg_nums = set_destination_live_vars(
+            &mut asm,
+            &src_rec,
+            &dst_rec,
+            rbp_offset_reg_store as i64,
+            temp_live_vars_buffer,
+        );
         let buffer = asm.finalize().unwrap();
         let instructions = get_asm_instructions(&buffer);
         assert_eq!(instructions.len(), 18);
+        dbg!(&instructions);
         // r14 -> r13
         assert_eq!(
             instructions[0],
             format!(
-                "mov r13, qword ptr [rbp + {}]",
-                REG_OFFSETS.get(&14).unwrap()
+                "mov r13, qword ptr [rbp - 0x{0:x}]",
+                rbp_offset_reg_store - REG_OFFSETS.get(&14).unwrap()
             )
         );
         // r13 -> r14 - additional location
         assert_eq!(
             instructions[1],
             format!(
-                "mov rax, qword ptr [rbp + 0x{0:x}]",
-                REG_OFFSETS.get(&13).unwrap()
+                "mov rax, qword ptr [rbp - 0x{0:x}]",
+                rbp_offset_reg_store - REG_OFFSETS.get(&13).unwrap()
             )
         );
         assert_eq!(
@@ -806,24 +820,36 @@ mod live_vars_tests {
         assert_eq!(
             instructions[3],
             format!(
-                "mov r14, qword ptr [rbp + 0x{0:x}]",
-                REG_OFFSETS.get(&13).unwrap()
+                "mov r14, qword ptr [rbp - 0x{0:x}]",
+                rbp_offset_reg_store - REG_OFFSETS.get(&13).unwrap()
             )
         );
         // r15 -> r12 - additional location
-        assert_eq!(instructions[4], "mov rax, qword ptr [rbp]");
+        assert_eq!(
+            instructions[4],
+            format!(
+                "mov rax, qword ptr [rbp - 0x{0:x}]",
+                rbp_offset_reg_store - REG_OFFSETS.get(&15).unwrap()
+            )
+        );
         assert_eq!(
             instructions[5],
             format!("mov qword ptr [rbp - 0x{0:x}], rax", 64)
         );
         // r15 -> r12
-        assert_eq!(instructions[6], "mov r12, qword ptr [rbp]");
+        assert_eq!(
+            instructions[6],
+            format!(
+                "mov r12, qword ptr [rbp - 0x{0:x}]",
+                rbp_offset_reg_store - REG_OFFSETS.get(&15).unwrap()
+            )
+        );
         // r12 -> r15 - additional location
         assert_eq!(
             instructions[7],
             format!(
-                "mov rax, qword ptr [rbp + 0x{0:x}]",
-                REG_OFFSETS.get(&12).unwrap()
+                "mov rax, qword ptr [rbp - 0x{0:x}]",
+                rbp_offset_reg_store - REG_OFFSETS.get(&12).unwrap()
             )
         );
         assert_eq!(
@@ -834,16 +860,16 @@ mod live_vars_tests {
         assert_eq!(
             instructions[9],
             format!(
-                "mov r15, qword ptr [rbp + 0x{0:x}]",
-                REG_OFFSETS.get(&12).unwrap()
+                "mov r15, qword ptr [rbp - 0x{0:x}]",
+                rbp_offset_reg_store - REG_OFFSETS.get(&12).unwrap()
             )
         );
         // rbx -> rbx - additional location -88
         assert_eq!(
             instructions[10],
             format!(
-                "mov rax, qword ptr [rbp + 0x{0:x}]",
-                REG_OFFSETS.get(&3).unwrap()
+                "mov rax, qword ptr [rbp - 0x{0:x}]",
+                rbp_offset_reg_store - REG_OFFSETS.get(&3).unwrap()
             )
         );
         assert_eq!(
@@ -853,8 +879,8 @@ mod live_vars_tests {
         assert_eq!(
             instructions[12],
             format!(
-                "mov rax, qword ptr [rbp + 0x{0:x}]",
-                REG_OFFSETS.get(&3).unwrap()
+                "mov rax, qword ptr [rbp - 0x{0:x}]",
+                rbp_offset_reg_store - REG_OFFSETS.get(&3).unwrap()
             )
         );
         // rbx -> rbx - additional location -8
@@ -866,16 +892,17 @@ mod live_vars_tests {
         assert_eq!(
             instructions[14],
             format!(
-                "mov rbx, qword ptr [rbp + 0x{0:x}]",
-                REG_OFFSETS.get(&3).unwrap()
+                // TODO: question why + here?
+                "mov rbx, qword ptr [rbp - 0x{0:x}]",
+                rbp_offset_reg_store - REG_OFFSETS.get(&3).unwrap()
             )
         );
         // rax -> rax - additional location -16
         assert_eq!(
             instructions[15],
             format!(
-                "mov rax, qword ptr [rbp + 0x{0:x}]",
-                REG_OFFSETS.get(&0).unwrap()
+                "mov rax, qword ptr [rbp - 0x{0:x}]",
+                rbp_offset_reg_store - REG_OFFSETS.get(&0).unwrap()
             )
         );
         assert_eq!(
@@ -885,8 +912,8 @@ mod live_vars_tests {
         assert_eq!(
             instructions[17],
             format!(
-                "mov rax, qword ptr [rbp + 0x{0:x}]",
-                REG_OFFSETS.get(&0).unwrap()
+                "mov rax, qword ptr [rbp - 0x{0:x}]",
+                rbp_offset_reg_store - REG_OFFSETS.get(&0).unwrap()
             )
         );
     }
