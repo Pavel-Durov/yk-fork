@@ -79,8 +79,7 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
         ; mov rsp, QWORD frameaddr as i64
         ; sub rsp, (dst_frame_size).try_into().unwrap() // adjust rsp
     );
-
-    // Calculate the offset from the RBP to the RSP where __ykrt_control_point_real stored the registers.
+     // Calculate the offset from the RBP to the RSP where __ykrt_control_point_real stored the registers.
     let rbp_offset_reg_store = src_frame_size as i64 + (14 * REG64_BYTESIZE) as i64;
 
     let temp_live_vars_buffer =
@@ -88,11 +87,12 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
     if *CP_VERBOSE {
         println!("Transition: {:?}", transition.direction);
         println!(
-            "src_rbp: 0x{:x}, reg_store: 0x{:x}, src_frame_size: 0x{:x}, dst_frame_size: 0x{:x}",
+            "src_rbp: 0x{:x}, reg_store: 0x{:x}, src_frame_size: 0x{:x}, dst_frame_size: 0x{:x}, rbp_offset_reg_store: 0x{:x}",
             frameaddr as i64,
             frameaddr as i64 - rbp_offset_reg_store,
             src_frame_size,
-            dst_frame_size
+            dst_frame_size,
+            rbp_offset_reg_store
         );
     }
     // let live_vars_buffer = temp_live_vars_buffer.unwrap();

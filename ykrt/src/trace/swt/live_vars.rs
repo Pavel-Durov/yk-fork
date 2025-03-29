@@ -185,17 +185,20 @@ pub(crate) fn set_destination_live_vars(
     let mut restore_temp_registers = Vec::new();
     // Index of the source live variable in the temporary buffer.
     let mut src_var_indirect_index = 0;
+
+    // Ensure we have matching live variables
+    assert!(
+        src_rec.live_vars.len() == dst_rec.live_vars.len(),
+        "Source and destination live variable counts don't match: src={}, dst={}",
+        src_rec.live_vars.len(),
+        dst_rec.live_vars.len()
+    );
+
     for (index, src_var) in src_rec.live_vars.iter().enumerate() {
         let dst_var = &dst_rec.live_vars[index];
         if src_var.len() > 1 || dst_var.len() > 1 {
             todo!("Deal with multi register locations");
         }
-        assert!(
-            src_rec.live_vars.len() == dst_rec.live_vars.len(),
-            "Expected single register location, got src: {} and dst: {}",
-            src_rec.live_vars.len(),
-            dst_rec.live_vars.len()
-        );
 
         let src_location = &src_var.get(0).unwrap();
         let dst_location = &dst_var.get(0).unwrap();
