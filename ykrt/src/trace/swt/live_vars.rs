@@ -765,7 +765,7 @@ mod live_vars_tests {
                 LiveVar::new(vec![Location::Register(14, 8, vec![-80])]),
                 LiveVar::new(vec![Location::Register(12, 8, vec![-64])]),
                 LiveVar::new(vec![Location::Register(15, 8, vec![-72])]),
-                LiveVar::new(vec![Location::Register(0, 8, vec![])]),
+                LiveVar::new(vec![Location::Register(0, 8, vec![-16])]),
                 LiveVar::new(vec![Location::Register(3, 8, vec![-88, -8])]),
             ],
         };
@@ -781,7 +781,7 @@ mod live_vars_tests {
             set_destination_live_vars(&mut asm, &src_rec, &dst_rec, 0, temp_live_vars_buffer);
         let buffer = asm.finalize().unwrap();
         let instructions = get_asm_instructions(&buffer);
-        assert_eq!(instructions.len(), 16);
+        assert_eq!(instructions.len(), 18);
         // r14 -> r13
         assert_eq!(
             instructions[0],
@@ -870,9 +870,20 @@ mod live_vars_tests {
                 REG_OFFSETS.get(&3).unwrap()
             )
         );
-        // rax -> rax
+        // rax -> rax - additional location -16
         assert_eq!(
             instructions[15],
+            format!(
+                "mov rax, qword ptr [rbp + 0x{0:x}]",
+                REG_OFFSETS.get(&0).unwrap()
+            )
+        );
+        assert_eq!(
+            instructions[16],
+            format!("mov qword ptr [rbp - 0x{0:x}], rax", 16)
+        );
+        assert_eq!(
+            instructions[17],
             format!(
                 "mov rax, qword ptr [rbp + 0x{0:x}]",
                 REG_OFFSETS.get(&0).unwrap()
