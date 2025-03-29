@@ -1,6 +1,7 @@
 ---
 description: SWT module clone
 globs: *.rs, *.cpp, *.h, *.c, *.ir, *.txt, *.md
+alwaysApply: false
 ---
 # Context
 
@@ -567,3 +568,24 @@ ykrt/src/mt.rs.
 4. Be familiar with the codebase and the programming languages, it is written in C/C++ and Rust.
 5. With code examples, provide the diff instead of the whole file.
 6. Provide brief explanation of the changes and the reasoning.
+
+
+# Source code
+
+- JIT decision of tracing, stop-tracing, trace compilation and trace execution is implemented in [mt.rs](mdc:ykrt/src/mt.rs)
+- SWT control point transition between unopt and opt functions is implemented in [cp.rs](mdc:ykrt/src/trace/swt/cp.rs)
+- Live varibles copy for SWT si implemented in [live_vars.rs](mdc:ykrt/src/trace/swt/live_vars.rs)
+
+
+# Changes
+
+Please modify only @cp.rs and @live_vars.rs when debugging control point transition with SWT.
+
+# Tests
+
+- All failing tests with SWT are marked with `// ignore-if: test $SWT_SKIP_FAILING_TEST=true`
+- To run all passing test with SWT, run this command: `SWT_SKIP_FAILING_TEST=true YKB_TRACER=swt cargo test`
+- To run a test with verbose output use these env vars: `CP_PRINT_MACHINE_CODE=1 CP_VERBOSE_ASM=1 CP_VERBOSE=1`
+  
+
+
