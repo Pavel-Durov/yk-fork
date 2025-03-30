@@ -129,10 +129,18 @@ pub extern "C" fn __ykrt_control_point_real(
     // Frame address of caller.
     frameaddr: *mut c_void,
 ) {
-    // println!(
-    //     "__ykrt_control_point_real - mt: {:p}, loc: {:p}, smid: {}, rbp: {:p}",
-    //     mt, loc, smid, frameaddr
-    // );
+    // use ykrt::trace::swt::cp::debug_print_register;
+    // println!("--------------------------------------------------------------------------");
+    // println!("__ykrt_control_point_real debug");
+    // unsafe {
+    //     debug_print_register(14, 0);
+    //     debug_print_register(13, 0);
+    //     debug_print_register(15, 0);
+    //     debug_print_register(12, 0);
+    //     debug_print_register(3, 0);
+    //     debug_print_register(0, 0);
+    // }
+    // println!("--------------------------------------------------------------------------");
     let mt = unsafe { &*mt };
     let loc = unsafe { &*loc };
     if !loc.is_null() {

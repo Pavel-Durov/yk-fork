@@ -570,6 +570,14 @@ ykrt/src/mt.rs.
 6. Provide brief explanation of the changes and the reasoning.
 
 
+# Debug output
+
+## Register live varible
+Register(15, 8, [3, -50]) - Register:r15, value size: 6, additional locations: register r3, rbp-50
+
+## Indirect Register live varible
+Indirect(6, -80, 8) - Register r6, location: rbp-80, value size: 8
+
 # Source code
 
 - JIT decision of tracing, stop-tracing, trace compilation and trace execution is implemented in [mt.rs](mdc:ykrt/src/mt.rs)

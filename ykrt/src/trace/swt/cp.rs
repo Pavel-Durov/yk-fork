@@ -79,7 +79,7 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
         ; mov rsp, QWORD frameaddr as i64
         ; sub rsp, (dst_frame_size).try_into().unwrap() // adjust rsp
     );
-     // Calculate the offset from the RBP to the RSP where __ykrt_control_point_real stored the registers.
+    // Calculate the offset from the RBP to the RSP where __ykrt_control_point_real stored the registers.
     let rbp_offset_reg_store = src_frame_size as i64 + (14 * REG64_BYTESIZE) as i64;
 
     let temp_live_vars_buffer =
@@ -117,24 +117,7 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
         0,
         "RSP is not aligned to 16 bytes"
     );
-
-    // Deallocate the buffer
-    if temp_live_vars_buffer.variables.len() > 0 {
-        // if *CP_BREAK {
-        //     dynasm!(asm; .arch x64; int3);
-        // }
-        // calling __yk_swt_dealloc_buffer overrides the register store values.
-        // dynasm!(asm
-        //     ; .arch x64
-        //     ; mov rdi, QWORD temp_live_vars_buffer.ptr as i64
-        //     ; mov rsi, QWORD temp_live_vars_buffer.layout.size() as i64
-        //     ; mov rdx, QWORD temp_live_vars_buffer.layout.align() as i64
-        //     ; mov rax, QWORD __yk_swt_dealloc_buffer as i64
-        //     ; call rax
-        // );
-    }
     restore_registers(&mut asm, used_registers, rbp_offset_reg_store as i32);
-
     if transition.exec_trace {
         if *CP_VERBOSE {
             println!("@@ calling exec_trace");
@@ -155,6 +138,18 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
     } else {
         let call_offset = calc_after_cp_offset(dst_rec.offset).unwrap();
         let dst_target_addr = i64::try_from(dst_rec.offset).unwrap() + call_offset;
+
+        // println!("----------");
+        // println!("swt_module_cp_transition");
+
+        // debug_print_register(13,0);
+        // debug_print_register(13, 0);
+        // debug_print_register(12, 0);
+        // debug_print_register(15, 0);
+        // debug_print_register(3, 0);
+        // debug_print_register(0, 0);
+        // debug_print_register(6, 128);
+        // println!("----------");
         dynasm!(asm
             ; .arch x64
             // ; add rsp, src_val_buffer_size // remove the temporary buffer from the stack
@@ -201,6 +196,113 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
     func();
 }
 
+
+pub unsafe extern "C" fn debug_print_register(reg_num: u16, offset: i32) {
+    use std::arch::asm;
+    let rbx_addr_u64: u64;
+    match reg_num {
+        0 => asm!(
+            "mov {0}, rax",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        1 => asm!(
+            "mov {0}, rcx",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        2 => asm!(
+            "mov {0}, rdx",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        3 => asm!(
+            "mov {0}, rbx",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        6 => {
+            if offset == 128{
+                asm!(
+                    "mov {0}, QWORD PTR [rbp - 128]",
+                    out(reg) rbx_addr_u64,
+                    options(nostack, nomem, preserves_flags)
+                )
+            }else{
+                panic!("Unsupported offset: {}", offset);
+            }
+        },
+        7 => asm!(
+            "mov {0}, rdi",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        8 => asm!(
+            "mov {0}, r8",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        9 => asm!(
+            "mov {0}, r9",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        10 => asm!(
+            "mov {0}, r10",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        11 => asm!(
+            "mov {0}, r11",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        12 => asm!(
+            "mov {0}, r12",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        13 => asm!(
+            "mov {0}, r13",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        14 => asm!(
+            "mov {0}, r14",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        15 => asm!(
+            "mov {0}, r15",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        _ => {
+            panic!("Unsupported register number: {}", reg_num);
+        }
+    }
+    if rbx_addr_u64 == 0 {
+        println!("{} contains a null pointer, cannot dereference.", reg_num);
+    } else {
+        if reg_num != 3{
+            println!(
+                "register:{}, value: 0x{:x}",
+                reg_num, rbx_addr_u64
+            );
+        }else{
+        let ptr = rbx_addr_u64 as *const u64;
+
+            unsafe {
+                let value_at_addr: u64 = ptr.read_volatile();
+                println!(
+                    "register:{}, value: 0x{:x}, value_at_addr: 0x{:x}",
+                    reg_num, rbx_addr_u64, value_at_addr
+                );
+            }
+        }
+    }
+}
+
 fn restore_registers(
     asm: &mut Assembler,
     exclude_registers: HashMap<u16, u16>,
@@ -218,7 +320,7 @@ fn restore_registers(
 
 fn restore_register(asm: &mut Assembler, dwarf_reg_num: u16, rbp_offset_reg_store: i32) {
     let reg_offset = reg_num_to_ykrt_control_point_rsp_offset(dwarf_reg_num);
-    let reg_val_rbp_offset = i32::try_from(rbp_offset_reg_store - reg_offset as i32).unwrap();
+    let reg_val_rbp_offset = i32::try_from(rbp_offset_reg_store - reg_offset).unwrap();
     let dest_reg = dwarf_to_dynasm_reg(dwarf_reg_num.try_into().unwrap());
     dynasm!(asm
         ; mov Rq(dest_reg), QWORD [rbp - reg_val_rbp_offset]
