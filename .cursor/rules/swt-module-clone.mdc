@@ -576,7 +576,7 @@ ykrt/src/mt.rs.
 Register(15, 8, [3, -50]) - Register:r15, value size: 6, additional locations: register r3, rbp-50
 
 ## Indirect Register live varible
-Indirect(6, -80, 8) - Register r6, location: rbp-80, value size: 8
+Indirect(6, -80, 8) - Register rbp, location: rbp-80, value size: 8
 
 # Source code
 
