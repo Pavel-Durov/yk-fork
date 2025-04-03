@@ -1,6 +1,7 @@
 #ifndef YK_H
 #define YK_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <sys/types.h>
 
@@ -20,8 +21,6 @@
 typedef struct {
   uintptr_t state;
 } YkLocation;
-
-#define YKLOCATION_NULL ((YkLocation) 0 )
 
 #if defined(__x86_64)
 typedef uint32_t YkHotThreshold;
@@ -69,12 +68,10 @@ YkLocation yk_location_new(void);
 // in a program which can never contribute to a trace.
 YkLocation yk_location_null(void);
 
-// Create a new `Location`.
-//
-// Note that a `Location` created by this call must not simply be discarded:
-// if no longer wanted, it must be passed to `yk_location_drop` to allow
-// appropriate clean-up.
-YkLocation yk_location_empty(void);
+// Determine if the location is a "null" location.
+inline bool yk_location_is_null(YkLocation l) {
+  return l.state == 0;
+}
 
 // Clean-up a `Location` previously created by `yk_new_location`. The
 // `Location` must not be further used after this call or undefined behaviour
