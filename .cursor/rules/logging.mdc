@@ -1,0 +1,16 @@
+---
+description: Defines how to add logs in the yk project
+globs: 
+alwaysApply: false
+---
+
+## Cpp code
+
+- Use llvm built in dbgs() function to stream text.
+- Use .dump() function to print LLVM instructions.
+- Prefix any log messages with "@@@" so it will be visible in the console output.
+
+## Rust code
+
+- User dbg functions to add logs.
+- Prefix any log messages with "@@@" so it will be visible in the console output.
