@@ -196,7 +196,6 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
     func();
 }
 
-
 pub unsafe extern "C" fn debug_print_register(reg_num: u16, offset: i32) {
     use std::arch::asm;
     let rbx_addr_u64: u64;
@@ -222,16 +221,16 @@ pub unsafe extern "C" fn debug_print_register(reg_num: u16, offset: i32) {
             options(nostack, nomem, preserves_flags)
         ),
         6 => {
-            if offset == 128{
+            if offset == 128 {
                 asm!(
                     "mov {0}, QWORD PTR [rbp - 128]",
                     out(reg) rbx_addr_u64,
                     options(nostack, nomem, preserves_flags)
                 )
-            }else{
+            } else {
                 panic!("Unsupported offset: {}", offset);
             }
-        },
+        }
         7 => asm!(
             "mov {0}, rdi",
             out(reg) rbx_addr_u64,
@@ -284,13 +283,10 @@ pub unsafe extern "C" fn debug_print_register(reg_num: u16, offset: i32) {
     if rbx_addr_u64 == 0 {
         println!("{} contains a null pointer, cannot dereference.", reg_num);
     } else {
-        if reg_num != 3{
-            println!(
-                "register:{}, value: 0x{:x}",
-                reg_num, rbx_addr_u64
-            );
-        }else{
-        let ptr = rbx_addr_u64 as *const u64;
+        if reg_num != 3 {
+            println!("register:{}, value: 0x{:x}", reg_num, rbx_addr_u64);
+        } else {
+            let ptr = rbx_addr_u64 as *const u64;
 
             unsafe {
                 let value_at_addr: u64 = ptr.read_volatile();
