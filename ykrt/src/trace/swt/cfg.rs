@@ -23,6 +23,13 @@ pub enum CPTransitionDirection {
 pub(crate) static REG64_BYTESIZE: u64 = 8;
 
 // Flag for verbose logging
+pub(crate) static SWT_CP_PATCHPOINT: LazyLock<bool> = LazyLock::new(|| {
+    env::var("SWT_CP_PATCHPOINT")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+});
+
+// Flag for verbose logging
 pub(crate) static CP_VERBOSE: LazyLock<bool> =
     LazyLock::new(|| env::var("CP_VERBOSE").map(|v| v == "1").unwrap_or(false));
 
