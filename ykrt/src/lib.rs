@@ -5,9 +5,9 @@
 #![feature(int_roundings)]
 #![feature(let_chains)]
 #![feature(naked_functions)]
+#![allow(clippy::too_many_arguments)]
 #![allow(clippy::type_complexity)]
 #![allow(clippy::upper_case_acronyms)]
-#![allow(clippy::comparison_chain)]
 
 pub(crate) mod aotsmp;
 pub mod compile;

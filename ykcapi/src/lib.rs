@@ -15,6 +15,8 @@
 #![allow(clippy::missing_safety_doc)]
 #![feature(naked_functions)]
 
+#[cfg(feature = "ykd")]
+use std::ffi::CStr;
 use std::{
     ffi::{c_char, c_void, CString},
     mem::forget,
@@ -82,6 +84,7 @@ pub extern "C" fn __ykrt_control_point(
             // trace (at the moment we just rip out the control point's stack), which means we then
             // no longer need to recover callee-saved registers as the control point will do this
             // for us.
+            // "int3",
             "push rax",
             "push rcx",
             "push rbx",
@@ -128,6 +131,18 @@ pub extern "C" fn __ykrt_control_point_real(
     // Frame address of caller.
     frameaddr: *mut c_void,
 ) {
+    // use ykrt::trace::swt::cp::debug_print_register;
+    // println!("--------------------------------------------------------------------------");
+    // println!("__ykrt_control_point_real debug");
+    // unsafe {
+    //     debug_print_register(14, 0);
+    //     debug_print_register(13, 0);
+    //     debug_print_register(15, 0);
+    //     debug_print_register(12, 0);
+    //     debug_print_register(3, 0);
+    //     debug_print_register(0, 0);
+    // }
+    // println!("--------------------------------------------------------------------------");
     let mt = unsafe { &*mt };
     let loc = unsafe { &*loc };
     if !loc.is_null() {
@@ -154,6 +169,15 @@ pub unsafe extern "C" fn yk_mt_sidetrace_threshold_set(mt: *const MT, hot_thresh
 #[no_mangle]
 pub extern "C" fn yk_location_new() -> Location {
     Location::new()
+}
+
+#[cfg(feature = "ykd")]
+#[no_mangle]
+pub unsafe extern "C" fn yk_location_set_debug_str(loc: *mut Location, s: *const c_char) {
+    let s = unsafe { CStr::from_ptr(s) }.to_str().unwrap().to_owned();
+    let loc = unsafe { &*loc };
+    assert!(!loc.is_null());
+    loc.set_hl_debug_str(s);
 }
 
 #[no_mangle]

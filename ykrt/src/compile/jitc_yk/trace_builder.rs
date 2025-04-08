@@ -11,9 +11,9 @@ use super::{
 };
 use crate::{
     aotsmp::AOT_STACKMAPS,
-    compile::CompilationError,
+    compile::{CompilationError, CompiledTrace},
     log::stats::TimingState,
-    mt::MT,
+    mt::{TraceId, MT},
     trace::{AOTTraceIterator, AOTTraceIteratorError, TraceAction},
 };
 use std::{collections::HashMap, ffi::CString, marker::PhantomData, sync::Arc};
@@ -62,19 +62,16 @@ impl<Register: Send + Sync + 'static> TraceBuilder<Register> {
     ///  - `promotions`: Values promoted to constants during runtime.
     ///  - `debug_archors`: Debug strs recorded during runtime.
     fn new(
-        mt: &Arc<MT>,
+        _mt: &Arc<MT>,
         tracekind: TraceKind,
         aot_mod: &'static Module,
+        ctrid: TraceId,
         promotions: Box<[u8]>,
         debug_strs: Vec<String>,
     ) -> Result<Self, CompilationError> {
         Ok(Self {
             aot_mod,
-            jit_mod: jit_ir::Module::new(
-                tracekind,
-                mt.next_compiled_trace_id(),
-                aot_mod.global_decls_len(),
-            )?,
+            jit_mod: jit_ir::Module::new(tracekind, ctrid, aot_mod.global_decls_len())?,
             local_map: HashMap::new(),
             cp_block: None,
             // We have to insert a placeholder frame to represent the place we started tracing, as
@@ -114,21 +111,26 @@ impl<Register: Send + Sync + 'static> TraceBuilder<Register> {
         blk: &'static aot_ir::BBlock,
     ) -> Result<(), CompilationError> {
         // Find the control point call to retrieve the live variables from its safepoint.
-        //
-        // FIXME: Stash the location at IR lowering time, instead of searching at runtime.
-        let mut safepoint = None;
-        let mut inst_iter = blk.insts.iter().enumerate().rev();
-        for (_, inst) in inst_iter.by_ref() {
-            // Is it a call to the control point, then insert loads for the trace inputs. These
-            // directly reference registers or stack slots in the parent frame and thus don't
-            // necessarily result in machine code during codegen.
-            if inst.is_control_point(self.aot_mod) {
-                safepoint = Some(inst.safepoint().unwrap());
-                break;
+        let safepoint = match self.jit_mod.tracekind() {
+            TraceKind::HeaderOnly | TraceKind::HeaderAndBody => {
+                let mut inst_iter = blk.insts.iter().enumerate().rev();
+                let mut safepoint = None;
+                for (_, inst) in inst_iter.by_ref() {
+                    // Is it a call to the control point, then insert loads for the trace inputs. These
+                    // directly reference registers or stack slots in the parent frame and thus don't
+                    // necessarily result in machine code during codegen.
+                    if inst.is_control_point(self.aot_mod) {
+                        safepoint = Some(inst.safepoint().unwrap());
+                        break;
+                    }
+                }
+                // If we don't find a safepoint here something has gone wrong with the AOT IR.
+                safepoint.unwrap().clone()
             }
-        }
-        // If we don't find a safepoint here something has gone wrong with the AOT IR.
-        let safepoint = safepoint.unwrap();
+            TraceKind::Sidetrace(_) => unreachable!(),
+            TraceKind::Connector(ctr) => ctr.safepoint().as_ref().unwrap().clone(),
+        };
+        self.jit_mod.safepoint = Some(safepoint.clone());
         let (rec, _) = AOT_STACKMAPS
             .as_ref()
             .unwrap()
@@ -272,7 +274,13 @@ impl<Register: Send + Sync + 'static> TraceBuilder<Register> {
                     incoming_vals,
                     ..
                 } => {
-                    debug_assert_eq!(prevbb.as_ref().unwrap().funcidx(), bid.funcidx());
+                    assert_eq!(
+                        prevbb.as_ref().map(|x| x.funcidx()),
+                        Some(bid.funcidx()),
+                        "{:?} {:?}",
+                        self.jit_mod.ctrid(),
+                        self.jit_mod.insts_len()
+                    );
                     self.handle_phi(
                         bid,
                         iidx,
@@ -945,7 +953,7 @@ impl<Register: Send + Sync + 'static> TraceBuilder<Register> {
         safepoint: &'static aot_ir::DeoptSafepoint,
         next_bb: &aot_ir::BBlockId,
         test_val: &aot_ir::Operand,
-        _default_dest: &aot_ir::BBlockIdx,
+        default_dest: &aot_ir::BBlockIdx,
         case_values: &[u64],
         case_dests: &[aot_ir::BBlockIdx],
     ) -> Result<(), CompilationError> {
@@ -978,6 +986,10 @@ impl<Register: Send + Sync + 'static> TraceBuilder<Register> {
                 self.create_guard(bid, &jit_cond, bb == next_bb.bbidx(), safepoint)?
             }
             None => {
+                // If this assertion fails then the basic block that was executed next wasn't an
+                // arm of the switch and something has gone wrong.
+                assert_eq!(&next_bb.bbidx(), default_dest);
+
                 // The default case was traced.
                 //
                 // We need a guard that expresses that `test_val` was not any of the `case_values`.
@@ -1258,6 +1270,14 @@ impl<Register: Send + Sync + 'static> TraceBuilder<Register> {
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
+
+        // Peek to the last block (needed for side-tracing).
+        let lastblk = match &tas.last() {
+            Some(b) => self.lookup_aot_block(b),
+            _ => todo!(),
+        };
+        let mut trace_iter = tas.into_iter().peekable();
+
         mt.stats.timing_state(TimingState::Compiling);
 
         // The previous processed block.
@@ -1273,10 +1293,6 @@ impl<Register: Send + Sync + 'static> TraceBuilder<Register> {
             prev_bid = Some(sti.bid.clone());
 
             // Setup the trace builder for side-tracing.
-            let lastblk = match &tas.last() {
-                Some(b) => self.lookup_aot_block(b),
-                _ => todo!(),
-            };
             // Create loads for the live variables that will be passed into the side-trace from the
             // parent trace.
             for (idx, (aotid, loc)) in sti.lives().iter().enumerate() {
@@ -1309,7 +1325,7 @@ impl<Register: Send + Sync + 'static> TraceBuilder<Register> {
             // captures.
             //
             // Note that it is not necessary to emit such a guard into side-traces stemming from
-            // regular conditionals, since a conditional has only two sucessors. The parent trace
+            // regular conditionals, since a conditional has only two successors. The parent trace
             // captures one, so by construction the side trace must capture the other.
             let prevbb = self.aot_mod.bblock(prev_bid.as_ref().unwrap());
             if let aot_ir::Inst::Switch {
@@ -1320,15 +1336,20 @@ impl<Register: Send + Sync + 'static> TraceBuilder<Register> {
                 safepoint,
             } = &prevbb.insts.last().unwrap()
             {
-                let nextbb = match &tas.first() {
-                    Some(b) => self.lookup_aot_block(b),
-                    _ => panic!(),
-                };
+                // Skip any residual bits of the block containing the switch that *could* appear at
+                // the start of the trace. It appears that this can happen when the switch dispatch
+                // is codegenned to multiple blocks (e.g. cascading conditionals).
+                while &self.lookup_aot_block(trace_iter.peek().unwrap()).unwrap()
+                    == prev_bid.as_ref().unwrap()
+                {
+                    let _ = trace_iter.next().unwrap(); // skip that block.
+                }
+                let nextbb = self.lookup_aot_block(trace_iter.peek().unwrap()).unwrap();
                 self.handle_switch(
                     prev_bid.as_ref().unwrap(), // this is safe, we've just created this above
                     prevbb.insts.len() - 1,
                     safepoint,
-                    nextbb.as_ref().unwrap(),
+                    &nextbb,
                     test_val,
                     default_dest,
                     case_values,
@@ -1344,7 +1365,6 @@ impl<Register: Send + Sync + 'static> TraceBuilder<Register> {
         // Typically, the mapper would strip this block for us, but for codegen related reasons,
         // e.g. a switch statement codegenning to many machine blocks, it's possible for multiple
         // duplicates of this same block to show up here, which all need to be skipped.
-        let mut trace_iter = tas.into_iter().peekable();
         if prev_bid.is_some() {
             while self.lookup_aot_block(trace_iter.peek().unwrap()) == prev_bid {
                 trace_iter.next().unwrap();
@@ -1352,7 +1372,7 @@ impl<Register: Send + Sync + 'static> TraceBuilder<Register> {
         }
 
         match self.jit_mod.tracekind() {
-            TraceKind::HeaderOnly | TraceKind::HeaderAndBody => {
+            TraceKind::HeaderOnly | TraceKind::HeaderAndBody | TraceKind::Connector(_) => {
                 // Find the block containing the control point call. This is the (sole) predecessor of the
                 // first (guaranteed mappable) block in the trace. Note that empty traces are handled in
                 // the tracing phase so the `unwrap` is safe.
@@ -1489,26 +1509,21 @@ impl<Register: Send + Sync + 'static> TraceBuilder<Register> {
         let blk = self.aot_mod.bblock(self.cp_block.as_ref().unwrap());
         let cpcall = blk.insts.iter().rev().nth(1).unwrap();
         debug_assert!(cpcall.is_control_point(self.aot_mod));
+        let safepoint = cpcall.safepoint().unwrap();
+        for idx in 0..safepoint.lives.len() {
+            let aot_op = &safepoint.lives[idx];
+            let jit_op = &self.local_map[&aot_op.to_inst_id()];
+            self.jit_mod.push_header_end_var(jit_op.clone());
+        }
         match self.jit_mod.tracekind() {
-            TraceKind::Sidetrace(_) => {
-                // This is the end of a side-trace. Create a jump back to the root trace.
-                let safepoint = cpcall.safepoint().unwrap();
-                for idx in 0..safepoint.lives.len() {
-                    let aot_op = &safepoint.lives[idx];
-                    let jit_op = &self.local_map[&aot_op.to_inst_id()];
-                    self.jit_mod.push_header_end_var(jit_op.clone());
-                }
-                self.jit_mod.push(jit_ir::Inst::SidetraceEnd)?;
+            TraceKind::HeaderOnly | TraceKind::HeaderAndBody => {
+                self.jit_mod.push(jit_ir::Inst::TraceHeaderEnd(false))?;
             }
-            TraceKind::HeaderAndBody | TraceKind::HeaderOnly => {
-                // For normal traces insert a jump back to the loop start.
-                let safepoint = cpcall.safepoint().unwrap();
-                for idx in 0..safepoint.lives.len() {
-                    let aot_op = &safepoint.lives[idx];
-                    let jit_op = &self.local_map[&aot_op.to_inst_id()];
-                    self.jit_mod.push_header_end_var(jit_op.clone());
-                }
-                self.jit_mod.push(jit_ir::Inst::TraceHeaderEnd)?;
+            TraceKind::Connector(_) => {
+                self.jit_mod.push(jit_ir::Inst::TraceHeaderEnd(true))?;
+            }
+            TraceKind::Sidetrace(_) => {
+                self.jit_mod.push(jit_ir::Inst::SidetraceEnd)?;
             }
         }
 
@@ -1530,16 +1545,20 @@ struct InlinedFrame {
 pub(super) fn build<Register: Send + Sync + 'static>(
     mt: &Arc<MT>,
     aot_mod: &'static Module,
+    ctrid: TraceId,
     ta_iter: Box<dyn AOTTraceIterator>,
     sti: Option<Arc<YkSideTraceInfo<Register>>>,
     promotions: Box<[u8]>,
     debug_strs: Vec<String>,
+    connector_tid: Option<Arc<dyn CompiledTrace>>,
 ) -> Result<jit_ir::Module, CompilationError> {
     let tracekind = if let Some(x) = sti {
         TraceKind::Sidetrace(x)
+    } else if let Some(connector_tid) = connector_tid {
+        TraceKind::Connector(connector_tid)
     } else {
         TraceKind::HeaderOnly
     };
-    TraceBuilder::<Register>::new(mt, tracekind, aot_mod, promotions, debug_strs)?
+    TraceBuilder::<Register>::new(mt, tracekind, aot_mod, ctrid, promotions, debug_strs)?
         .build(mt, ta_iter)
 }

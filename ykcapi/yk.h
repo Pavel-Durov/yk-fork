@@ -1,6 +1,7 @@
 #ifndef YK_H
 #define YK_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <sys/types.h>
 
@@ -20,8 +21,6 @@
 typedef struct {
   uintptr_t state;
 } YkLocation;
-
-#define YKLOCATION_NULL ((YkLocation) 0 )
 
 #if defined(__x86_64)
 typedef uint32_t YkHotThreshold;
@@ -65,16 +64,24 @@ void yk_mt_sidetrace_threshold_set(YkMT *, YkHotThreshold);
 // appropriate clean-up.
 YkLocation yk_location_new(void);
 
+// Force the location to have a HotLocation and assign it a debug string.
+//
+// Debug strings (where present) are displayed in some log messages.
+//
+// The intended use of this is for interpreters to add source-level information
+// to locations for ease of debugging and human comprehension.
+//
+// This function is only avaliable if yk was built with the "ykd" feature.
+YkLocation yk_location_set_debug_str(YkLocation *, char *);
+
 // Create a new NULL-equivalent `Location`. Such a `YkLocation` denotes a point
 // in a program which can never contribute to a trace.
 YkLocation yk_location_null(void);
 
-// Create a new `Location`.
-//
-// Note that a `Location` created by this call must not simply be discarded:
-// if no longer wanted, it must be passed to `yk_location_drop` to allow
-// appropriate clean-up.
-YkLocation yk_location_empty(void);
+// Determine if the location is a "null" location.
+inline bool yk_location_is_null(YkLocation l) {
+  return l.state == 0;
+}
 
 // Clean-up a `Location` previously created by `yk_new_location`. The
 // `Location` must not be further used after this call or undefined behaviour
