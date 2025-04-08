@@ -511,10 +511,12 @@ impl MT {
                     mtt.push_tstate(MTThreadState::Executing { ctr });
                 });
                 self.stats.timing_state(TimingState::JitExecuting);
+                #[cfg(tracer_swt)]
                 unsafe {
                     // Transition to unopt before trace execution since``
                     // the trace was collected un unopt version.
                     // This function will call __yk_exec_trace when live variables are restored.
+                    #[cfg(tracer_swt)]
                     swt_module_cp_transition(CPTransition {
                         direction: CPTransitionDirection::OptToUnopt,
                         frameaddr,
