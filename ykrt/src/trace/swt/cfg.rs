@@ -22,9 +22,9 @@ pub enum CPTransitionDirection {
 /// The size of a 64-bit register in bytes.
 pub(crate) static REG64_BYTESIZE: u64 = 8;
 
-// Flag for verbose logging
-pub(crate) static SWT_CP_PATCHPOINT: LazyLock<bool> = LazyLock::new(|| {
-    env::var("SWT_CP_PATCHPOINT")
+// Flag for cp patchpoint live var preservation
+pub(crate) static CP_PATCHPOINT: LazyLock<bool> = LazyLock::new(|| {
+    env::var("CP_PATCHPOINT")
         .map(|v| v == "1")
         .unwrap_or(false)
 });
