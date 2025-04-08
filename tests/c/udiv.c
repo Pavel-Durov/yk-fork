@@ -5,9 +5,28 @@
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   env-var: YKD_LOG=4
 //   stderr:
-//    ...
+//    yk-jit-event: start-tracing
+//    udiv 21845
+//    udiv2 715827882
+//    udiv3 1431655764
+//    udiv4 42
+//    udiv 21845
+//    udiv2 715827882
+//    udiv3 1431655764
+//    udiv4 42
+//    udiv 21845
+//    udiv2 715827882
+//    udiv3 1431655764
+//    udiv4 42
+//    udiv 21845
+//    udiv2 715827882
+//    udiv3 1431655764
+//    udiv4 42
+//    exit
 
 
+// Note: TODO: understand why tracing is not being done.
+// Original output;
 //   stderr:
 //     yk-jit-event: start-tracing
 //     udiv 21845
