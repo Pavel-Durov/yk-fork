@@ -60,7 +60,6 @@ fn handle_register_to_register_additional_locations(
         if *location >= 0 {
             dest_reg_nums.insert(*dst_reg_num, *src_val_size);
             let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
-            // TODO: add dst_reg to used registers
             match *src_val_size {
                 1 => {
                     dynasm!(asm; mov Rb(dst_reg), BYTE [rbp - src_reg_val_rbp_offset])
@@ -121,7 +120,6 @@ fn handle_indirect_to_register_additional_locations(
         if *location >= 0 {
             dest_reg_nums.insert(*dst_reg_num, *src_val_size);
             let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
-            // TODO: add dst_reg to used registers
             match *src_val_size {
                 1 => dynasm!(asm
                     ; mov Rq(TEMP_REG_PRIMARY), QWORD live_vars_buffer.ptr as i64
