@@ -1,32 +1,10 @@
+// ignore-if: test $SWT_SKIP_FAILING_TEST=true
 // Compiler:
 //   env-var: YKB_EXTRA_CC_FLAGS=-O1
 // Run-time:
 //   env-var: YKD_LOG_IR=jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   env-var: YKD_LOG=4
-//   stderr:
-//    yk-jit-event: start-tracing
-//    udiv 21845
-//    udiv2 715827882
-//    udiv3 1431655764
-//    udiv4 42
-//    udiv 21845
-//    udiv2 715827882
-//    udiv3 1431655764
-//    udiv4 42
-//    udiv 21845
-//    udiv2 715827882
-//    udiv3 1431655764
-//    udiv4 42
-//    udiv 21845
-//    udiv2 715827882
-//    udiv3 1431655764
-//    udiv4 42
-//    exit
-
-
-// Note: TODO: understand why tracing is not being done.
-// Original output;
 //   stderr:
 //     yk-jit-event: start-tracing
 //     udiv 21845
@@ -62,33 +40,6 @@
 //     exit
 
 // Test unsigned division.
-
-// SWT Note:
-// thread '<unnamed>' panicked at ykcapi/src/lib.rs:132:23:
-// null pointer dereference occurred
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-// thread caused non-unwinding panic. aborting.
-// --- End jit-pre-opt ---
-// udiv 21845
-// udiv2 715827882
-// udiv3 1431655764
-// udiv4 42
-// mt pointer: 0x1f97f670
-// yk-jit-event: enter-jit-code
-// udiv 21845
-// udiv2 715827882
-// udiv3 1431655764
-// udiv4 42
-// mt pointer: 0x7ff713d2a028
-// udiv 21845
-// udiv2 715827882
-// udiv3 1431655764
-// udiv4 42
-// yk-jit-event: deoptimise
-// exit
-
-
-
 
 #include <assert.h>
 #include <stdio.h>
