@@ -44,7 +44,7 @@ struct RestoreTempRegisters<'a> {
     src_var_indirect_index: i32,
 }
 
-// Helper function to handle additional locations for register transfers
+// Handles additional locations for register-to-register.
 fn handle_register_to_register_additional_locations(
     asm: &mut dynasmrt::Assembler<dynasmrt::x64::X64Relocation>,
     src_reg_val_rbp_offset: i32,
@@ -103,7 +103,7 @@ fn handle_register_to_register_additional_locations(
     }
 }
 
-// Helper function to handle additional locations for indirect-to-register transfers
+// Handles additional locations for indirect-to-register.
 fn handle_indirect_to_register_additional_locations(
     asm: &mut dynasmrt::Assembler<dynasmrt::x64::X64Relocation>,
     dst_add_locs: &Vec<i16>,
@@ -242,24 +242,14 @@ pub(crate) fn set_destination_live_vars(
                             dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
                             let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
                             match *src_val_size {
-                                1 => {
-                                    dynasm!(asm; mov Rb(dst_reg), BYTE [rbp - src_reg_val_rbp_offset])
-                                }
-                                2 => {
-                                    dynasm!(asm; mov Rw(dst_reg), WORD [rbp - src_reg_val_rbp_offset])
-                                }
-                                4 => {
-                                    dynasm!(asm; mov Rd(dst_reg), DWORD [rbp - src_reg_val_rbp_offset])
-                                }
-                                8 => {
-                                    dynasm!(asm; mov Rq(dst_reg), QWORD [rbp - src_reg_val_rbp_offset])
-                                }
-                                _ => {
-                                    todo!(
-                                        "unexpect Register to Register value size {}",
-                                        src_val_size
-                                    )
-                                }
+                                1 => dynasm!(asm; mov Rb(dst_reg), BYTE [rbp - src_reg_val_rbp_offset]),
+                                2 => dynasm!(asm; mov Rw(dst_reg), WORD [rbp - src_reg_val_rbp_offset]),
+                                4 => dynasm!(asm; mov Rd(dst_reg), DWORD [rbp - src_reg_val_rbp_offset]),
+                                8 => dynasm!(asm; mov Rq(dst_reg), QWORD [rbp - src_reg_val_rbp_offset]),
+                                _ => panic!(
+                                    "unexpect Register to Register value size {}",
+                                    src_val_size
+                                ),
                             }
                         }
                     }
@@ -288,12 +278,10 @@ pub(crate) fn set_destination_live_vars(
                                 ; mov Rd(TEMP_REG_PRIMARY), DWORD [rbp - src_reg_val_rbp_offset]
                                 ; mov DWORD [rbp + *dst_off], eax
                             ),
-                            8 => {
-                                dynasm!(asm
-                                    ; mov Rq(TEMP_REG_PRIMARY), QWORD [rbp - src_reg_val_rbp_offset]
-                                    ; mov QWORD [rbp + *dst_off], rax
-                                );
-                            }
+                            8 => dynasm!(asm
+                                ; mov Rq(TEMP_REG_PRIMARY), QWORD [rbp - src_reg_val_rbp_offset]
+                                ; mov QWORD [rbp + *dst_off], rax
+                            ),
                             _ => panic!(
                                 "Unexpected Indirect to Register value size: {}",
                                 src_val_size
@@ -405,8 +393,8 @@ pub(crate) fn set_destination_live_vars(
                 src_var_indirect_index += 1;
             }
             Direct(_, _, _) => {
-                // Do nothing
-            }
+                /* Do nothing */
+            },
             _ => panic!("Unexpected source location: {:?}", src_location),
         }
     }
@@ -454,21 +442,11 @@ pub(crate) fn set_destination_live_vars(
                             dst_val_size
                         );
                         match *src_val_size {
-                            1 => {
-                                dynasm!(asm; mov Rb(dst_reg), BYTE [rbp - src_reg_val_rbp_offset])
-                            }
-                            2 => {
-                                dynasm!(asm; mov Rw(dst_reg), WORD [rbp - src_reg_val_rbp_offset])
-                            }
-                            4 => {
-                                dynasm!(asm; mov Rd(dst_reg), DWORD [rbp - src_reg_val_rbp_offset])
-                            }
-                            8 => {
-                                dynasm!(asm; mov Rq(dst_reg), QWORD [rbp - src_reg_val_rbp_offset])
-                            }
-                            _ => {
-                                todo!("unexpect Register to Register value size {}", src_val_size)
-                            }
+                            1 => dynasm!(asm; mov Rb(dst_reg), BYTE [rbp - src_reg_val_rbp_offset]),
+                            2 => dynasm!(asm; mov Rw(dst_reg), WORD [rbp - src_reg_val_rbp_offset]),
+                            4 => dynasm!(asm; mov Rd(dst_reg), DWORD [rbp - src_reg_val_rbp_offset]),
+                            8 => dynasm!(asm; mov Rq(dst_reg), QWORD [rbp - src_reg_val_rbp_offset]),
+                            _ => panic!("unexpect Register to Register value size {}", src_val_size),
                         }
                     }
                     _ => panic!(
@@ -538,6 +516,8 @@ pub(crate) fn set_destination_live_vars(
     dest_reg_nums
 }
 
+// Calculates the size of the live vars buffer.
+// The buffer is aligned to 16 bytes.
 fn calculate_live_vars_buffer_size(src_rec: &Record) -> i32 {
     let mut src_val_buffer_size: i32 = 0;
     for (_, src_var) in src_rec.live_vars.iter().enumerate() {
@@ -556,6 +536,9 @@ fn calculate_live_vars_buffer_size(src_rec: &Record) -> i32 {
     }
 }
 
+// Allocates a temporary buffer for the live vars.
+// This allocation happens only once per direction.
+// The buffer is aligned to 16 bytes.
 fn allocate_buffer(
     src_rec: &Record,
     cp_direction: CPTransitionDirection,
@@ -574,9 +557,6 @@ fn allocate_buffer(
 
     // Get the buffer - either from the OnceLock or create it
     let thread_safe_buffer = buffer_cell.get_or_init(|| {
-        if *CP_VERBOSE {
-            println!("Allocating new buffer for direction {:?}", cp_direction);
-        }
         unsafe {
             let layout = Layout::from_size_align(src_val_buffer_size as usize, 16).unwrap();
             let ptr = alloc(layout);

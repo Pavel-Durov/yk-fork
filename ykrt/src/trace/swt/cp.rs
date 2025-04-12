@@ -95,7 +95,6 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
             rbp_offset_reg_store
         );
     }
-    // let live_vars_buffer = temp_live_vars_buffer.unwrap();
 
     // Set destination live vars
     let used_registers = set_destination_live_vars(
@@ -105,63 +104,49 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
         rbp_offset_reg_store,
         temp_live_vars_buffer.clone(),
     );
-    // Ensure that RSP remains 16-byte aligned throughout transitions to comply with the x86-64 ABI.
-    assert_eq!(
-        (frameaddr as i64 - dst_frame_size as i64) % 16,
-        0,
-        "RSP is not aligned to 16 bytes"
-    );
 
     assert_eq!(
         (frameaddr as i64 - dst_frame_size as i64) % 16,
         0,
         "RSP is not aligned to 16 bytes"
     );
+    // Restore only unused registers.
     restore_registers(&mut asm, used_registers, rbp_offset_reg_store as i32);
     if transition.exec_trace {
-        if *CP_VERBOSE {
-            println!("@@ calling exec_trace");
-        }
-        // if *CP_BREAK {
-        //     dynasm!(asm; .arch x64; int3); // breakpoint
-        // }
         dynasm!(asm
             ; .arch x64
-            // ; sub rsp, 0x8                // Align rsp to 16-byte boundary after call
-            // ; add rsp, src_val_buffer_size // remove the temporary buffer from the stack
-            ; mov rdi, QWORD frameaddr as i64              // First argument
-            ; mov rsi, QWORD transition.rsp as i64    //   Second argument
-            ; mov rdx, QWORD transition.trace_addr as i64             // Third argument
-            ; mov rcx, QWORD transition.exec_trace_fn as i64          // Move function pointer to rcx
-            ; call rcx // Call the function - we don't care about rcx because its overridden in the __yk_exec_trace
+            // First argument
+            ; mov rdi, QWORD frameaddr as i64
+            // Second argument
+            ; mov rsi, QWORD transition.rsp as i64
+            // Third argument
+            ; mov rdx, QWORD transition.trace_addr as i64
+            // Move function pointer to rcx
+            ; mov rcx, QWORD transition.exec_trace_fn as i64
+            // Call the function - we don't care about rcx because its overridden in the __yk_exec_trace
+            ; call rcx
         );
     } else {
         let call_offset = calc_after_cp_offset(dst_rec.offset).unwrap();
         let dst_target_addr = i64::try_from(dst_rec.offset).unwrap() + call_offset;
-
-        // println!("----------");
-        // println!("swt_module_cp_transition");
-
-        // debug_print_register(13,0);
-        // debug_print_register(13, 0);
-        // debug_print_register(12, 0);
-        // debug_print_register(15, 0);
-        // debug_print_register(3, 0);
-        // debug_print_register(0, 0);
-        // debug_print_register(6, 128);
-        // println!("----------");
         dynasm!(asm
             ; .arch x64
-            // ; add rsp, src_val_buffer_size // remove the temporary buffer from the stack
-            ; sub rsp, 0x10 // reserves 16 bytes of space on the stack.
-            ; mov [rsp], rax // save rsp
-            ; mov rax, QWORD dst_target_addr // loads the target address into rax
-            ; mov [rsp + 0x8], rax // stores the target address into rsp+8
-            ; pop rax // restores the original rax at rsp
-            ; ret // loads 8 bytes from rsp and jumps to it
+            // Reserve 16 bytes on the stack
+            ; sub rsp, 0x10
+            // Save the original rsp
+            ; mov [rsp], rax
+            // Load the target address into rax
+            ; mov rax, QWORD dst_target_addr
+            // Store the target address into rsp+8
+            ; mov [rsp + 0x8], rax
+            // Restore the original rax
+            ; pop rax
+            // Load 8 bytes from rsp and jump to it
+            ; ret
         );
     }
 
+    // Execute the generated ASM code.
     let buffer = asm.finalize().unwrap();
     let func: unsafe fn() = std::mem::transmute(buffer.as_ptr());
     if *CP_VERBOSE_ASM {
@@ -196,6 +181,8 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
     func();
 }
 
+// Utility function to print the value of a register.
+// Used for debugging.
 pub unsafe extern "C" fn debug_print_register(reg_num: u16, offset: i32) {
     use std::arch::asm;
     let rbx_addr_u64: u64;
@@ -299,6 +286,7 @@ pub unsafe extern "C" fn debug_print_register(reg_num: u16, offset: i32) {
     }
 }
 
+// Restores the registers from the rbp offset.
 fn restore_registers(
     asm: &mut Assembler,
     exclude_registers: HashMap<u16, u16>,
@@ -323,6 +311,7 @@ fn restore_register(asm: &mut Assembler, dwarf_reg_num: u16, rbp_offset_reg_stor
     );
 }
 
+// Calculates the offset of the call instruction after the control point.
 // Example:
 //  CP Record offset points to 0x00000000002023a4, we want to find the
 //  instruction at 0x00000000002023b1.
