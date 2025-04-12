@@ -200,25 +200,20 @@ pub(crate) extern "C" fn __yk_deopt(
             } else {
                 todo!("Deal with multi register locations");
             };
+            
             match aotloc {
                 SMLocation::Register(reg, size, extras) => {
                     #[cfg(debug_assertions)]
                     seen(isize::try_from(*reg).unwrap(), jitval);
                     registers[usize::from(*reg)] = jitval;
+
+                    #[cfg(tracer_swt)]
+                    if *CP_VERBOSE {
+                        println!("[DEOPT] {:?}, jitval: {}", aotloc, jitval);
+                    }
                     for extra in extras {
                         #[cfg(debug_assertions)]
                         seen(isize::from(*extra), jitval);
-                        // Add debug print to see what extras are being processed
-                        // mt.log.log(Verbosity::JITEvent,
-                        //     &format!("@@@ Processing extra location: {} for reg {} with val {}", extra, reg, jitval));
-                        // let is_patchpoint = std::env::var("CP_PATCHPOINT").unwrap_or_default() == "1";
-                        // if is_patchpoint {
-                        //     continue;
-                        // }
-                        #[cfg(tracer_swt)]
-                        if *CP_VERBOSE {
-                            println!("[DEOPT] Register({}, {}, {:?}) with val {}", reg, size, extras, jitval);
-                        }
                         if *extra >= 0 {
                             registers[usize::try_from(*extra).unwrap()] = jitval;
                         } else if *extra < 0 {
@@ -261,6 +256,9 @@ pub(crate) extern "C" fn __yk_deopt(
                 }
                 SMLocation::Indirect(reg, off, size) => {
                     #[cfg(debug_assertions)]
+                    if *CP_VERBOSE {
+                        println!("[DEOPT] {:?}, jitval: {}", aotloc, jitval);
+                    }
                     seen(isize::try_from(*off).unwrap(), jitval);
                     debug_assert_eq!(*reg, RBP_DWARF_NUM);
                     let temp = if i == 0 {

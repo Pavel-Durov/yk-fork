@@ -305,9 +305,9 @@ fn restore_registers(
 fn restore_register(asm: &mut Assembler, dwarf_reg_num: u16, rbp_offset_reg_store: i32) {
     let reg_offset = reg_num_to_ykrt_control_point_rsp_offset(dwarf_reg_num);
     let reg_val_rbp_offset = i32::try_from(rbp_offset_reg_store - reg_offset).unwrap();
-    let dest_reg = dwarf_to_dynasm_reg(dwarf_reg_num.try_into().unwrap());
+    let dynasm_reg = dwarf_to_dynasm_reg(dwarf_reg_num.try_into().unwrap());
     dynasm!(asm
-        ; mov Rq(dest_reg), QWORD [rbp - reg_val_rbp_offset]
+        ; mov Rq(dynasm_reg), QWORD [rbp - reg_val_rbp_offset]
     );
 }
 
