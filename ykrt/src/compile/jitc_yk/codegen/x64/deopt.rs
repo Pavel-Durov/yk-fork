@@ -11,7 +11,8 @@ use libc::c_void;
 use std::collections::HashMap;
 use std::{ptr, sync::Arc};
 use yksmp::Location as SMLocation;
-
+#[cfg(tracer_swt)]
+use crate::trace::swt::cfg::CP_VERBOSE;
 use super::{X64CompiledTrace, RBP_DWARF_NUM, REG64_BYTESIZE};
 
 /// Registers (in DWARF notation) that we want to restore during deopt. Excludes `rsp` (7) and
@@ -207,9 +208,17 @@ pub(crate) extern "C" fn __yk_deopt(
                     for extra in extras {
                         #[cfg(debug_assertions)]
                         seen(isize::from(*extra), jitval);
-                        // Write any additional locations that were tracked for this variable.
-                        // Numbers greater or equal to zero are registers in Dwarf notation.
-                        // Negative numbers are offsets relative to RBP.
+                        // Add debug print to see what extras are being processed
+                        // mt.log.log(Verbosity::JITEvent,
+                        //     &format!("@@@ Processing extra location: {} for reg {} with val {}", extra, reg, jitval));
+                        // let is_patchpoint = std::env::var("CP_PATCHPOINT").unwrap_or_default() == "1";
+                        // if is_patchpoint {
+                        //     continue;
+                        // }
+                        #[cfg(tracer_swt)]
+                        if *CP_VERBOSE {
+                            println!("[DEOPT] Register({}, {}, {:?}) with val {}", reg, size, extras, jitval);
+                        }
                         if *extra >= 0 {
                             registers[usize::try_from(*extra).unwrap()] = jitval;
                         } else if *extra < 0 {

@@ -22,6 +22,13 @@ pub enum CPTransitionDirection {
 /// The size of a 64-bit register in bytes.
 pub(crate) static REG64_BYTESIZE: u64 = 8;
 
+// Flag for printing machine code
+pub(crate) static CP_PRINT_MACHINE_CODE: LazyLock<bool> = LazyLock::new(|| {
+    env::var("CP_PRINT_MACHINE_CODE")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+});
+
 // Flag for cp patchpoint live var preservation
 pub(crate) static CP_PATCHPOINT: LazyLock<bool> = LazyLock::new(|| {
     env::var("CP_PATCHPOINT")
