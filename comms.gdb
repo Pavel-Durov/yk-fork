@@ -1,6 +1,5 @@
-
 # logging
-set logging file gdb_output.log
+set logging file gdb_output.txt
 set logging enabled on
 
 set breakpoint pending on
