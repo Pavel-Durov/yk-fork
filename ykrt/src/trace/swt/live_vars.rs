@@ -95,7 +95,7 @@ fn handle_register_to_register_additional_locations(
                     ; mov QWORD [rbp + rbp_offset], Rq(TEMP_REG_PRIMARY)
                 ),
                 _ => panic!(
-                    "Unexpected Indirect to Register value size: {}",
+                    "Unexpected Register to Register value size: {}",
                     src_val_size
                 ),
             }
@@ -202,7 +202,7 @@ pub(crate) fn set_destination_live_vars(
         let dst_location = &dst_var.get(0).unwrap();
 
         match src_location {
-            Register(src_reg_num, src_val_size, _src_add_locs) => {
+            Register(src_reg_num, src_val_size, src_add_locs) => {
                 let src_reg_offset = reg_num_to_ykrt_control_point_rsp_offset(*src_reg_num);
                 let src_reg_val_rbp_offset =
                     i32::try_from(rbp_offset_reg_store - src_reg_offset as i64).unwrap();
@@ -218,7 +218,7 @@ pub(crate) fn set_destination_live_vars(
                                 src_var_indirect_index: src_var_indirect_index,
                             });
                         } else {
-                            // Handle additional locations
+                            // Handle additional locations for both source and destination
                             handle_register_to_register_additional_locations(
                                 asm,
                                 src_reg_val_rbp_offset,
@@ -227,6 +227,7 @@ pub(crate) fn set_destination_live_vars(
                                 dst_reg_num,
                                 &mut dest_reg_nums,
                             );
+
                             assert!(
                                 dst_val_size == src_val_size,
                                 "Register2Register - src and dst val size must match. Got src: {} and dst: {}",
