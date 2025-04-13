@@ -58,8 +58,8 @@ fn handle_register_to_register_additional_locations(
         // Numbers greater or equal to zero are registers in Dwarf notation.
         // Negative numbers are offsets relative to RBP.
         if *location >= 0 {
-            dest_reg_nums.insert(*dst_reg_num, *src_val_size);
-            let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
+            dest_reg_nums.insert(*location as u16, *src_val_size);
+            let dst_reg = dwarf_to_dynasm_reg((*location).try_into().unwrap());
             match *src_val_size {
                 1 => {
                     dynasm!(asm; mov Rb(dst_reg), BYTE [rbp - src_reg_val_rbp_offset])
@@ -118,8 +118,8 @@ fn handle_indirect_to_register_additional_locations(
         // Numbers greater or equal to zero are registers in Dwarf notation.
         // Negative numbers are offsets relative to RBP.
         if *location >= 0 {
-            dest_reg_nums.insert(*dst_reg_num, *src_val_size);
-            let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
+            dest_reg_nums.insert(*location as u16, *src_val_size);
+            let dst_reg = dwarf_to_dynasm_reg((*location).try_into().unwrap());
             match *src_val_size {
                 1 => dynasm!(asm
                     ; mov Rq(TEMP_REG_PRIMARY), QWORD live_vars_buffer.ptr as i64
@@ -601,16 +601,31 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
         let src_location = src_var.get(0).unwrap();
         match src_location {
             Indirect(_, src_off, src_val_size) => {
-                // TODO: handle different value sizes
-                assert!(
-                    *src_val_size == 8,
-                    "Only 8-byte Indirect values supported in this example"
-                );
+                // Handle different value sizes properly without the 8-byte restriction
                 let temp_buffer_offset = (src_var_indirect_index * (*src_val_size as i32)) as i32;
-                dynasm!(asm
-                    ; mov Rq(TEMP_REG_SECONDARY), QWORD [rbp + i32::try_from(*src_off).unwrap()]
-                    ; mov QWORD [Rq(TEMP_REG_PRIMARY) + temp_buffer_offset], Rq(TEMP_REG_SECONDARY)
-                );
+                
+                match *src_val_size {
+                    1 => dynasm!(asm
+                        ; mov Rb(TEMP_REG_SECONDARY), BYTE [rbp + i32::try_from(*src_off).unwrap()]
+                        ; mov BYTE [Rq(TEMP_REG_PRIMARY) + temp_buffer_offset], Rb(TEMP_REG_SECONDARY)
+                    ),
+                    2 => dynasm!(asm
+                        ; mov Rw(TEMP_REG_SECONDARY), WORD [rbp + i32::try_from(*src_off).unwrap()]
+                        ; mov WORD [Rq(TEMP_REG_PRIMARY) + temp_buffer_offset], Rw(TEMP_REG_SECONDARY)
+                    ),
+                    4 => dynasm!(asm
+                        ; mov Rd(TEMP_REG_SECONDARY), DWORD [rbp + i32::try_from(*src_off).unwrap()]
+                        ; mov DWORD [Rq(TEMP_REG_PRIMARY) + temp_buffer_offset], Rd(TEMP_REG_SECONDARY)
+                    ),
+                    8 => dynasm!(asm
+                        ; mov Rq(TEMP_REG_SECONDARY), QWORD [rbp + i32::try_from(*src_off).unwrap()]
+                        ; mov QWORD [Rq(TEMP_REG_PRIMARY) + temp_buffer_offset], Rq(TEMP_REG_SECONDARY)
+                    ),
+                    _ => panic!(
+                        "Unsupported value size in temporary copy: {}",
+                        src_val_size
+                    ),
+                }
                 variables.insert(src_var_indirect_index, temp_buffer_offset);
                 src_var_indirect_index += 1;
             }
