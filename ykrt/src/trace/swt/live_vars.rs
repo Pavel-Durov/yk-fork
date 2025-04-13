@@ -315,6 +315,7 @@ pub(crate) fn set_destination_live_vars(
                                 );
                             }
                             assert!(*src_reg_num == 6, "Indirect register is expected to be rbp");
+                            // TODO: Optimize - no need to load temp buffer multiple times.
                             // Set register additional locations
                             handle_indirect_to_register_additional_locations(
                                 asm,
