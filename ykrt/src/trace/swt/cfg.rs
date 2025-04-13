@@ -30,11 +30,8 @@ pub(crate) static CP_PRINT_MACHINE_CODE: LazyLock<bool> = LazyLock::new(|| {
 });
 
 // Flag for cp patchpoint live var preservation
-pub(crate) static CP_PATCHPOINT: LazyLock<bool> = LazyLock::new(|| {
-    env::var("CP_PATCHPOINT")
-        .map(|v| v == "1")
-        .unwrap_or(false)
-});
+pub(crate) static CP_PATCHPOINT: LazyLock<bool> =
+    LazyLock::new(|| env::var("CP_PATCHPOINT").map(|v| v == "1").unwrap_or(false));
 
 // Flag for verbose logging
 pub(crate) static CP_VERBOSE: LazyLock<bool> =

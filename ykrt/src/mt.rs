@@ -16,7 +16,6 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-
 #[cfg(tracer_swt)]
 use crate::trace::swt::cfg::CPTransitionDirection;
 #[cfg(tracer_swt)]
@@ -1134,7 +1133,7 @@ impl MT {
 #[cfg(target_arch = "x86_64")]
 #[naked]
 #[no_mangle]
-pub(crate)unsafe extern "C" fn __yk_exec_trace(
+pub(crate) unsafe extern "C" fn __yk_exec_trace(
     frameaddr: *const c_void,
     rsp: *const c_void,
     trace: *const c_void,
@@ -1145,7 +1144,7 @@ pub(crate)unsafe extern "C" fn __yk_exec_trace(
         // Reset RSP to the end of the control point frame (this includes the registers we pushed
         // just before the control point)
         "mov rsp, rsi",
-        "sub rsp, 8",   // Return address of control point call
+        "sub rsp, 8", // Return address of control point call
         // Remove register store cause it will be executed by the cp transition
         "add rsp, 8", // Remove return pointer
         // Call the trace function.
