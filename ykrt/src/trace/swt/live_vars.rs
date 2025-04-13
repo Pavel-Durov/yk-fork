@@ -404,15 +404,26 @@ pub(crate) fn set_destination_live_vars(
                             );
                         }
 
-                        // Use the minimum of source and destination sizes to ensure we don't overflow
-                        let min_size = src_val_size.min(dst_val_size);
+                        // NOTE: Sometimes source and destination sizes are different, so we use the minimum
+                        let size = if *src_val_size != *dst_val_size {
+                            if *CP_VERBOSE {
+                                println!(
+                                    "WARNING: Indirect2Indirect size mismatch - Source: {} (at offset {}) Destination: {} (at offset {}). Using min size.",
+                                    src_val_size, temp_buffer_offset, dst_val_size, dst_off
+                                );
+                            }
+                            std::cmp::min(*src_val_size, *dst_val_size)
+                        } else {
+                            *src_val_size
+                        };
+
                         emit_mem_to_mem(
                             asm,
                             MemToMemParams {
                                 src_ptr: live_vars_buffer.ptr as i64,
                                 src_offset: temp_buffer_offset,
                                 dst_offset: i32::try_from(*dst_off).unwrap(),
-                                size: *min_size,
+                                size,
                             },
                         );
                     }
