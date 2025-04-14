@@ -11,6 +11,26 @@
 //     udiv2 715827882
 //     udiv3 1431655764
 //     udiv4 42
+//     udiv 21845
+//     udiv2 715827882
+//     udiv3 1431655764
+//     udiv4 42
+//     udiv 21845
+//     udiv2 715827882
+//     udiv3 1431655764
+//     udiv4 42
+//     udiv 21845
+//     udiv2 715827882
+//     udiv3 1431655764
+//     udiv4 42
+//     exit
+
+// Original
+//     yk-jit-event: start-tracing
+//     udiv 21845
+//     udiv2 715827882
+//     udiv3 1431655764
+//     udiv4 42
 //     yk-jit-event: stop-tracing
 //     --- Begin jit-pre-opt ---
 //     ...

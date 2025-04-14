@@ -53,6 +53,7 @@ pub(crate) extern "C" fn __yk_deopt(
         .unwrap();
     let gidx = GuardIdx::from(usize::try_from(gidx).unwrap());
     let aot_smaps = AOT_STACKMAPS.as_ref().unwrap();
+    
     let info = &ctr.deoptinfo[&usize::from(gidx)];
     let mt = Arc::clone(&ctr.mt);
 
@@ -255,10 +256,11 @@ pub(crate) extern "C" fn __yk_deopt(
                     continue;
                 }
                 SMLocation::Indirect(reg, off, size) => {
-                    #[cfg(debug_assertions)]
+                    #[cfg(tracer_swt)]
                     if *CP_VERBOSE {
                         println!("[DEOPT] {:?}, jitval: {}", aotloc, jitval);
                     }
+                    #[cfg(debug_assertions)]
                     seen(isize::try_from(*off).unwrap(), jitval);
                     debug_assert_eq!(*reg, RBP_DWARF_NUM);
                     let temp = if i == 0 {
