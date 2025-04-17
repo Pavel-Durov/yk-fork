@@ -145,7 +145,10 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
             ; ret
         );
     }
-
+    // debug_print_register(14, 0);
+    // debug_print_register(15, 0);
+    // debug_print_register(13, 0);
+    // debug_print_register(3, 0);
     // Execute the generated ASM code.
     let buffer = asm.finalize().unwrap();
     let func: unsafe fn() = std::mem::transmute(buffer.as_ptr());
@@ -270,19 +273,16 @@ pub unsafe extern "C" fn debug_print_register(reg_num: u16, offset: i32) {
     if rbx_addr_u64 == 0 {
         println!("{} contains a null pointer, cannot dereference.", reg_num);
     } else {
-        if reg_num != 3 {
-            println!("register:{}, value: 0x{:x}", reg_num, rbx_addr_u64);
-        } else {
-            let ptr = rbx_addr_u64 as *const u64;
+        println!("register:{}, value: 0x{:x}", reg_num, rbx_addr_u64);
+        // let ptr = rbx_addr_u64 as *const u64;
 
-            unsafe {
-                let value_at_addr: u64 = ptr.read_volatile();
-                println!(
-                    "register:{}, value: 0x{:x}, value_at_addr: 0x{:x}",
-                    reg_num, rbx_addr_u64, value_at_addr
-                );
-            }
-        }
+        // unsafe {
+        //     let value_at_addr: u64 = ptr.read_volatile();
+        //     println!(
+        //         "register:{}, value: 0x{:x}, value_at_addr: 0x{:x}",
+        //         reg_num, rbx_addr_u64, value_at_addr
+        //     );
+        // }
     }
 }
 
