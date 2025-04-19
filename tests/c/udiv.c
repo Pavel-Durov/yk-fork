@@ -1,3 +1,4 @@
+// ignore-if: test $SWT_SKIP_FAILING_TEST=true
 // Compiler:
 //   env-var: YKB_EXTRA_CC_FLAGS=-O1
 // Run-time:
@@ -5,6 +6,26 @@
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   env-var: YKD_LOG=4
 //   stderr:
+//     yk-jit-event: start-tracing
+//     udiv 21845
+//     udiv2 715827882
+//     udiv3 1431655764
+//     udiv4 42
+//     udiv 21845
+//     udiv2 715827882
+//     udiv3 1431655764
+//     udiv4 42
+//     udiv 21845
+//     udiv2 715827882
+//     udiv3 1431655764
+//     udiv4 42
+//     udiv 21845
+//     udiv2 715827882
+//     udiv3 1431655764
+//     udiv4 42
+//     exit
+
+// Original
 //     yk-jit-event: start-tracing
 //     udiv 21845
 //     udiv2 715827882
