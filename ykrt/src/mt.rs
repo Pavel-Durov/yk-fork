@@ -17,7 +17,7 @@ use std::{
 };
 
 #[cfg(tracer_swt)]
-use crate::trace::swt::cfg::CPTransitionDirection;
+use crate::trace::swt::cfg::{CPTransitionDirection, SWT_MULTI_MODULE};
 #[cfg(tracer_swt)]
 use crate::trace::swt::cp::{swt_module_cp_transition, CPTransition};
 
@@ -510,20 +510,23 @@ impl MT {
                     mtt.push_tstate(MTThreadState::Executing { ctr });
                 });
                 self.stats.timing_state(TimingState::JitExecuting);
+
                 #[cfg(tracer_swt)]
-                unsafe {
-                    // Transition to unopt before trace execution since``
-                    // the trace was collected un unopt version.
-                    // This function will call __yk_exec_trace when live variables are restored.
-                    #[cfg(tracer_swt)]
-                    swt_module_cp_transition(CPTransition {
-                        direction: CPTransitionDirection::OptToUnopt,
-                        frameaddr,
-                        rsp,
-                        trace_addr: trace_addr,
-                        exec_trace: true,
-                        exec_trace_fn: __yk_exec_trace,
-                    });
+                if *SWT_MULTI_MODULE {
+                    unsafe {
+                        // Transition to unopt before trace execution since``
+                        // the trace was collected un unopt version.
+                        // This function will call __yk_exec_trace when live variables are restored.
+                        #[cfg(tracer_swt)]
+                        swt_module_cp_transition(CPTransition {
+                            direction: CPTransitionDirection::OptToUnopt,
+                            frameaddr,
+                            rsp,
+                            trace_addr: trace_addr,
+                            exec_trace: true,
+                            exec_trace_fn: __yk_multi_module_exec_trace,
+                        });
+                    }
                 }
 
                 // FIXME: Calling this function overwrites the current (Rust) function frame,
@@ -581,17 +584,19 @@ impl MT {
                     }
                 }
                 #[cfg(tracer_swt)]
-                unsafe {
-                    // Transition to unopt before start tracing cause
-                    // we need the intepreter version with tracing calls..
-                    swt_module_cp_transition(CPTransition {
-                        direction: CPTransitionDirection::OptToUnopt,
-                        frameaddr,
-                        rsp: 0 as *const c_void,
-                        trace_addr: 0 as *const c_void,
-                        exec_trace: false,
-                        exec_trace_fn: __yk_exec_trace,
-                    });
+                if *SWT_MULTI_MODULE {
+                    unsafe {
+                        // Transition to unopt before start tracing cause
+                        // we need the intepreter version with tracing calls..
+                        swt_module_cp_transition(CPTransition {
+                            direction: CPTransitionDirection::OptToUnopt,
+                            frameaddr,
+                            rsp: 0 as *const c_void,
+                            trace_addr: 0 as *const c_void,
+                            exec_trace: false,
+                            exec_trace_fn: __yk_multi_module_exec_trace,
+                        });
+                    }
                 }
             }
             TransitionControlPoint::StopTracing(ctrid, connector_tid) => {
@@ -642,16 +647,18 @@ impl MT {
                     }
                 }
                 #[cfg(tracer_swt)]
-                unsafe {
-                    // Transition into opt interpreter when we stop tracing.
-                    swt_module_cp_transition(CPTransition {
-                        direction: CPTransitionDirection::UnoptToOpt,
-                        frameaddr,
-                        rsp: 0 as *const c_void,
-                        trace_addr: 0 as *const c_void,
-                        exec_trace: false,
-                        exec_trace_fn: __yk_exec_trace,
-                    });
+                if *SWT_MULTI_MODULE {
+                    unsafe {
+                        // Transition into opt interpreter when we stop tracing.
+                        swt_module_cp_transition(CPTransition {
+                            direction: CPTransitionDirection::UnoptToOpt,
+                            frameaddr,
+                            rsp: 0 as *const c_void,
+                            trace_addr: 0 as *const c_void,
+                            exec_trace: false,
+                            exec_trace_fn: __yk_multi_module_exec_trace,
+                        });
+                    }
                 }
             }
             TransitionControlPoint::StopSideTracing {
@@ -1133,7 +1140,7 @@ impl MT {
 #[cfg(target_arch = "x86_64")]
 #[naked]
 #[no_mangle]
-pub(crate) unsafe extern "C" fn __yk_exec_trace(
+pub(crate) unsafe extern "C" fn __yk_multi_module_exec_trace(
     frameaddr: *const c_void,
     rsp: *const c_void,
     trace: *const c_void,
@@ -1152,6 +1159,47 @@ pub(crate) unsafe extern "C" fn __yk_exec_trace(
         "ret",
     )
 }
+
+
+
+
+#[cfg(target_arch = "x86_64")]
+#[naked]
+#[no_mangle]
+unsafe extern "C" fn __yk_exec_trace(
+    frameaddr: *const c_void,
+    rsp: *const c_void,
+    trace: *const c_void,
+) -> ! {
+    std::arch::naked_asm!(
+        // Reset RBP
+        "mov rbp, rdi",
+        // Reset RSP to the end of the control point frame (this includes the registers we pushed
+        // just before the control point)
+        "mov rsp, rsi",
+        "sub rsp, 8",   // Return address of control point call
+        "sub rsp, 104", // Registers pushed in naked cp call (includes alignment)
+        // Restore registers which were pushed to the stack in [ykcapi::__ykrt_control_point].
+        "pop r15",
+        "pop r14",
+        "pop r13",
+        "pop r12",
+        "pop r11",
+        "pop r10",
+        "pop r9",
+        "pop r8",
+        "pop rsi",
+        "pop rdi",
+        "pop rbx",
+        "pop rcx",
+        "pop rax",
+        "add rsp, 8", // Remove return pointer
+        // Call the trace function.
+        "jmp rdx",
+        "ret",
+    )
+}
+
 
 /// [MTThread]'s major job is to record what state in the "interpreting/tracing/executing"
 /// state-machine this thread is in. This enum contains the states.
