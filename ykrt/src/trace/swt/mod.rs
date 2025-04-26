@@ -15,7 +15,7 @@ use std::{
 pub mod cfg;
 pub mod cp;
 pub mod live_vars;
-pub use cfg::{CPTransitionDirection, ControlPointStackMapId, SWT_MULTI_MODULE, CP_VERBOSE};
+pub use cfg::{CPTransitionDirection, ControlPointStackMapId, SWT_MULTI_MODULE};
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 struct TracingBBlock {
@@ -58,9 +58,6 @@ thread_local! {
 #[no_mangle]
 #[inline(never)]
 pub extern "C" fn __yk_trace_basicblock(function_index: usize, block_index: usize) {
-    if *CP_VERBOSE {
-        eprintln!("@@@ trace_basicblock: function_index={}, block_index={}", function_index, block_index);
-    }
     MTThread::with_borrow(|mtt| {
         if mtt.is_tracing() {
             BASIC_BLOCKS.with(|v| {
@@ -84,9 +81,6 @@ pub extern "C" fn __yk_trace_basicblock(function_index: usize, block_index: usiz
 #[no_mangle]
 #[inline(never)]
 pub extern "C" fn __yk_trace_basicblock_dummy(function_index: usize, block_index: usize) {
-    if *CP_VERBOSE {
-        eprintln!("@@@ trace_basicblock_dummy: function_index={}, block_index={}", function_index, block_index);
-    }
     // if were not in multi-module mode, we should use the normal trace_basicblock functionality.
     if *SWT_MULTI_MODULE == false {
         MTThread::with_borrow(|mtt| {
