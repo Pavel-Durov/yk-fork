@@ -709,7 +709,7 @@ impl fmt::Display for Module {
         }
         write!(f, "\nentry:")?;
         for (iidx, inst) in self.iter_skipping_insts() {
-            write!(f, "\n    {}", inst.display(self, iidx))?
+            write!(f, "\n  {}", inst.display(self, iidx))?
         }
 
         Ok(())
@@ -809,7 +809,7 @@ impl From<U24> for usize {
 ///
 /// FIXME: all of these should be checked at compile time.
 fn index_overflow(typ: &str) -> CompilationError {
-    CompilationError::LimitExceeded(format!("index overflow: {}", typ))
+    CompilationError::LimitExceeded(format!("index overflow: {typ}"))
 }
 
 // Generate common methods for 24-bit index types.
@@ -1156,7 +1156,7 @@ impl fmt::Display for DisplayableTy<'_> {
                     )
                 }
             }
-            Ty::Float(ft) => write!(f, "{}", ft),
+            Ty::Float(ft) => write!(f, "{ft}"),
             Ty::Unimplemented(_) => write!(f, "?type"),
         }
     }
@@ -1357,7 +1357,7 @@ impl fmt::Display for DisplayableConst<'_> {
         match self.const_ {
             Const::Float(tyidx, v) => match self.m.type_(*tyidx) {
                 Ty::Float(FloatTy::Float) => write!(f, "{}float", *v as f32),
-                Ty::Float(FloatTy::Double) => write!(f, "{}double", v),
+                Ty::Float(FloatTy::Double) => write!(f, "{v}double"),
                 _ => unreachable!(),
             },
             Const::Int(_, x) => {
@@ -3547,7 +3547,7 @@ mod tests {
             "global_decl tls @some_thread_local",
             "",
             "entry:",
-            "    %0: i8 = param Register(3, 1, [])",
+            "  %0: i8 = param Register(3, 1, [])",
         ]
         .join("\n");
         assert_eq!(m.to_string(), expect);

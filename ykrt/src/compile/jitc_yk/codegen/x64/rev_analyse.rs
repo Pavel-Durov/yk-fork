@@ -50,6 +50,11 @@ pub(crate) struct RevAnalyse<'a> {
     /// instruction %1, we would like %0 to already be in rax; when generating code for instruction
     /// %2, we would like %) to already be in rdi".
     reg_hints: Vec<Vec<(InstIdx, Register)>>,
+    /// For each instruction, record whether we know whether it should spill to in advance.
+    /// Currently this only happens for instructions referenced in the header/body end, where we
+    /// have to put the value in a specific place on the stack before we loop/jump. `u32::MAX` is
+    /// used to record "there is no predetermined spill for this instruction".
+    spill_to: Vec<u32>,
 }
 
 impl<'a> RevAnalyse<'a> {
@@ -61,6 +66,7 @@ impl<'a> RevAnalyse<'a> {
             used_insts: Vob::from_elem(false, usize::from(m.last_inst_idx()) + 1),
             def_use: vec![vec![]; m.insts_len()],
             reg_hints: vec![vec![]; m.insts_len()],
+            spill_to: vec![u32::MAX; m.insts_len()],
         }
     }
 
@@ -97,6 +103,22 @@ impl<'a> RevAnalyse<'a> {
                             _ => break,
                         }
                     }
+
+                    assert_eq!(
+                        self.m.trace_header_start().len(),
+                        self.m.trace_header_end().len()
+                    );
+                    for i in 0..self.m.trace_header_start().len() {
+                        let Inst::Param(pinst) = self.m.inst(InstIdx::unchecked_from(i)) else {
+                            panic!()
+                        };
+                        if let yksmp::Location::Indirect(_, off, _) = self.m.param(pinst.paramidx())
+                            && let Operand::Var(iidx) = self.m.trace_header_end()[i].unpack(self.m)
+                        {
+                            assert_eq!(self.spill_to[usize::from(iidx)], u32::MAX);
+                            self.spill_to[usize::from(iidx)] = u32::try_from(*off).unwrap();
+                        }
+                    }
                 }
             }
             TraceKind::HeaderAndBody => {
@@ -109,7 +131,7 @@ impl<'a> RevAnalyse<'a> {
                     .downcast::<X64CompiledTrace>()
                     .unwrap();
                 let vlocs = ctr.entry_vars();
-                // Side-traces don't have a trace body since we don't apply loop peeling and thus use
+                // Connector traces don't have a trace body since we don't apply loop peeling and thus use
                 // `trace_header_end` to store the jump variables.
                 debug_assert_eq!(vlocs.len(), self.m.trace_header_end().len());
 
@@ -118,6 +140,22 @@ impl<'a> RevAnalyse<'a> {
                 for (vloc, jump_op) in vlocs.iter().zip(self.m.trace_header_end()) {
                     if let VarLocation::Register(reg) = *vloc {
                         self.push_reg_hint_fixed(jtend_iidx, jump_op.unpack(self.m), reg);
+                    }
+                }
+
+                assert_eq!(
+                    self.m.trace_header_start().len(),
+                    self.m.trace_header_end().len()
+                );
+                for i in 0..self.m.trace_header_start().len() {
+                    let Inst::Param(pinst) = self.m.inst(InstIdx::unchecked_from(i)) else {
+                        panic!()
+                    };
+                    if let yksmp::Location::Indirect(_, off, _) = self.m.param(pinst.paramidx())
+                        && let Operand::Var(iidx) = self.m.trace_header_end()[i].unpack(self.m)
+                    {
+                        assert_eq!(self.spill_to[usize::from(iidx)], u32::MAX);
+                        self.spill_to[usize::from(iidx)] = u32::try_from(-*off).unwrap();
                     }
                 }
             }
@@ -136,6 +174,16 @@ impl<'a> RevAnalyse<'a> {
                 for (vloc, jump_op) in vlocs.iter().zip(self.m.trace_header_end()) {
                     if let VarLocation::Register(reg) = *vloc {
                         self.push_reg_hint_fixed(stend_iidx, jump_op.unpack(self.m), reg);
+                    }
+                }
+
+                assert_eq!(vlocs.len(), self.m.trace_header_end().len());
+                for (i, vloc) in vlocs.iter().enumerate() {
+                    if let VarLocation::Stack { frame_off, .. } = vloc
+                        && let Operand::Var(iidx) = self.m.trace_header_end()[i].unpack(self.m)
+                    {
+                        assert_eq!(self.spill_to[usize::from(iidx)], u32::MAX);
+                        self.spill_to[usize::from(iidx)] = *frame_off;
                     }
                 }
             }
@@ -185,6 +233,16 @@ impl<'a> RevAnalyse<'a> {
                 break;
             }
             self.analyse(iidx, inst);
+        }
+
+        assert_eq!(self.m.trace_body_end().len(), header_end_vlocs.len());
+        for (i, vloc) in header_end_vlocs.iter().enumerate() {
+            if let VarLocation::Stack { frame_off, .. } = vloc
+                && let Operand::Var(iidx) = self.m.trace_body_end()[i].unpack(self.m)
+            {
+                assert_eq!(self.spill_to[usize::from(iidx)], u32::MAX);
+                self.spill_to[usize::from(iidx)] = *frame_off;
+            }
         }
     }
 
@@ -281,6 +339,16 @@ impl<'a> RevAnalyse<'a> {
             .map(|(_, y)| *y)
     }
 
+    /// Return the predetermined stack location for `iidx` to be spilled to, if one is known.
+    pub(super) fn spill_to(&self, iidx: InstIdx) -> Option<u32> {
+        let x = self.spill_to[usize::from(iidx)];
+        if x == u32::MAX {
+            None
+        } else {
+            Some(x)
+        }
+    }
+
     /// Record that `use_iidx` is used at instruction `def_iidx`.
     fn push_def_use(&mut self, def_iidx: InstIdx, use_iidx: InstIdx) {
         assert!(def_iidx < use_iidx);
@@ -331,10 +399,10 @@ impl<'a> RevAnalyse<'a> {
     /// Propagate the hint for the instruction being processed at `iidx` to `op`, if appropriate
     /// for `op`.
     fn push_reg_hint(&mut self, iidx: InstIdx, op: Operand) {
-        if let Operand::Var(op_iidx) = op {
-            if let Some(reg) = self.reg_hint(iidx, iidx) {
-                self.reg_hints[usize::from(op_iidx)].push((iidx, reg));
-            }
+        if let Operand::Var(op_iidx) = op
+            && let Some(reg) = self.reg_hint(iidx, iidx)
+        {
+            self.reg_hints[usize::from(op_iidx)].push((iidx, reg));
         }
     }
 
@@ -447,19 +515,19 @@ impl<'a> RevAnalyse<'a> {
     /// Analyse a [LoadInst]. Returns `true` if it has been inlined and should not go through the
     /// normal "calculate `inst_vals_alive_until`" phase.
     fn an_load(&mut self, iidx: InstIdx, inst: LoadInst) -> bool {
-        if let Operand::Var(op_iidx) = inst.ptr(self.m) {
-            if let Inst::PtrAdd(pa_inst) = self.m.inst(op_iidx) {
-                self.ptradds[usize::from(iidx)] = Some(pa_inst);
-                if let Operand::Var(y) = pa_inst.ptr(self.m) {
-                    if self.inst_vals_alive_until[usize::from(y)] < iidx {
-                        self.inst_vals_alive_until[usize::from(y)] = iidx;
-                        self.push_reg_hint_outputcanbesameasinput(iidx, pa_inst.ptr(self.m));
-                    }
-                    self.used_insts.set(usize::from(y), true);
-                    self.push_def_use(y, iidx);
+        if let Operand::Var(op_iidx) = inst.ptr(self.m)
+            && let Inst::PtrAdd(pa_inst) = self.m.inst(op_iidx)
+        {
+            self.ptradds[usize::from(iidx)] = Some(pa_inst);
+            if let Operand::Var(y) = pa_inst.ptr(self.m) {
+                if self.inst_vals_alive_until[usize::from(y)] < iidx {
+                    self.inst_vals_alive_until[usize::from(y)] = iidx;
+                    self.push_reg_hint_outputcanbesameasinput(iidx, pa_inst.ptr(self.m));
                 }
-                return true;
+                self.used_insts.set(usize::from(y), true);
+                self.push_def_use(y, iidx);
             }
+            return true;
         }
         false
     }
@@ -467,25 +535,25 @@ impl<'a> RevAnalyse<'a> {
     /// Analyse a [StoreInst]. Returns `true` if it has been inlined and should not go through the
     /// normal "calculate `inst_vals_alive_until`" phase.
     fn an_store(&mut self, iidx: InstIdx, inst: StoreInst) -> bool {
-        if let Operand::Var(op_iidx) = inst.ptr(self.m) {
-            if let Inst::PtrAdd(pa_inst) = self.m.inst(op_iidx) {
-                self.ptradds[usize::from(iidx)] = Some(pa_inst);
-                if let Operand::Var(y) = pa_inst.ptr(self.m) {
-                    if self.inst_vals_alive_until[usize::from(y)] < iidx {
-                        self.inst_vals_alive_until[usize::from(y)] = iidx;
-                    }
-                    self.used_insts.set(usize::from(y), true);
-                    self.push_def_use(y, iidx);
+        if let Operand::Var(op_iidx) = inst.ptr(self.m)
+            && let Inst::PtrAdd(pa_inst) = self.m.inst(op_iidx)
+        {
+            self.ptradds[usize::from(iidx)] = Some(pa_inst);
+            if let Operand::Var(y) = pa_inst.ptr(self.m) {
+                if self.inst_vals_alive_until[usize::from(y)] < iidx {
+                    self.inst_vals_alive_until[usize::from(y)] = iidx;
                 }
-                if let Operand::Var(y) = inst.val(self.m) {
-                    if self.inst_vals_alive_until[usize::from(y)] < iidx {
-                        self.inst_vals_alive_until[usize::from(y)] = iidx;
-                    }
-                    self.used_insts.set(usize::from(y), true);
-                    self.push_def_use(y, iidx);
-                }
-                return true;
+                self.used_insts.set(usize::from(y), true);
+                self.push_def_use(y, iidx);
             }
+            if let Operand::Var(y) = inst.val(self.m) {
+                if self.inst_vals_alive_until[usize::from(y)] < iidx {
+                    self.inst_vals_alive_until[usize::from(y)] = iidx;
+                }
+                self.used_insts.set(usize::from(y), true);
+                self.push_def_use(y, iidx);
+            }
+            return true;
         }
         false
     }

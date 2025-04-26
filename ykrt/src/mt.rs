@@ -144,10 +144,16 @@ impl MT {
                 .map_err(|e| format!("Invalid hot threshold '{s}': {e}"))?,
             Err(_) => DEFAULT_HOT_THRESHOLD,
         };
+        let sidetrace_threshold = match env::var("YK_SIDETRACE_THRESHOLD") {
+            Ok(s) => s
+                .parse::<HotThreshold>()
+                .map_err(|e| format!("Invalid sidetrace threshold '{s}': {e}"))?,
+            Err(_) => DEFAULT_SIDETRACE_THRESHOLD,
+        };
         Ok(Arc::new(Self {
             shutdown: AtomicBool::new(false),
             hot_threshold: AtomicHotThreshold::new(hot_threshold),
-            sidetrace_threshold: AtomicHotThreshold::new(DEFAULT_SIDETRACE_THRESHOLD),
+            sidetrace_threshold: AtomicHotThreshold::new(sidetrace_threshold),
             trace_failure_threshold: AtomicTraceCompilationErrorThreshold::new(
                 DEFAULT_TRACECOMPILATION_ERROR_THRESHOLD,
             ),
@@ -179,12 +185,12 @@ impl MT {
             self.stats.output();
             let mut lk = self.active_worker_threads.lock();
             for hdl in lk.drain(..) {
-                if hdl.is_finished() {
-                    if let Err(e) = hdl.join() {
-                        // Despite the name `resume_unwind` will abort if the unwind strategy in
-                        // Rust is set to `abort`.
-                        std::panic::resume_unwind(e);
-                    }
+                if hdl.is_finished()
+                    && let Err(e) = hdl.join()
+                {
+                    // Despite the name `resume_unwind` will abort if the unwind strategy in
+                    // Rust is set to `abort`.
+                    std::panic::resume_unwind(e);
                 }
             }
         }
@@ -486,6 +492,7 @@ impl MT {
                     &format!("tracing-aborted: {ak}"),
                     loc.hot_location()
                 );
+                self.stats.timing_state(TimingState::OutsideYk);
             }
             TransitionControlPoint::Execute(ctr) => {
                 yklog!(
@@ -646,6 +653,7 @@ impl MT {
                         );
                     }
                 }
+                self.stats.timing_state(TimingState::OutsideYk);
                 #[cfg(tracer_swt)]
                 if *SWT_MULTI_MODULE {
                     unsafe {
@@ -714,6 +722,7 @@ impl MT {
                         );
                     }
                 }
+                self.stats.timing_state(TimingState::OutsideYk);
             }
         }
     }
@@ -823,7 +832,6 @@ impl MT {
                             let hl = HotLocation {
                                 kind: HotLocationKind::Tracing,
                                 tracecompilation_errors: 0,
-                                #[cfg(feature = "ykd")]
                                 debug_str: None,
                             };
                             if let Some(hl) = loc.count_to_hot_location(x, hl) {
@@ -872,10 +880,10 @@ impl MT {
                     akind = Some(AbortKind::OutOfFrame);
                 }
 
-                if let Some(x) = loc.hot_location().map(|x| x as *const Mutex<HotLocation>) {
-                    if !seen_hls.insert(x) {
-                        akind = Some(AbortKind::Unrolled);
-                    }
+                if let Some(x) = loc.hot_location().map(|x| x as *const Mutex<HotLocation>)
+                    && !seen_hls.insert(x)
+                {
+                    akind = Some(AbortKind::Unrolled);
                 }
 
                 if let Some(akind) = akind {
@@ -984,7 +992,6 @@ impl MT {
                         let hl = HotLocation {
                             kind: HotLocationKind::Counting(count),
                             tracecompilation_errors: 0,
-                            #[cfg(feature = "ykd")]
                             debug_str: None,
                         };
                         loc.count_to_hot_location(count, hl)
@@ -1138,7 +1145,7 @@ impl MT {
 }
 
 #[cfg(target_arch = "x86_64")]
-#[naked]
+#[unsafe(naked)]
 #[no_mangle]
 pub(crate) unsafe extern "C" fn __yk_multi_module_exec_trace(
     frameaddr: *const c_void,
@@ -1164,7 +1171,7 @@ pub(crate) unsafe extern "C" fn __yk_multi_module_exec_trace(
 
 
 #[cfg(target_arch = "x86_64")]
-#[naked]
+#[unsafe(naked)]
 #[no_mangle]
 unsafe extern "C" fn __yk_exec_trace(
     frameaddr: *const c_void,

@@ -77,7 +77,7 @@ impl Log {
     pub(crate) fn log_with_hl_debug(&self, level: Verbosity, msg: &str, hl: &Mutex<HotLocation>) {
         // If the hot location has a debug string, append it to the log message.
         let msg = if let Some(dstr) = hl.lock().debug_str.as_ref() {
-            &format!("{}: {}", msg, dstr)
+            &format!("{msg}: {dstr}")
         } else {
             msg
         };
@@ -120,8 +120,8 @@ impl Log {
 pub(crate) enum IRPhase {
     /// The AOT IR.
     AOT,
-    /// The trace kind only (i.e. without IR instructions).
-    TraceKind,
+    /// Debug strings only
+    DebugStrs,
     /// The JIT IR before it has been optimised.
     PreOpt,
     /// The JIT IR after it has been optimised.
@@ -175,7 +175,7 @@ mod internals {
         fn from_str(s: &str) -> Result<Self, Box<dyn Error>> {
             match s {
                 "aot" => Ok(Self::AOT),
-                "trace-kind" => Ok(Self::TraceKind),
+                "debugstrs" => Ok(Self::DebugStrs),
                 "jit-pre-opt" => Ok(Self::PreOpt),
                 "jit-post-opt" => Ok(Self::PostOpt),
                 "jit-asm" => Ok(Self::Asm),
@@ -194,7 +194,7 @@ mod internals {
 
     pub(crate) fn log_ir(s: &str) {
         match LOG_IR.as_ref().map(|(p, _)| p.as_str()) {
-            Some("-") => eprint!("{}", s),
+            Some("-") => eprint!("{s}"),
             Some(x) => {
                 File::options()
                     .append(true)

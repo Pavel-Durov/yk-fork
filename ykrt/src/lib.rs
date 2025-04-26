@@ -4,7 +4,6 @@
 #![feature(assert_matches)]
 #![feature(int_roundings)]
 #![feature(let_chains)]
-#![feature(naked_functions)]
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::type_complexity)]
 #![allow(clippy::upper_case_acronyms)]
@@ -27,6 +26,6 @@ use std::ffi::{c_char, CStr};
 #[no_mangle]
 pub unsafe extern "C" fn yk_debug_str(msg: *const c_char) {
     MTThread::with_borrow_mut(|mtt| {
-        mtt.insert_debug_str(unsafe { CStr::from_ptr(msg).to_str().unwrap().to_owned() });
+        mtt.insert_debug_str(unsafe { CStr::from_ptr(msg).to_string_lossy().into_owned() });
     });
 }

@@ -284,15 +284,14 @@ impl<'a> LSRegAlloc<'a> {
         let gi = ginst.guard_info(self.m);
         let mut regs_to_zero_ext = Vec::new();
         for op in gi.live_vars().iter().map(|(_, pop)| pop.unpack(self.m)) {
-            if let Operand::Var(op_iidx) = op {
-                if let Some(reg) = self.find_op_in_gp_reg(&op) {
-                    let RegState::FromInst(_, ext) = self.gp_reg_states[usize::from(reg.code())]
-                    else {
-                        panic!()
-                    };
-                    if ext != RegExtension::ZeroExtended {
-                        regs_to_zero_ext.push((reg, self.m.inst(op_iidx).def_bitw(self.m)));
-                    }
+            if let Operand::Var(op_iidx) = op
+                && let Some(reg) = self.find_op_in_gp_reg(&op)
+            {
+                let RegState::FromInst(_, ext) = self.gp_reg_states[usize::from(reg.code())] else {
+                    panic!()
+                };
+                if ext != RegExtension::ZeroExtended {
+                    regs_to_zero_ext.push((reg, self.m.inst(op_iidx).def_bitw(self.m)));
                 }
             }
         }
@@ -712,11 +711,11 @@ impl LSRegAlloc<'_> {
                 GPConstraint::Output { .. }
                 | GPConstraint::InputOutput { .. }
                 | GPConstraint::AlignExtension { .. } => {
-                    if let Some(Register::GP(reg)) = self.rev_an.reg_hint(iidx, iidx) {
-                        if !asgn_regs.is_set(reg) {
-                            cnstr_regs[i] = Some(reg);
-                            asgn_regs.set(reg);
-                        }
+                    if let Some(Register::GP(reg)) = self.rev_an.reg_hint(iidx, iidx)
+                        && !asgn_regs.is_set(reg)
+                    {
+                        cnstr_regs[i] = Some(reg);
+                        asgn_regs.set(reg);
                     }
                 }
                 _ => (),
@@ -735,12 +734,12 @@ impl LSRegAlloc<'_> {
             }
             match cnstr {
                 GPConstraint::Input { op, .. } | GPConstraint::InputOutput { op, .. } => {
-                    if let Some(reg) = self.find_op_in_gp_reg(op) {
-                        if !asgn_regs.is_set(reg) {
-                            assert!(self.gp_regset.is_set(reg));
-                            input_regs.set(reg);
-                            cnstr_regs[i] = Some(reg);
-                        }
+                    if let Some(reg) = self.find_op_in_gp_reg(op)
+                        && !asgn_regs.is_set(reg)
+                    {
+                        assert!(self.gp_regset.is_set(reg));
+                        input_regs.set(reg);
+                        cnstr_regs[i] = Some(reg);
                     }
                 }
                 GPConstraint::AlignExtension { op, out_ext } => {
@@ -800,11 +799,11 @@ impl LSRegAlloc<'_> {
             if let GPConstraint::Input { op, .. } | GPConstraint::InputOutput { op, .. } = cnstr {
                 match op {
                     Operand::Var(query_iidx) => {
-                        if let Some(Register::GP(reg)) = self.rev_an.reg_hint(iidx, *query_iidx) {
-                            if !asgn_regs.is_set(reg) {
-                                cnstr_regs[i] = Some(reg);
-                                asgn_regs.set(reg);
-                            }
+                        if let Some(Register::GP(reg)) = self.rev_an.reg_hint(iidx, *query_iidx)
+                            && !asgn_regs.is_set(reg)
+                        {
+                            cnstr_regs[i] = Some(reg);
+                            asgn_regs.set(reg);
                         }
                     }
                     Operand::Const(_) => (),
@@ -827,10 +826,9 @@ impl LSRegAlloc<'_> {
                 can_be_same_as_input: true,
                 ..
             } = cnstr
+                && reusable_input_cnstr.is_some()
             {
-                if reusable_input_cnstr.is_some() {
-                    continue;
-                }
+                continue;
             }
 
             let reg = match self.gp_regset.find_empty_avoiding(asgn_regs) {
@@ -872,12 +870,14 @@ impl LSRegAlloc<'_> {
     fn sort_clobber_regs(&self, iidx: InstIdx, clobber_regs: &mut [Rq]) {
         // Our heuristic is (in order):
         // 1. Prefer to clobber registers whose values are unused in the future.
-        // 2. Prefer to clobber constants.
-        // 3. Prefer to clobber a register that is used further away in the trace.
-        // 4. Prefer to clobber a register that is already spilled.
-        // 5. Prefer to clobber a register whose value(s) are used the fewest subsequent times in
+        // 2. Prefer to clobber registers whose values will be spilled anyway (i.e. because they're
+        //    only referenced in the trace end and need to be spilled then).
+        // 3. Prefer to clobber constants.
+        // 4. Prefer to clobber a register that is used further away in the trace.
+        // 5. Prefer to clobber a register that is already spilled.
+        // 6. Prefer to clobber a register whose value(s) are used the fewest subsequent times in
         //    the trace.
-        // 6. Prefer to clobber a register that contains fewer variables.
+        // 7. Prefer to clobber a register that contains fewer variables.
         clobber_regs.sort_unstable_by(|lhs_reg, rhs_reg| {
             match (
                 &self.gp_reg_states[usize::from(lhs_reg.code())],
@@ -909,26 +909,36 @@ impl LSRegAlloc<'_> {
                         Ordering::Less
                     } else if lhs_next.is_some() && rhs_next.is_none() {
                         Ordering::Greater
-                    } else if lhs_next != rhs_next {
-                        lhs_next.cmp(rhs_next).reverse()
                     } else {
-                        let lhs_spilled = lhs_iidxs
-                            .iter()
-                            .all(|x| !matches!(self.spills[usize::from(*x)], SpillState::Empty));
-                        let rhs_spilled = rhs_iidxs
-                            .iter()
-                            .all(|x| !matches!(self.spills[usize::from(*x)], SpillState::Empty));
-
-                        if lhs_spilled && !rhs_spilled {
+                        let lhs_spill =
+                            lhs_iidxs.len() == 1 && self.rev_an.spill_to(lhs_iidxs[0]).is_some();
+                        let rhs_spill =
+                            rhs_iidxs.len() == 1 && self.rev_an.spill_to(rhs_iidxs[0]).is_some();
+                        if lhs_spill && !rhs_spill {
                             Ordering::Less
-                        } else if !lhs_spilled && rhs_spilled {
+                        } else if !lhs_spill && rhs_spill {
                             Ordering::Greater
+                        } else if lhs_next != rhs_next {
+                            lhs_next.cmp(rhs_next).reverse()
                         } else {
-                            let lhs_count = lhs.iter().map(|(count, _)| count).max().unwrap();
-                            let rhs_count = rhs.iter().map(|(count, _)| count).max().unwrap();
-                            lhs_count
-                                .cmp(rhs_count)
-                                .then(lhs_iidxs.len().cmp(&rhs_iidxs.len()))
+                            let lhs_spilled = lhs_iidxs.iter().all(|x| {
+                                !matches!(self.spills[usize::from(*x)], SpillState::Empty)
+                            });
+                            let rhs_spilled = rhs_iidxs.iter().all(|x| {
+                                !matches!(self.spills[usize::from(*x)], SpillState::Empty)
+                            });
+
+                            if lhs_spilled && !rhs_spilled {
+                                Ordering::Less
+                            } else if !lhs_spilled && rhs_spilled {
+                                Ordering::Greater
+                            } else {
+                                let lhs_count = lhs.iter().map(|(count, _)| count).max().unwrap();
+                                let rhs_count = rhs.iter().map(|(count, _)| count).max().unwrap();
+                                lhs_count
+                                    .cmp(rhs_count)
+                                    .then(lhs_iidxs.len().cmp(&rhs_iidxs.len()))
+                            }
                         }
                     }
                 }
@@ -1056,12 +1066,11 @@ impl LSRegAlloc<'_> {
                         for op_iidx in op_iidxs {
                             if let Some(Register::GP(hint_reg)) =
                                 self.rev_an.reg_hint(iidx.checked_add(1).unwrap(), *op_iidx)
+                                && !asgn_regs.is_set(*reg)
                             {
-                                if !asgn_regs.is_set(*reg) {
-                                    out.push((hint_reg, RegAction::CopyFrom(*reg)));
-                                    asgn_regs.set(hint_reg);
-                                    continue 'a;
-                                }
+                                out.push((hint_reg, RegAction::CopyFrom(*reg)));
+                                asgn_regs.set(hint_reg);
+                                continue 'a;
                             }
                         }
 
@@ -1335,9 +1344,20 @@ impl LSRegAlloc<'_> {
                         .map(|x| self.m.inst(**x).def_byte_size(self.m))
                         .max()
                         .unwrap();
-                    self.stack.align(bytew);
-                    let frame_off = self.stack.grow(bytew);
-                    let off = i32::try_from(frame_off).unwrap();
+                    let mut off = None;
+                    if need_spilling.len() == 1 {
+                        off = self
+                            .rev_an
+                            .spill_to(*need_spilling[0])
+                            .map(|x| i32::try_from(x).unwrap());
+                    }
+                    let off = match off {
+                        Some(x) => x,
+                        None => {
+                            self.stack.align(bytew);
+                            i32::try_from(self.stack.grow(bytew)).unwrap()
+                        }
+                    };
                     match bitw {
                         1 => {
                             if *ext == RegExtension::ZeroExtended {
@@ -1576,21 +1596,21 @@ impl LSRegAlloc<'_> {
                 RegConstraint::Output
                 | RegConstraint::OutputCanBeSameAsInput(_)
                 | RegConstraint::InputOutput(_) => {
-                    if let Some(Register::FP(reg)) = self.rev_an.reg_hint(iidx, iidx) {
-                        if !avoid.is_set(reg) {
-                            *cnstr = match cnstr {
-                                RegConstraint::Output => RegConstraint::OutputFromReg(reg),
-                                RegConstraint::OutputCanBeSameAsInput(_) => {
-                                    RegConstraint::OutputFromReg(reg)
-                                }
-                                RegConstraint::InputOutput(op) => {
-                                    RegConstraint::InputOutputIntoReg(op.clone(), reg)
-                                }
-                                _ => unreachable!(),
-                            };
-                            asgn[i] = Some(reg);
-                            avoid.set(reg);
-                        }
+                    if let Some(Register::FP(reg)) = self.rev_an.reg_hint(iidx, iidx)
+                        && !avoid.is_set(reg)
+                    {
+                        *cnstr = match cnstr {
+                            RegConstraint::Output => RegConstraint::OutputFromReg(reg),
+                            RegConstraint::OutputCanBeSameAsInput(_) => {
+                                RegConstraint::OutputFromReg(reg)
+                            }
+                            RegConstraint::InputOutput(op) => {
+                                RegConstraint::InputOutputIntoReg(op.clone(), reg)
+                            }
+                            _ => unreachable!(),
+                        };
+                        asgn[i] = Some(reg);
+                        avoid.set(reg);
                     }
                 }
                 _ => (),
@@ -1667,16 +1687,16 @@ impl LSRegAlloc<'_> {
                 | RegConstraint::InputOutput(ref op)
                 | RegConstraint::InputOutputIntoReg(ref op, _)
                 | RegConstraint::InputIntoRegAndClobber(ref op, _) => {
-                    if let Some(old_reg) = self.find_op_in_fp_reg(op) {
-                        if old_reg != new_reg {
-                            match self.fp_reg_states[usize::from(new_reg.code())] {
-                                RegState::Reserved => unreachable!(),
-                                RegState::Empty => {
-                                    self.move_fp_reg(asm, old_reg, new_reg);
-                                }
-                                RegState::FromConst(_, _) => todo!(),
-                                RegState::FromInst(_, _) => todo!(),
+                    if let Some(old_reg) = self.find_op_in_fp_reg(op)
+                        && old_reg != new_reg
+                    {
+                        match self.fp_reg_states[usize::from(new_reg.code())] {
+                            RegState::Reserved => unreachable!(),
+                            RegState::Empty => {
+                                self.move_fp_reg(asm, old_reg, new_reg);
                             }
+                            RegState::FromConst(_, _) => todo!(),
+                            RegState::FromInst(_, _) => todo!(),
                         }
                     }
                 }

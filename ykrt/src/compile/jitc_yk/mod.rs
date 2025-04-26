@@ -125,10 +125,7 @@ impl<Register: Send + Sync + 'static> JITCYk<Register> {
         let aot_mod = &*AOT_MOD;
 
         if should_log_ir(IRPhase::AOT) {
-            log_ir(&format!(
-                "--- Begin aot ---\n{}\n--- End aot ---\n",
-                aot_mod
-            ));
+            log_ir(&format!("--- Begin aot ---\n{aot_mod}\n--- End aot ---\n"));
         }
 
         let sti = sti.map(|s| s.as_any().downcast::<YkSideTraceInfo<Register>>().unwrap());
@@ -144,14 +141,26 @@ impl<Register: Send + Sync + 'static> JITCYk<Register> {
             connector_tid,
         )?;
 
-        if should_log_ir(IRPhase::TraceKind) {
+        if should_log_ir(IRPhase::DebugStrs) {
             let kind = match jit_mod.tracekind() {
                 jit_ir::TraceKind::HeaderOnly => "header",
                 jit_ir::TraceKind::HeaderAndBody => unreachable!(),
                 jit_ir::TraceKind::Connector(_) => "connector",
                 jit_ir::TraceKind::Sidetrace(_) => "side-trace",
             };
-            log_ir(&format!("--- trace-kind {kind} ---\n"));
+            let mut out = String::new();
+            if let Some(x) = &hl.lock().debug_str {
+                out.push_str(&format!("--- Begin debugstrs: {kind}: {x} ---\n"));
+            } else {
+                out.push_str(&format!("--- Begin debugstrs: {kind} ---\n"));
+            }
+            for (_, inst) in jit_mod.iter_skipping_insts() {
+                if let jit_ir::Inst::DebugStr(x) = inst {
+                    out.push_str(&format!("  {}\n", x.msg(&jit_mod)));
+                }
+            }
+            out.push_str("--- End debugstrs ---\n");
+            log_ir(&out);
         }
 
         if should_log_ir(IRPhase::PreOpt) {

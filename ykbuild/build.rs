@@ -1,6 +1,6 @@
 #![feature(exit_status_error)]
 
-use fs4::FileExt;
+use fs4::fs_std::FileExt;
 use rerun_except::rerun_except;
 use std::{
     collections::HashMap,
@@ -32,7 +32,7 @@ const YKLLVM_SUBMODULE_PATH: &str = "../ykllvm/llvm";
 
 fn main() {
     for k in ENV_VARS_RERUN {
-        println!("cargo::rerun-if-env-changed={}", k);
+        println!("cargo::rerun-if-env-changed={k}");
     }
 
     // If the user defines YKB_YKLLVM_BIN_DIR then we don't try to build ykllvm ourselves.
