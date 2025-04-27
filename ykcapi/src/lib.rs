@@ -82,6 +82,7 @@ pub extern "C" fn __ykrt_control_point(
         // trace (at the moment we just rip out the control point's stack), which means we then
         // no longer need to recover callee-saved registers as the control point will do this
         // for us.
+        // "int3",
         "push rax",
         "push rcx",
         "push rbx",

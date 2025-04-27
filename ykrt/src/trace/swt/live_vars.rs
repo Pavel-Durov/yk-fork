@@ -142,7 +142,7 @@ fn emit_reg_to_rbp(asm: &mut Assembler, params: RegToRbpParams) {
 // Handles additional locations for register-to-register.
 fn handle_register_to_register_additional_locations(
     asm: &mut dynasmrt::Assembler<dynasmrt::x64::X64Relocation>,
-    src_reg_val_rbp_offset: i32,
+    reg_store_rbp_offset: i32,
     dst_add_locs: &Vec<i16>,
     src_val_size: &u16,
     dst_reg_num: &u16,
@@ -158,7 +158,7 @@ fn handle_register_to_register_additional_locations(
             emit_rbp_to_reg(
                 asm,
                 RbpToRegParams {
-                    rbp_offset: src_reg_val_rbp_offset,
+                    rbp_offset: reg_store_rbp_offset,
                     dst_reg,
                     size: *src_val_size,
                 },
@@ -169,7 +169,7 @@ fn handle_register_to_register_additional_locations(
             emit_rbp_to_reg(
                 asm,
                 RbpToRegParams {
-                    rbp_offset: src_reg_val_rbp_offset,
+                    rbp_offset: reg_store_rbp_offset,
                     dst_reg: TEMP_REG_PRIMARY,
                     size: *src_val_size,
                 },
@@ -213,13 +213,12 @@ fn handle_indirect_to_register_additional_locations(
                 },
             );
         } else {
-            let rbp_offset = i32::try_from(*location).unwrap();
             emit_mem_to_mem(
                 asm,
                 MemToMemParams {
                     src_ptr: live_vars_buffer.ptr as i64,
                     src_offset: temp_buffer_offset,
-                    dst_offset: rbp_offset,
+                    dst_offset: i32::try_from(*location).unwrap(),
                     size: *src_val_size,
                 },
             );
@@ -260,10 +259,15 @@ pub(crate) fn set_destination_live_vars(
 
         match src_location {
             Register(src_reg_num, src_val_size, src_add_locs) => {
-                let src_reg_offset = reg_num_to_ykrt_control_point_rsp_offset(*src_reg_num);
-                let src_reg_val_rbp_offset =
-                    i32::try_from(rbp_offset_reg_store - src_reg_offset as i64).unwrap();
-
+                let reg_store_offset = reg_num_to_ykrt_control_point_rsp_offset(*src_reg_num);
+                let reg_store_rbp_offset =
+                    i32::try_from(rbp_offset_reg_store - reg_store_offset as i64).unwrap();
+                if *CP_VERBOSE {
+                    println!(
+                        "Src register {}, reg_store_offset 0x{:x}, rbp_offset 0x{:x}",
+                        src_reg_num, reg_store_offset, reg_store_rbp_offset
+                    );
+                }
                 match dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
                         if *dst_reg_num == TEMP_REG_PRIMARY.into()
@@ -278,7 +282,7 @@ pub(crate) fn set_destination_live_vars(
                             // Handle additional locations for both source and destination
                             handle_register_to_register_additional_locations(
                                 asm,
-                                src_reg_val_rbp_offset,
+                                reg_store_rbp_offset,
                                 dst_add_locs,
                                 src_val_size,
                                 dst_reg_num,
@@ -302,7 +306,7 @@ pub(crate) fn set_destination_live_vars(
                             emit_rbp_to_reg(
                                 asm,
                                 RbpToRegParams {
-                                    rbp_offset: src_reg_val_rbp_offset,
+                                    rbp_offset: reg_store_rbp_offset,
                                     dst_reg,
                                     size: *src_val_size,
                                 },
@@ -321,11 +325,11 @@ pub(crate) fn set_destination_live_vars(
                                 src_location, dst_location
                             );
                         }
-                        // First load from rbp-relative source
+                        // First load register value to temp register
                         emit_rbp_to_reg(
                             asm,
                             RbpToRegParams {
-                                rbp_offset: src_reg_val_rbp_offset,
+                                rbp_offset: reg_store_rbp_offset,
                                 dst_reg: TEMP_REG_PRIMARY,
                                 size: *src_val_size,
                             },
@@ -446,15 +450,15 @@ pub(crate) fn set_destination_live_vars(
 
         match src_location {
             Register(src_reg_num, src_val_size, _src_add_locs) => {
-                let src_reg_offset = reg_num_to_ykrt_control_point_rsp_offset(*src_reg_num);
-                let src_reg_val_rbp_offset =
-                    i32::try_from(rbp_offset_reg_store - src_reg_offset as i64).unwrap();
+                let reg_store_offset = reg_num_to_ykrt_control_point_rsp_offset(*src_reg_num);
+                let reg_store_rbp_offset =
+                    i32::try_from(rbp_offset_reg_store - reg_store_offset as i64).unwrap();
                 match dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
                         // Handle additional locations
                         handle_register_to_register_additional_locations(
                             asm,
-                            src_reg_val_rbp_offset,
+                            reg_store_rbp_offset,
                             dst_add_locs,
                             src_val_size,
                             dst_reg_num,
@@ -481,13 +485,13 @@ pub(crate) fn set_destination_live_vars(
                             dst_val_size
                         );
                         match *src_val_size {
-                            1 => dynasm!(asm; mov Rb(dst_reg), BYTE [rbp - src_reg_val_rbp_offset]),
-                            2 => dynasm!(asm; mov Rw(dst_reg), WORD [rbp - src_reg_val_rbp_offset]),
+                            1 => dynasm!(asm; mov Rb(dst_reg), BYTE [rbp - reg_store_rbp_offset]),
+                            2 => dynasm!(asm; mov Rw(dst_reg), WORD [rbp - reg_store_rbp_offset]),
                             4 => {
-                                dynasm!(asm; mov Rd(dst_reg), DWORD [rbp - src_reg_val_rbp_offset])
+                                dynasm!(asm; mov Rd(dst_reg), DWORD [rbp - reg_store_rbp_offset])
                             }
                             8 => {
-                                dynasm!(asm; mov Rq(dst_reg), QWORD [rbp - src_reg_val_rbp_offset])
+                                dynasm!(asm; mov Rq(dst_reg), QWORD [rbp - reg_store_rbp_offset])
                             }
                             _ => {
                                 panic!("unexpect Register to Register value size {}", src_val_size)

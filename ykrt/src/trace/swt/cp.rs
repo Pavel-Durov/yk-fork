@@ -94,6 +94,34 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
             dst_frame_size,
             rbp_offset_reg_store
         );
+        if *CP_VERBOSE {
+            // Print live variable information for debugging
+            println!("Source live vars:");
+            for (i, var) in src_rec.live_vars.iter().enumerate() {
+                println!("  [{}]: {:?}", i, var);
+                // For indirect memory locations, print the actual value
+                if let Some(location) = var.get(0) {
+                    if let yksmp::Location::Indirect(_, offset, size) = location {
+                        assert_eq!(*size, 8);
+                        let addr = frameaddr as *const i64;
+                        let value = unsafe { *addr.offset(*offset as isize / 8) };
+                        println!("    Value at rbp+{} = 0x{:x} (i64)", offset, value);
+                    }
+                }
+            }
+            println!("Destination live vars:");
+            for (i, var) in dst_rec.live_vars.iter().enumerate() {
+                println!("  [{}]: {:?}", i, var);
+                if let Some(location) = var.get(0) {
+                    if let yksmp::Location::Indirect(_, offset, size) = location {
+                        assert_eq!(*size, 8);
+                        let addr = frameaddr as *const i64;
+                        let value = unsafe { *addr.offset(*offset as isize / 8) };
+                        println!("    Value at rbp+{} = 0x{:x} (i64)", offset, value);
+                    }
+                }
+            }
+        }
     }
 
     // Set destination live vars
