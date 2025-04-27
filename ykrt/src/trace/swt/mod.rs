@@ -81,19 +81,6 @@ pub extern "C" fn __yk_trace_basicblock(function_index: usize, block_index: usiz
 #[no_mangle]
 #[inline(never)]
 pub extern "C" fn __yk_trace_basicblock_dummy(function_index: usize, block_index: usize) {
-    // if were not in multi-module mode, we should use the normal trace_basicblock functionality.
-    if *SWT_MULTI_MODULE == false {
-        MTThread::with_borrow(|mtt| {
-            if mtt.is_tracing() {
-                BASIC_BLOCKS.with(|v| {
-                    v.borrow_mut().push(TracingBBlock {
-                        function_index,
-                        block_index,
-                    });
-                })
-            }
-        });
-    }
 }
 
 pub(crate) struct SWTracer {}

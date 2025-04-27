@@ -1,4 +1,3 @@
-// ignore-if: test $CP_PATCHPOINT=1
 // Run-time:
 //   env-var: YKD_LOG_IR=aot,jit-pre-opt,jit-asm
 //   env-var: YKD_SERIALISE_COMPILATION=1
