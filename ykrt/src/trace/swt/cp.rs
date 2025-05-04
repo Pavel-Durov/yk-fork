@@ -8,6 +8,7 @@ use crate::trace::swt::live_vars::{copy_live_vars_to_temp_buffer, set_destinatio
 use capstone::prelude::*;
 use dynasmrt::{dynasm, x64::Assembler, DynasmApi};
 use std::alloc::{dealloc, Layout};
+use std::arch::asm;
 use std::collections::HashMap;
 use std::error::Error;
 use std::ffi::c_void;
@@ -71,6 +72,12 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
     if *CP_BREAK {
         dynasm!(asm; .arch x64; int3);
     }
+    if *CP_VERBOSE {
+        println!(
+            "Transition: {:?} ExecTrace: {:?}",
+            transition.direction, transition.exec_trace
+        );
+    }
 
     // Set RBP and RSP
     dynasm!(asm
@@ -94,34 +101,6 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
             dst_frame_size,
             rbp_offset_reg_store
         );
-        if *CP_VERBOSE {
-            // Print live variable information for debugging
-            println!("Source live vars:");
-            for (i, var) in src_rec.live_vars.iter().enumerate() {
-                println!("  [{}]: {:?}", i, var);
-                // For indirect memory locations, print the actual value
-                if let Some(location) = var.get(0) {
-                    if let yksmp::Location::Indirect(_, offset, size) = location {
-                        assert_eq!(*size, 8);
-                        let addr = frameaddr as *const i64;
-                        let value = unsafe { *addr.offset(*offset as isize / 8) };
-                        println!("    Value at rbp+{} = 0x{:x} (i64)", offset, value);
-                    }
-                }
-            }
-            println!("Destination live vars:");
-            for (i, var) in dst_rec.live_vars.iter().enumerate() {
-                println!("  [{}]: {:?}", i, var);
-                if let Some(location) = var.get(0) {
-                    if let yksmp::Location::Indirect(_, offset, size) = location {
-                        assert_eq!(*size, 8);
-                        let addr = frameaddr as *const i64;
-                        let value = unsafe { *addr.offset(*offset as isize / 8) };
-                        println!("    Value at rbp+{} = 0x{:x} (i64)", offset, value);
-                    }
-                }
-            }
-        }
     }
 
     // Set destination live vars
@@ -143,6 +122,10 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
     if transition.exec_trace {
         dynasm!(asm
             ; .arch x64
+            // start of ebug print of hardcoded registers
+            // ; mov rcx, QWORD print_regs as i64
+            // ; call rcx
+            // end of debug print of hardcoded registers
             // First argument
             ; mov rdi, QWORD frameaddr as i64
             // Second argument
@@ -159,6 +142,10 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
         let dst_target_addr = i64::try_from(dst_rec.offset).unwrap() + call_offset;
         dynasm!(asm
             ; .arch x64
+            // start of ebug print of hardcoded registers
+            // ; mov rcx, QWORD print_regs as i64
+            // ; call rcx
+            // end of ebug print of hardcoded registers
             // Reserve 16 bytes on the stack
             ; sub rsp, 0x10
             // Save the original rsp
@@ -210,10 +197,80 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
     func();
 }
 
+pub unsafe extern "C" fn print_regs() {
+    if *CP_VERBOSE {
+        println!("@@@ Start Register values @@@");
+        for i in [15, 14, 13, 12, 3] {
+            let value = get_reg_value(i);
+            print!("register:{}, value: 0x{:x}", i, value);
+            if value != 0 && value % 8 == 0 {
+                let ptr_value = unsafe { *(value as *const u64) };
+                print!(", *value: 0x{:x}", ptr_value);
+            } else {
+                print!(", *value: NULL");
+            }
+            println!("");
+        }
+        // Read values at various offsets from RBP to find the correct location
+        //0xb0
+        {
+            let value_at_0xb0: u64;
+            asm!(
+                "lea {0}, [rbp - 0xb0]",  // Read the value at address rbp-0xb0
+                out(reg) value_at_0xb0,
+                options(nostack, preserves_flags)
+            );
+            // TODO:print value at rbp offset
+            print!("rbp - 0xb0 - value: 0x{:x}", value_at_0xb0);
+            if value_at_0xb0 != 0 && value_at_0xb0 % 8 == 0 {
+                let ptr_value = unsafe { *(value_at_0xb0 as *const u64) };
+                print!(", *value: 0x{:x}", ptr_value);
+            } else {
+                print!(", *value: NULL");
+            }
+            println!("");
+        }
+        {
+            let value_at_0xc0: u64;
+            asm!(
+                "lea {0}, [rbp - 0xc0]",  // Read the value at address rbp-0xc0
+                out(reg) value_at_0xc0,
+                options(nostack, preserves_flags)
+            );
+            // TODO:print value at rbp offset
+            print!("rbp - 0xc0 - value: 0x{:x}", value_at_0xc0);
+            if value_at_0xc0 != 0 && value_at_0xc0 % 8 == 0 {
+                let ptr_value = unsafe { *(value_at_0xc0 as *const u64) };
+                print!(", *value: 0x{:x}", ptr_value);
+            } else {
+                print!(", *value: NULL");
+            }
+            println!("");
+        }
+        {
+            let value_at_0x100: u64;
+            asm!(
+                "lea {0}, [rbp - 0x100]",  // Read the value at address rbp-0x100
+                out(reg) value_at_0x100,
+                options(nostack, preserves_flags)
+            );
+            // TODO:print value at rbp offset
+            print!("rbp - 0x100 - value: 0x{:x}", value_at_0x100);
+            if value_at_0x100 != 0 && value_at_0x100 % 8 == 0 {
+                let ptr_value = unsafe { *(value_at_0x100 as *const u64) };
+                print!(", *value: 0x{:x}", ptr_value);
+            } else {
+                print!(", *value: NULL");
+            }
+            println!("");
+        }
+        println!("@@@ End Register values @@@");
+    }
+}
+
 // Utility function to print the value of a register.
 // Used for debugging.
 pub unsafe extern "C" fn debug_print_register(reg_num: u16, offset: i32, print_value: bool) {
-    use std::arch::asm;
     let rbx_addr_u64: u64;
     match reg_num {
         0 => asm!(
@@ -307,12 +364,92 @@ pub unsafe extern "C" fn debug_print_register(reg_num: u16, offset: i32, print_v
             unsafe {
                 let value_at_addr: u64 = ptr.read_volatile();
                 println!(
-                        "register:{}, value: 0x{:x}, value_at_addr: 0x{:x}",
-                        reg_num, rbx_addr_u64, value_at_addr
+                    "register:{}, value: 0x{:x}, value_at_addr: 0x{:x}",
+                    reg_num, rbx_addr_u64, value_at_addr
                 );
             }
         }
     }
+}
+
+// Utility function to print the value of a register.
+// Used for debugging.
+pub unsafe extern "C" fn get_reg_value(reg_num: u16) -> u64 {
+    let rbx_addr_u64: u64;
+    match reg_num {
+        0 => asm!(
+            "mov {0}, rax",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        1 => asm!(
+            "mov {0}, rcx",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        2 => asm!(
+            "mov {0}, rdx",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        3 => asm!(
+            "mov {0}, rbx",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        6 => asm!(
+            "mov {0}, rbp",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        7 => asm!(
+            "mov {0}, rdi",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        8 => asm!(
+            "mov {0}, r8",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        9 => asm!(
+            "mov {0}, r9",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        10 => asm!(
+            "mov {0}, r10",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        11 => asm!(
+            "mov {0}, r11",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        12 => asm!(
+            "mov {0}, r12",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        13 => asm!(
+            "mov {0}, r13",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        14 => asm!(
+            "mov {0}, r14",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        15 => asm!(
+            "mov {0}, r15",
+            out(reg) rbx_addr_u64,
+            options(nostack, nomem, preserves_flags)
+        ),
+        _ => panic!("Unsupported register number: {}", reg_num),
+    }
+    return rbx_addr_u64;
 }
 
 // Restores the registers from the rbp offset.
