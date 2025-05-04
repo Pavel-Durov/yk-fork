@@ -1,0 +1,365 @@
+   0x0000000000208150 <+0>:	push   rbp
+   0x0000000000208151 <+1>:	mov    rbp,rsp
+   0x0000000000208154 <+4>:	push   r15
+   0x0000000000208156 <+6>:	push   r14
+   0x0000000000208158 <+8>:	push   r13
+   0x000000000020815a <+10>:	push   r12
+   0x000000000020815c <+12>:	push   rbx
+   0x000000000020815d <+13>:	sub    rsp,0x68
+   0x0000000000208161 <+17>:	mov    edi,0x14
+   0x0000000000208166 <+22>:	xor    esi,esi
+   0x0000000000208168 <+24>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x000000000020816d <+29>:	mov    rax,0xfffffffffffffff8
+   0x0000000000208174 <+36>:	mov    r14,QWORD PTR fs:[rax]
+   0x0000000000208178 <+40>:	mov    r13,r14
+   0x000000000020817b <+43>:	add    r13,0x8
+   0x000000000020817f <+47>:	mov    rax,r14
+   0x0000000000208182 <+50>:	add    rax,0x10
+   0x0000000000208186 <+54>:	mov    r12,r14
+   0x0000000000208189 <+57>:	add    r12,0x18
+   0x000000000020818d <+61>:	jmp    0x20818f <main+63>
+   0x000000000020818f <+63>:	mov    QWORD PTR [rbp-0x40],rax
+   0x0000000000208193 <+67>:	mov    edi,0x14
+   0x0000000000208198 <+72>:	mov    esi,0x1
+   0x000000000020819d <+77>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x00000000002081a2 <+82>:	xor    edi,edi
+   0x00000000002081a4 <+84>:	call   0x2087d0 <yk_mt_new@plt>
+   0x00000000002081a9 <+89>:	mov    rbx,rax
+   0x00000000002081ac <+92>:	jmp    0x2081ae <main+94>
+   0x00000000002081ae <+94>:	mov    r15,r13
+   0x00000000002081b1 <+97>:	mov    edi,0x14
+   0x00000000002081b6 <+102>:	mov    esi,0x2
+   0x00000000002081bb <+107>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x00000000002081c0 <+112>:	mov    rdi,rbx
+   0x00000000002081c3 <+115>:	xor    esi,esi
+   0x00000000002081c5 <+117>:	call   0x2087e0 <yk_mt_hot_threshold_set@plt>
+   0x00000000002081ca <+122>:	jmp    0x2081cc <main+124>
+   0x00000000002081cc <+124>:	mov    r13,rbx
+   0x00000000002081cf <+127>:	mov    edi,0x14
+   0x00000000002081d4 <+132>:	mov    esi,0x3
+   0x00000000002081d9 <+137>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x00000000002081de <+142>:	jmp    0x2081e0 <main+144>
+   0x00000000002081e0 <+144>:	mov    edi,0x14
+   0x00000000002081e5 <+149>:	mov    esi,0x4
+   0x00000000002081ea <+154>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x00000000002081ef <+159>:	call   0x2087f0 <yk_location_new@plt>
+   0x00000000002081f4 <+164>:	mov    rbx,rax
+   0x00000000002081f7 <+167>:	jmp    0x2081f9 <main+169>
+   0x00000000002081f9 <+169>:	mov    edi,0x14
+   0x00000000002081fe <+174>:	mov    esi,0x5
+   0x0000000000208203 <+179>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x0000000000208208 <+184>:	mov    QWORD PTR [rbp-0x30],rbx
+   0x000000000020820c <+188>:	jmp    0x20820e <main+190>
+   0x000000000020820e <+190>:	mov    edi,0x14
+   0x0000000000208213 <+195>:	mov    esi,0x6
+   0x0000000000208218 <+200>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x000000000020821d <+205>:	mov    QWORD PTR [r14],0x4
+   0x0000000000208224 <+212>:	mov    rbx,r13
+   0x0000000000208227 <+215>:	jmp    0x208229 <main+217>
+   0x0000000000208229 <+217>:	mov    edi,0x14
+   0x000000000020822e <+222>:	mov    esi,0x7
+   0x0000000000208233 <+227>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x0000000000208238 <+232>:	mov    r13,r15
+   0x000000000020823b <+235>:	mov    QWORD PTR [r13+0x0],0x25
+   0x0000000000208243 <+243>:	jmp    0x208245 <main+245>
+   0x0000000000208245 <+245>:	mov    edi,0x14
+   0x000000000020824a <+250>:	mov    esi,0x8
+   0x000000000020824f <+255>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x0000000000208254 <+260>:	mov    r15,QWORD PTR [rbp-0x40]
+   0x0000000000208258 <+264>:	mov    DWORD PTR [r15],0x26
+   0x000000000020825f <+271>:	jmp    0x208261 <main+273>
+   0x0000000000208261 <+273>:	mov    edi,0x14
+   0x0000000000208266 <+278>:	mov    esi,0x9
+   0x000000000020826b <+283>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x0000000000208270 <+288>:	mov    QWORD PTR [r12],0x27
+   0x0000000000208278 <+296>:	jmp    0x20827a <main+298>
+   0x000000000020827a <+298>:	mov    edi,0x14
+   0x000000000020827f <+303>:	mov    esi,0xa
+   0x0000000000208284 <+308>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x0000000000208289 <+313>:	jmp    0x20828b <main+315>
+   0x000000000020828b <+315>:	mov    edi,0x14
+   0x0000000000208290 <+320>:	mov    esi,0xb
+   0x0000000000208295 <+325>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x000000000020829a <+330>:	jmp    0x20829c <main+332>
+   0x000000000020829c <+332>:	mov    edi,0x14
+   0x00000000002082a1 <+337>:	mov    esi,0xc
+   0x00000000002082a6 <+342>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x00000000002082ab <+347>:	jmp    0x2082ad <main+349>
+   0x00000000002082ad <+349>:	mov    edi,0x14
+   0x00000000002082b2 <+354>:	mov    esi,0xd
+   0x00000000002082b7 <+359>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x00000000002082bc <+364>:	jmp    0x2082be <main+366>
+   0x00000000002082be <+366>:	mov    edi,0x14
+   0x00000000002082c3 <+371>:	mov    esi,0xe
+   0x00000000002082c8 <+376>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x00000000002082cd <+381>:	mov    rax,QWORD PTR [r14]
+   0x00000000002082d0 <+384>:	cmp    rax,0x0
+   0x00000000002082d4 <+388>:	sete   al
+   0x00000000002082d7 <+391>:	test   al,0x1
+   0x00000000002082d9 <+393>:	jne    0x208641 <main+1265>
+   0x00000000002082df <+399>:	jmp    0x2082e1 <main+401>
+   0x00000000002082e1 <+401>:	mov    edi,0x14
+   0x00000000002082e6 <+406>:	mov    esi,0xf
+   0x00000000002082eb <+411>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x00000000002082f0 <+416>:	mov    QWORD PTR [rbp-0x50],rbx
+   0x00000000002082f4 <+420>:	mov    QWORD PTR [rbp-0x68],r14
+   0x00000000002082f8 <+424>:	mov    QWORD PTR [rbp-0x48],r13
+   0x00000000002082fc <+428>:	mov    QWORD PTR [rbp-0x70],r12
+   0x0000000000208300 <+432>:	jmp    0x208302 <main+434>
+   0x0000000000208302 <+434>:	mov    edi,0x14
+   0x0000000000208307 <+439>:	mov    esi,0x10
+   0x000000000020830c <+444>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x0000000000208311 <+449>:	lea    rsi,[rbp-0x30]
+   0x0000000000208315 <+453>:	mov    rdi,rbx
+   0x0000000000208318 <+456>:	mov    edx,0x1
+   0x000000000020831d <+461>:	movabs r11,0x2087c0
+   0x0000000000208327 <+471>:	call   r11
+
+
+
+=> 0x000000000020832a <+474>:	mov    r15,r13
+   0x000000000020832d <+477>:	jmp    0x20832f <main+479>
+   0x000000000020832f <+479>:	mov    edi,0x14
+   0x0000000000208334 <+484>:	mov    esi,0x11
+   0x0000000000208339 <+489>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x000000000020833e <+494>:	mov    r13,QWORD PTR [r15]
+   0x0000000000208341 <+497>:	mov    rdi,r13
+   0x0000000000208344 <+500>:	mov    esi,0x2
+   0x0000000000208349 <+505>:	call   0x208040 <add_uintptr_t>
+   0x000000000020834e <+510>:	mov    QWORD PTR [rbp-0x88],rax
+   0x0000000000208355 <+517>:	mov    QWORD PTR [rbp-0x78],r13
+   0x0000000000208359 <+521>:	mov    rax,QWORD PTR [rbp-0x40]
+   0x000000000020835d <+525>:	jmp    0x20835f <main+527>
+   0x000000000020835f <+527>:	mov    edi,0x14
+   0x0000000000208364 <+532>:	mov    esi,0x12
+   0x0000000000208369 <+537>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x000000000020836e <+542>:	mov    rdi,QWORD PTR [rbp-0x88]
+   0x0000000000208375 <+549>:	call   0x208800 <__yk_idempotent_promote_i64@plt>
+   0x000000000020837a <+554>:	mov    r13,rax
+   0x000000000020837d <+557>:	jmp    0x20837f <main+559>
+   0x000000000020837f <+559>:	mov    edi,0x14
+   0x0000000000208384 <+564>:	mov    esi,0x13
+   0x0000000000208389 <+569>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x000000000020838e <+574>:	mov    rax,QWORD PTR [rbp-0x40]
+   0x0000000000208392 <+578>:	mov    r15d,DWORD PTR [rax]
+   0x0000000000208395 <+581>:	mov    edi,r15d
+   0x0000000000208398 <+584>:	mov    esi,0x3
+   0x000000000020839d <+589>:	call   0x2080a0 <add_uint32_t>
+   0x00000000002083a2 <+594>:	mov    ebx,eax
+   0x00000000002083a4 <+596>:	mov    r12,QWORD PTR [rbp-0x70]
+   0x00000000002083a8 <+600>:	mov    r14,QWORD PTR [rbp-0x68]
+   0x00000000002083ac <+604>:	mov    QWORD PTR [rbp-0x58],r13
+   0x00000000002083b0 <+608>:	jmp    0x2083b2 <main+610>
+   0x00000000002083b2 <+610>:	mov    edi,0x14
+   0x00000000002083b7 <+615>:	mov    esi,0x14
+   0x00000000002083bc <+620>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x00000000002083c1 <+625>:	mov    edi,ebx
+   0x00000000002083c3 <+627>:	call   0x2087a0 <__yk_idempotent_promote_i32@plt>
+   0x00000000002083c8 <+632>:	mov    r13d,eax
+   0x00000000002083cb <+635>:	jmp    0x2083cd <main+637>
+   0x00000000002083cd <+637>:	mov    edi,0x14
+   0x00000000002083d2 <+642>:	mov    esi,0x15
+   0x00000000002083d7 <+647>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x00000000002083dc <+652>:	mov    r15,QWORD PTR [r12]
+   0x00000000002083e0 <+656>:	mov    rdi,r15
+   0x00000000002083e3 <+659>:	mov    esi,0x4
+   0x00000000002083e8 <+664>:	call   0x2080f0 <add_uint64_t>
+   0x00000000002083ed <+669>:	mov    rbx,rax
+   0x00000000002083f0 <+672>:	mov    rax,QWORD PTR [rbp-0x40]
+   0x00000000002083f4 <+676>:	mov    DWORD PTR [rbp-0x34],r13d
+   0x00000000002083f8 <+680>:	jmp    0x2083fa <main+682>
+   0x00000000002083fa <+682>:	mov    edi,0x14
+   0x00000000002083ff <+687>:	mov    esi,0x16
+   0x0000000000208404 <+692>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x0000000000208409 <+697>:	mov    rdi,rbx
+   0x000000000020840c <+700>:	call   0x208800 <__yk_idempotent_promote_i64@plt>
+   0x0000000000208411 <+705>:	mov    r13,rax
+   0x0000000000208414 <+708>:	jmp    0x208416 <main+710>
+   0x0000000000208416 <+710>:	mov    edi,0x14
+   0x000000000020841b <+715>:	mov    esi,0x17
+   0x0000000000208420 <+720>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x0000000000208425 <+725>:	mov    r15,QWORD PTR [rbp-0x78]
+   0x0000000000208429 <+729>:	mov    rdi,r15
+   0x000000000020842c <+732>:	call   0x208810 <__yk_promote_usize@plt>
+   0x0000000000208431 <+737>:	mov    rbx,rax
+   0x0000000000208434 <+740>:	mov    rax,QWORD PTR [rbp-0x40]
+   0x0000000000208438 <+744>:	mov    r15,rax
+   0x000000000020843b <+747>:	mov    QWORD PTR [rbp-0x60],r13
+   0x000000000020843f <+751>:	jmp    0x208441 <main+753>
+   0x0000000000208441 <+753>:	mov    edi,0x14
+   0x0000000000208446 <+758>:	mov    esi,0x18
+   0x000000000020844b <+763>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x0000000000208450 <+768>:	mov    r14,r15
+   0x0000000000208453 <+771>:	mov    r15d,DWORD PTR [r14]
+   0x0000000000208456 <+774>:	mov    edi,r15d
+   0x0000000000208459 <+777>:	call   0x208770 <__yk_promote_c_unsigned_int@plt>
+   0x000000000020845e <+782>:	mov    r13d,eax
+   0x0000000000208461 <+785>:	jmp    0x208463 <main+787>
+   0x0000000000208463 <+787>:	mov    edi,0x14
+   0x0000000000208468 <+792>:	mov    esi,0x19
+   0x000000000020846d <+797>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x0000000000208472 <+802>:	mov    r15,QWORD PTR [r12]
+   0x0000000000208476 <+806>:	mov    rdi,r15
+   0x0000000000208479 <+809>:	call   0x208810 <__yk_promote_usize@plt>
+   0x000000000020847e <+814>:	mov    r14,rax
+   0x0000000000208481 <+817>:	jmp    0x208483 <main+819>
+   0x0000000000208483 <+819>:	mov    edi,0x14
+   0x0000000000208488 <+824>:	mov    esi,0x1a
+   0x000000000020848d <+829>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x0000000000208492 <+834>:	mov    rdi,rbx
+   0x0000000000208495 <+837>:	mov    esi,0x2
+   0x000000000020849a <+842>:	call   0x208040 <add_uintptr_t>
+   0x000000000020849f <+847>:	mov    r15,rax
+   0x00000000002084a2 <+850>:	mov    DWORD PTR [rbp-0x7c],r13d
+   0x00000000002084a6 <+854>:	mov    rax,QWORD PTR [rbp-0x60]
+   0x00000000002084aa <+858>:	mov    rcx,QWORD PTR [rbp-0x58]
+   0x00000000002084ae <+862>:	mov    r13,rcx
+   0x00000000002084b1 <+865>:	jmp    0x2084b3 <main+867>
+   0x00000000002084b3 <+867>:	mov    edi,0x14
+   0x00000000002084b8 <+872>:	mov    esi,0x1b
+   0x00000000002084bd <+877>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x00000000002084c2 <+882>:	mov    rdi,r15
+   0x00000000002084c5 <+885>:	call   0x208800 <__yk_idempotent_promote_i64@plt>
+   0x00000000002084ca <+890>:	mov    rbx,rax
+   0x00000000002084cd <+893>:	jmp    0x2084cf <main+895>
+   0x00000000002084cf <+895>:	mov    edi,0x14
+   0x00000000002084d4 <+900>:	mov    esi,0x1c
+   0x00000000002084d9 <+905>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x00000000002084de <+910>:	mov    r12d,DWORD PTR [rbp-0x7c]
+   0x00000000002084e2 <+914>:	mov    edi,r12d
+   0x00000000002084e5 <+917>:	mov    esi,0x3
+   0x00000000002084ea <+922>:	call   0x2080a0 <add_uint32_t>
+   0x00000000002084ef <+927>:	mov    r15d,eax
+   0x00000000002084f2 <+930>:	jmp    0x2084f4 <main+932>
+   0x00000000002084f4 <+932>:	mov    edi,0x14
+   0x00000000002084f9 <+937>:	mov    esi,0x1d
+   0x00000000002084fe <+942>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x0000000000208503 <+947>:	mov    edi,r15d
+   0x0000000000208506 <+950>:	call   0x2087a0 <__yk_idempotent_promote_i32@plt>
+   0x000000000020850b <+955>:	mov    r12d,eax
+   0x000000000020850e <+958>:	jmp    0x208510 <main+960>
+   0x0000000000208510 <+960>:	mov    edi,0x14
+   0x0000000000208515 <+965>:	mov    esi,0x1e
+   0x000000000020851a <+970>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x000000000020851f <+975>:	mov    r13,r14
+   0x0000000000208522 <+978>:	mov    rdi,r13
+   0x0000000000208525 <+981>:	mov    esi,0x4
+   0x000000000020852a <+986>:	call   0x2080f0 <add_uint64_t>
+   0x000000000020852f <+991>:	mov    r15,rax
+   0x0000000000208532 <+994>:	mov    r14,QWORD PTR [rbp-0x68]
+   0x0000000000208536 <+998>:	jmp    0x208538 <main+1000>
+   0x0000000000208538 <+1000>:	mov    edi,0x14
+   0x000000000020853d <+1005>:	mov    esi,0x1f
+   0x0000000000208542 <+1010>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x0000000000208547 <+1015>:	mov    rdi,r15
+   0x000000000020854a <+1018>:	call   0x208800 <__yk_idempotent_promote_i64@plt>
+   0x000000000020854f <+1023>:	mov    QWORD PTR [rbp-0x90],rax
+   0x0000000000208556 <+1030>:	jmp    0x208558 <main+1032>
+   0x0000000000208558 <+1032>:	mov    edi,0x14
+   0x000000000020855d <+1037>:	mov    esi,0x20
+   0x0000000000208562 <+1042>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x0000000000208567 <+1047>:	mov    rdi,QWORD PTR ds:0x20aac0
+   0x000000000020856f <+1055>:	mov    rdx,QWORD PTR [r14]
+   0x0000000000208572 <+1058>:	movabs rsi,0x206450
+   0x000000000020857c <+1068>:	mov    rcx,QWORD PTR [rbp-0x58]
+   0x0000000000208580 <+1072>:	mov    r8,rbx
+   0x0000000000208583 <+1075>:	mov    al,0x0
+   0x0000000000208585 <+1077>:	call   0x208820 <fprintf@plt>
+   0x000000000020858a <+1082>:	mov    r15,QWORD PTR [rbp-0x40]
+   0x000000000020858e <+1086>:	jmp    0x208590 <main+1088>
+   0x0000000000208590 <+1088>:	mov    edi,0x14
+   0x0000000000208595 <+1093>:	mov    esi,0x21
+   0x000000000020859a <+1098>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x000000000020859f <+1103>:	mov    rdi,QWORD PTR ds:0x20aac0
+   0x00000000002085a7 <+1111>:	mov    rdx,QWORD PTR [r14]
+   0x00000000002085aa <+1114>:	movabs rsi,0x206444
+   0x00000000002085b4 <+1124>:	mov    ecx,DWORD PTR [rbp-0x34]
+   0x00000000002085b7 <+1127>:	mov    r8d,r12d
+   0x00000000002085ba <+1130>:	mov    al,0x0
+   0x00000000002085bc <+1132>:	call   0x208820 <fprintf@plt>
+   0x00000000002085c1 <+1137>:	mov    r13,QWORD PTR [rbp-0x48]
+   0x00000000002085c5 <+1141>:	jmp    0x2085c7 <main+1143>
+   0x00000000002085c7 <+1143>:	mov    edi,0x14
+   0x00000000002085cc <+1148>:	mov    esi,0x22
+   0x00000000002085d1 <+1153>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x00000000002085d6 <+1158>:	mov    rdi,QWORD PTR ds:0x20aac0
+   0x00000000002085de <+1166>:	mov    rdx,QWORD PTR [r14]
+   0x00000000002085e1 <+1169>:	movabs rsi,0x206450
+   0x00000000002085eb <+1179>:	mov    rcx,QWORD PTR [rbp-0x60]
+   0x00000000002085ef <+1183>:	mov    r8,QWORD PTR [rbp-0x90]
+   0x00000000002085f6 <+1190>:	mov    al,0x0
+   0x00000000002085f8 <+1192>:	call   0x208820 <fprintf@plt>
+   0x00000000002085fd <+1197>:	jmp    0x2085ff <main+1199>
+   0x00000000002085ff <+1199>:	mov    edi,0x14
+   0x0000000000208604 <+1204>:	mov    esi,0x23
+   0x0000000000208609 <+1209>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x000000000020860e <+1214>:	mov    rax,QWORD PTR [r14]
+   0x0000000000208611 <+1217>:	add    rax,0xffffffffffffffff
+   0x0000000000208615 <+1221>:	mov    QWORD PTR [r14],rax
+   0x0000000000208618 <+1224>:	cmp    rax,0x0
+   0x000000000020861c <+1228>:	sete   al
+   0x000000000020861f <+1231>:	mov    rbx,QWORD PTR [rbp-0x50]
+   0x0000000000208623 <+1235>:	mov    r12,QWORD PTR [rbp-0x70]
+   0x0000000000208627 <+1239>:	test   al,0x1
+   0x0000000000208629 <+1241>:	jne    0x208630 <main+1248>
+   0x000000000020862b <+1243>:	jmp    0x2086da <main+1418>
+   0x0000000000208630 <+1248>:	mov    edi,0x14
+   0x0000000000208635 <+1253>:	mov    esi,0x24
+   0x000000000020863a <+1258>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x000000000020863f <+1263>:	jmp    0x208641 <main+1265>
+   0x0000000000208641 <+1265>:	mov    edi,0x14
+   0x0000000000208646 <+1270>:	mov    esi,0x25
+   0x000000000020864b <+1275>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x0000000000208650 <+1280>:	mov    rdi,QWORD PTR [rbp-0x30]
+   0x0000000000208654 <+1284>:	call   0x208790 <yk_location_drop@plt>
+   0x0000000000208659 <+1289>:	jmp    0x20865b <main+1291>
+   0x000000000020865b <+1291>:	mov    edi,0x14
+   0x0000000000208660 <+1296>:	mov    esi,0x26
+   0x0000000000208665 <+1301>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x000000000020866a <+1306>:	mov    rdi,rbx
+   0x000000000020866d <+1309>:	call   0x208760 <yk_mt_shutdown@plt>
+   0x0000000000208672 <+1314>:	jmp    0x208674 <main+1316>
+   0x0000000000208674 <+1316>:	mov    edi,0x14
+   0x0000000000208679 <+1321>:	mov    esi,0x27
+   0x000000000020867e <+1326>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x0000000000208683 <+1331>:	jmp    0x208685 <main+1333>
+   0x0000000000208685 <+1333>:	mov    edi,0x14
+   0x000000000020868a <+1338>:	mov    esi,0x28
+   0x000000000020868f <+1343>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x0000000000208694 <+1348>:	jmp    0x208696 <main+1350>
+   0x0000000000208696 <+1350>:	mov    edi,0x14
+   0x000000000020869b <+1355>:	mov    esi,0x29
+   0x00000000002086a0 <+1360>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x00000000002086a5 <+1365>:	jmp    0x2086a7 <main+1367>
+   0x00000000002086a7 <+1367>:	mov    edi,0x14
+   0x00000000002086ac <+1372>:	mov    esi,0x2a
+   0x00000000002086b1 <+1377>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x00000000002086b6 <+1382>:	jmp    0x2086b8 <main+1384>
+   0x00000000002086b8 <+1384>:	mov    edi,0x14
+   0x00000000002086bd <+1389>:	mov    esi,0x2b
+   0x00000000002086c2 <+1394>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x00000000002086c7 <+1399>:	jmp    0x2086c9 <main+1401>
+   0x00000000002086c9 <+1401>:	mov    edi,0x14
+   0x00000000002086ce <+1406>:	mov    esi,0x2c
+   0x00000000002086d3 <+1411>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x00000000002086d8 <+1416>:	jmp    0x20870e <main+1470>
+   0x00000000002086da <+1418>:	mov    edi,0x14
+   0x00000000002086df <+1423>:	mov    esi,0x2d
+   0x00000000002086e4 <+1428>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x00000000002086e9 <+1433>:	jmp    0x208302 <main+434>
+   0x00000000002086ee <+1438>:	mov    edi,0x14
+   0x00000000002086f3 <+1443>:	mov    esi,0x2e
+   0x00000000002086f8 <+1448>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x00000000002086fd <+1453>:	xor    eax,eax
+   0x00000000002086ff <+1455>:	add    rsp,0x68
+   0x0000000000208703 <+1459>:	pop    rbx
+   0x0000000000208704 <+1460>:	pop    r12
+   0x0000000000208706 <+1462>:	pop    r13
+   0x0000000000208708 <+1464>:	pop    r14
+   0x000000000020870a <+1466>:	pop    r15
+   0x000000000020870c <+1468>:	pop    rbp
+   0x000000000020870d <+1469>:	ret
+   0x000000000020870e <+1470>:	mov    edi,0x14
+   0x0000000000208713 <+1475>:	mov    esi,0x2f
+   0x0000000000208718 <+1480>:	call   0x2087b0 <__yk_trace_basicblock@plt>
+   0x000000000020871d <+1485>:	jmp    0x2086ee <main+1438>

@@ -1,0 +1,427 @@
+bRunning C tests...
+
+running 1 testsTransition: OptToUnopt ExecTrace: false
+Transition: OptToUnopt
+src_rbp: 0x7fffffffe340, reg_store: 0x7fffffffe230, src_frame_size: 0xa0, dst_frame_size: 0x90, rbp_offset_reg_store: 0x110
+Register2Register - src: Register(14, 8, [-152]) dst: Register(14, 8, [-104])
+Register2Register - src: Register(3, 8, []) dst: Register(13, 8, [-72])
+Register2Register - src: Register(15, 8, [-96]) dst: Register(15, 8, [-64])
+Register2Register - src: Register(12, 8, [-64]) dst: Register(12, 8, [-112])
+Register2Register - src: Register(13, 8, [-72, 5]) dst: Register(3, 8, [-80, 5])
+ASM DUMP:
+  0: movabs rbp, 0x7fffffffe340
+  a: movabs rsp, 0x7fffffffe340
+  14: sub rsp, 0x90
+  1b: mov rax, qword ptr [rbp - 0x108]
+  22: mov qword ptr [rbp - 0x68], rax
+  29: mov r14, qword ptr [rbp - 0x108]
+  30: mov rax, qword ptr [rbp - 0xc0]
+  37: mov qword ptr [rbp - 0x48], rax
+  3e: mov r13, qword ptr [rbp - 0xc0]
+  45: mov rax, qword ptr [rbp - 0x110]
+  4c: mov qword ptr [rbp - 0x40], rax
+  53: mov r15, qword ptr [rbp - 0x110]
+  5a: mov rax, qword ptr [rbp - 0xf8]
+  61: mov qword ptr [rbp - 0x70], rax
+  68: mov r12, qword ptr [rbp - 0xf8]
+  6f: mov rax, qword ptr [rbp - 0x100]
+  76: mov qword ptr [rbp - 0x50], rax
+  7d: mov rdi, qword ptr [rbp - 0x100]
+  84: mov rbx, qword ptr [rbp - 0x100]
+  8b: mov rax, qword ptr [rbp - 0xb0]
+  92: mov rcx, qword ptr [rbp - 0xb8]
+  99: mov rsi, qword ptr [rbp - 0xd0]
+  a0: mov r8, qword ptr [rbp - 0xd8]
+  a7: mov r9, qword ptr [rbp - 0xe0]
+  ae: mov r10, qword ptr [rbp - 0xe8]
+  b5: mov r11, qword ptr [rbp - 0xf0]
+  bc: sub rsp, 0x10
+  c0: mov qword ptr [rsp], rax
+  c4: movabs rax, 0x20832a
+  ce: mov qword ptr [rsp + 8], rax
+  d3: pop rax
+  d4: ret 
+4: 39 39
+4: 41 41
+4: 43 43
+Transition: UnoptToOpt ExecTrace: false
+Transition: UnoptToOpt
+src_rbp: 0x7fffffffe340, reg_store: 0x7fffffffe240, src_frame_size: 0x90, dst_frame_size: 0xa0, rbp_offset_reg_store: 0x100
+Register2Register - src: Register(14, 8, [-104]) dst: Register(14, 8, [-152])
+Register2Register - src: Register(13, 8, [-72]) dst: Register(3, 8, [])
+Register2Register - src: Register(15, 8, [-64]) dst: Register(15, 8, [-96])
+Register2Register - src: Register(12, 8, [-112]) dst: Register(12, 8, [-64])
+Register2Register - src: Register(3, 8, [-80, 5]) dst: Register(13, 8, [-72, 5])
+ASM DUMP:
+  0: movabs rbp, 0x7fffffffe340
+  a: movabs rsp, 0x7fffffffe340
+  14: sub rsp, 0xa0
+  1b: mov rax, qword ptr [rbp - 0xf8]
+  22: mov qword ptr [rbp - 0x98], rax
+  29: mov r14, qword ptr [rbp - 0xf8]
+  30: mov rbx, qword ptr [rbp - 0xf0]
+  37: mov rax, qword ptr [rbp - 0x100]
+  3e: mov qword ptr [rbp - 0x60], rax
+  45: mov r15, qword ptr [rbp - 0x100]
+  4c: mov rax, qword ptr [rbp - 0xe8]
+  53: mov qword ptr [rbp - 0x40], rax
+  5a: mov r12, qword ptr [rbp - 0xe8]
+  61: mov rax, qword ptr [rbp - 0xb0]
+  68: mov qword ptr [rbp - 0x48], rax
+  6f: mov rdi, qword ptr [rbp - 0xb0]
+  76: mov r13, qword ptr [rbp - 0xb0]
+  7d: mov rax, qword ptr [rbp - 0xa0]
+  84: mov rcx, qword ptr [rbp - 0xa8]
+  8b: mov rsi, qword ptr [rbp - 0xc0]
+  92: mov r8, qword ptr [rbp - 0xc8]
+  99: mov r9, qword ptr [rbp - 0xd0]
+  a0: mov r10, qword ptr [rbp - 0xd8]
+  a7: mov r11, qword ptr [rbp - 0xe0]
+  ae: sub rsp, 0x10
+  b2: mov qword ptr [rsp], rax
+  b6: movabs rax, 0x207c3b
+  c0: mov qword ptr [rsp + 8], rax
+  c5: pop rax
+  c6: ret 
+3: 39 39
+3: 41 41
+3: 43 43
+Transition: OptToUnopt ExecTrace: true
+Transition: OptToUnopt
+src_rbp: 0x7fffffffe340, reg_store: 0x7fffffffe230, src_frame_size: 0xa0, dst_frame_size: 0x90, rbp_offset_reg_store: 0x110
+Register2Register - src: Register(14, 8, [-152]) dst: Register(14, 8, [-104])
+Register2Register - src: Register(3, 8, []) dst: Register(13, 8, [-72])
+Register2Register - src: Register(15, 8, [-96]) dst: Register(15, 8, [-64])
+Register2Register - src: Register(12, 8, [-64]) dst: Register(12, 8, [-112])
+Register2Register - src: Register(13, 8, [-72, 5]) dst: Register(3, 8, [-80, 5])
+ASM DUMP:
+  0: movabs rbp, 0x7fffffffe340
+  a: movabs rsp, 0x7fffffffe340
+  14: sub rsp, 0x90
+  1b: mov rax, qword ptr [rbp - 0x108]
+  22: mov qword ptr [rbp - 0x68], rax
+  29: mov r14, qword ptr [rbp - 0x108]
+  30: mov rax, qword ptr [rbp - 0xc0]
+  37: mov qword ptr [rbp - 0x48], rax
+  3e: mov r13, qword ptr [rbp - 0xc0]
+  45: mov rax, qword ptr [rbp - 0x110]
+  4c: mov qword ptr [rbp - 0x40], rax
+  53: mov r15, qword ptr [rbp - 0x110]
+  5a: mov rax, qword ptr [rbp - 0xf8]
+  61: mov qword ptr [rbp - 0x70], rax
+  68: mov r12, qword ptr [rbp - 0xf8]
+  6f: mov rax, qword ptr [rbp - 0x100]
+  76: mov qword ptr [rbp - 0x50], rax
+  7d: mov rdi, qword ptr [rbp - 0x100]
+  84: mov rbx, qword ptr [rbp - 0x100]
+  8b: mov rax, qword ptr [rbp - 0xb0]
+  92: mov rcx, qword ptr [rbp - 0xb8]
+  99: mov rsi, qword ptr [rbp - 0xd0]
+  a0: mov r8, qword ptr [rbp - 0xd8]
+  a7: mov r9, qword ptr [rbp - 0xe0]
+  ae: mov r10, qword ptr [rbp - 0xe8]
+  b5: mov r11, qword ptr [rbp - 0xf0]
+  bc: movabs rdi, 0x7fffffffe340
+  c6: movabs rsi, 0x7fffffffe2a0
+  d0: movabs rdx, 0x7ffff7fb3000
+  da: movabs rcx, 0x7ffff79f5b34
+  e4: call rcx
+[DEOPT] Register(14, 8, [-104]), jitval: 0x7ffff6f2a010
+[DEOPT] Indirect(6, -72, 8), jitval: 2143840
+[DEOPT] Indirect(6, -64, 8), jitval: 140737336483872
+[DEOPT] Register(12, 8, [-112]), jitval: 0x7ffff6f2a028
+[DEOPT] Indirect(6, -80, 8), jitval: 2143840
+[DEOPT] Register(15, 8, [-120, 5]), jitval: 0x0
+[DEOPT] Indirect(6, -88, 8), jitval: 2
+[DEOPT] Indirect(6, -52, 4), jitval: 41
+[DEOPT] Register(13, 8, []), jitval: 0x2b
+[DEOPT] Register(0, 8, []), jitval: 0x0
+2: 2 2
+2: 41 41
+2: 43 43
+Transition: OptToUnopt ExecTrace: true
+Transition: OptToUnopt
+src_rbp: 0x7fffffffe340, reg_store: 0x7fffffffe230, src_frame_size: 0xa0, dst_frame_size: 0x90, rbp_offset_reg_store: 0x110
+Register2Register - src: Register(14, 8, [-152]) dst: Register(14, 8, [-104])
+Register2Register - src: Register(3, 8, []) dst: Register(13, 8, [-72])
+Register2Register - src: Register(15, 8, [-96]) dst: Register(15, 8, [-64])
+Register2Register - src: Register(12, 8, [-64]) dst: Register(12, 8, [-112])
+Register2Register - src: Register(13, 8, [-72, 5]) dst: Register(3, 8, [-80, 5])
+ASM DUMP:
+  0: movabs rbp, 0x7fffffffe340
+  a: movabs rsp, 0x7fffffffe340
+  14: sub rsp, 0x90
+  1b: mov rax, qword ptr [rbp - 0x108]
+  22: mov qword ptr [rbp - 0x68], rax
+  29: mov r14, qword ptr [rbp - 0x108]
+  30: mov rax, qword ptr [rbp - 0xc0]
+  37: mov qword ptr [rbp - 0x48], rax
+  3e: mov r13, qword ptr [rbp - 0xc0]
+  45: mov rax, qword ptr [rbp - 0x110]
+  4c: mov qword ptr [rbp - 0x40], rax
+  53: mov r15, qword ptr [rbp - 0x110]
+  5a: mov rax, qword ptr [rbp - 0xf8]
+  61: mov qword ptr [rbp - 0x70], rax
+  68: mov r12, qword ptr [rbp - 0xf8]
+  6f: mov rax, qword ptr [rbp - 0x100]
+  76: mov qword ptr [rbp - 0x50], rax
+  7d: mov rdi, qword ptr [rbp - 0x100]
+  84: mov rbx, qword ptr [rbp - 0x100]
+  8b: mov rax, qword ptr [rbp - 0xb0]
+  92: mov rcx, qword ptr [rbp - 0xb8]
+  99: mov rsi, qword ptr [rbp - 0xd0]
+  a0: mov r8, qword ptr [rbp - 0xd8]
+  a7: mov r9, qword ptr [rbp - 0xe0]
+  ae: mov r10, qword ptr [rbp - 0xe8]
+  b5: mov r11, qword ptr [rbp - 0xf0]
+  bc: movabs rdi, 0x7fffffffe340
+  c6: movabs rsi, 0x7fffffffe2b0
+  d0: movabs rdx, 0x7ffff7fb3000
+  da: movabs rcx, 0x7ffff79f5b34
+  e4: call rcx
+[DEOPT] Register(14, 8, [-104]), jitval: 0x7ffff79618f9
+[DEOPT] Indirect(6, -72, 8), jitval: 140737488347920
+[DEOPT] Indirect(6, -64, 8), jitval: 140737488347800
+[DEOPT] Register(12, 8, [-112]), jitval: 0x7ffff6f2a010
+[DEOPT] Indirect(6, -80, 8), jitval: 140737336483872
+[DEOPT] Register(15, 8, [-120, 5]), jitval: 0x20d6c2
+[DEOPT] Indirect(6, -88, 8), jitval: 2152132
+[DEOPT] Indirect(6, -52, 4), jitval: 2152133
+[DEOPT] Register(13, 8, []), jitval: 0x5
+[DEOPT] Register(0, 8, []), jitval: 0x20d6c2
+6647697060311162689: 2152132 2152132
+6647697060311162689: 2152133 23
+6647697060311162689: 5 5
+
+test lang_tests::idempotent.c ... [0m[31mFAILED[0m
+
+failures:
+
+---- lang_tests::idempotent.c status ----
+Exited due to signal: 11
+
+---- lang_tests::idempotent.c stderr ----
+
+Literal text:
+   |4: 39 39
+   |4: 41 41
+   |4: 43 43
+   |3: 39 39
+   |3: 41 41
+   |3: 43 43
+   |2: 2 2
+   |2: 41 41
+   |2: 43 43
+   |6647697060311162689: 2152132 2152132
+   |6647697060311162689: 2152133 23
+   |6647697060311162689: 5 5
+   |
+
+Pattern (error at line 1):
+>> |yk-jit-event: start-tracing
+   |4: 39 39
+   |4: 41 41
+   |4: 43 43
+   ...
+
+Text (error at line 1):
+>> |4: 39 39
+   |4: 41 41
+   |4: 43 43
+   |3: 39 39
+   ...
+
+---- lang_tests::idempotent.c stdout ----
+
+Transition: OptToUnopt ExecTrace: false
+Transition: OptToUnopt
+src_rbp: 0x7fffffffe340, reg_store: 0x7fffffffe230, src_frame_size: 0xa0, dst_frame_size: 0x90, rbp_offset_reg_store: 0x110
+Register2Register - src: Register(14, 8, [-152]) dst: Register(14, 8, [-104])
+Register2Register - src: Register(3, 8, []) dst: Register(13, 8, [-72])
+Register2Register - src: Register(15, 8, [-96]) dst: Register(15, 8, [-64])
+Register2Register - src: Register(12, 8, [-64]) dst: Register(12, 8, [-112])
+Register2Register - src: Register(13, 8, [-72, 5]) dst: Register(3, 8, [-80, 5])
+ASM DUMP:
+  0: movabs rbp, 0x7fffffffe340
+  a: movabs rsp, 0x7fffffffe340
+  14: sub rsp, 0x90
+  1b: mov rax, qword ptr [rbp - 0x108]
+  22: mov qword ptr [rbp - 0x68], rax
+  29: mov r14, qword ptr [rbp - 0x108]
+  30: mov rax, qword ptr [rbp - 0xc0]
+  37: mov qword ptr [rbp - 0x48], rax
+  3e: mov r13, qword ptr [rbp - 0xc0]
+  45: mov rax, qword ptr [rbp - 0x110]
+  4c: mov qword ptr [rbp - 0x40], rax
+  53: mov r15, qword ptr [rbp - 0x110]
+  5a: mov rax, qword ptr [rbp - 0xf8]
+  61: mov qword ptr [rbp - 0x70], rax
+  68: mov r12, qword ptr [rbp - 0xf8]
+  6f: mov rax, qword ptr [rbp - 0x100]
+  76: mov qword ptr [rbp - 0x50], rax
+  7d: mov rdi, qword ptr [rbp - 0x100]
+  84: mov rbx, qword ptr [rbp - 0x100]
+  8b: mov rax, qword ptr [rbp - 0xb0]
+  92: mov rcx, qword ptr [rbp - 0xb8]
+  99: mov rsi, qword ptr [rbp - 0xd0]
+  a0: mov r8, qword ptr [rbp - 0xd8]
+  a7: mov r9, qword ptr [rbp - 0xe0]
+  ae: mov r10, qword ptr [rbp - 0xe8]
+  b5: mov r11, qword ptr [rbp - 0xf0]
+  bc: sub rsp, 0x10
+  c0: mov qword ptr [rsp], rax
+  c4: movabs rax, 0x20832a
+  ce: mov qword ptr [rsp + 8], rax
+  d3: pop rax
+  d4: ret 
+Transition: UnoptToOpt ExecTrace: false
+Transition: UnoptToOpt
+src_rbp: 0x7fffffffe340, reg_store: 0x7fffffffe240, src_frame_size: 0x90, dst_frame_size: 0xa0, rbp_offset_reg_store: 0x100
+Register2Register - src: Register(14, 8, [-104]) dst: Register(14, 8, [-152])
+Register2Register - src: Register(13, 8, [-72]) dst: Register(3, 8, [])
+Register2Register - src: Register(15, 8, [-64]) dst: Register(15, 8, [-96])
+Register2Register - src: Register(12, 8, [-112]) dst: Register(12, 8, [-64])
+Register2Register - src: Register(3, 8, [-80, 5]) dst: Register(13, 8, [-72, 5])
+ASM DUMP:
+  0: movabs rbp, 0x7fffffffe340
+  a: movabs rsp, 0x7fffffffe340
+  14: sub rsp, 0xa0
+  1b: mov rax, qword ptr [rbp - 0xf8]
+  22: mov qword ptr [rbp - 0x98], rax
+  29: mov r14, qword ptr [rbp - 0xf8]
+  30: mov rbx, qword ptr [rbp - 0xf0]
+  37: mov rax, qword ptr [rbp - 0x100]
+  3e: mov qword ptr [rbp - 0x60], rax
+  45: mov r15, qword ptr [rbp - 0x100]
+  4c: mov rax, qword ptr [rbp - 0xe8]
+  53: mov qword ptr [rbp - 0x40], rax
+  5a: mov r12, qword ptr [rbp - 0xe8]
+  61: mov rax, qword ptr [rbp - 0xb0]
+  68: mov qword ptr [rbp - 0x48], rax
+  6f: mov rdi, qword ptr [rbp - 0xb0]
+  76: mov r13, qword ptr [rbp - 0xb0]
+  7d: mov rax, qword ptr [rbp - 0xa0]
+  84: mov rcx, qword ptr [rbp - 0xa8]
+  8b: mov rsi, qword ptr [rbp - 0xc0]
+  92: mov r8, qword ptr [rbp - 0xc8]
+  99: mov r9, qword ptr [rbp - 0xd0]
+  a0: mov r10, qword ptr [rbp - 0xd8]
+  a7: mov r11, qword ptr [rbp - 0xe0]
+  ae: sub rsp, 0x10
+  b2: mov qword ptr [rsp], rax
+  b6: movabs rax, 0x207c3b
+  c0: mov qword ptr [rsp + 8], rax
+  c5: pop rax
+  c6: ret 
+Transition: OptToUnopt ExecTrace: true
+Transition: OptToUnopt
+src_rbp: 0x7fffffffe340, reg_store: 0x7fffffffe230, src_frame_size: 0xa0, dst_frame_size: 0x90, rbp_offset_reg_store: 0x110
+Register2Register - src: Register(14, 8, [-152]) dst: Register(14, 8, [-104])
+Register2Register - src: Register(3, 8, []) dst: Register(13, 8, [-72])
+Register2Register - src: Register(15, 8, [-96]) dst: Register(15, 8, [-64])
+Register2Register - src: Register(12, 8, [-64]) dst: Register(12, 8, [-112])
+Register2Register - src: Register(13, 8, [-72, 5]) dst: Register(3, 8, [-80, 5])
+ASM DUMP:
+  0: movabs rbp, 0x7fffffffe340
+  a: movabs rsp, 0x7fffffffe340
+  14: sub rsp, 0x90
+  1b: mov rax, qword ptr [rbp - 0x108]
+  22: mov qword ptr [rbp - 0x68], rax
+  29: mov r14, qword ptr [rbp - 0x108]
+  30: mov rax, qword ptr [rbp - 0xc0]
+  37: mov qword ptr [rbp - 0x48], rax
+  3e: mov r13, qword ptr [rbp - 0xc0]
+  45: mov rax, qword ptr [rbp - 0x110]
+  4c: mov qword ptr [rbp - 0x40], rax
+  53: mov r15, qword ptr [rbp - 0x110]
+  5a: mov rax, qword ptr [rbp - 0xf8]
+  61: mov qword ptr [rbp - 0x70], rax
+  68: mov r12, qword ptr [rbp - 0xf8]
+  6f: mov rax, qword ptr [rbp - 0x100]
+  76: mov qword ptr [rbp - 0x50], rax
+  7d: mov rdi, qword ptr [rbp - 0x100]
+  84: mov rbx, qword ptr [rbp - 0x100]
+  8b: mov rax, qword ptr [rbp - 0xb0]
+  92: mov rcx, qword ptr [rbp - 0xb8]
+  99: mov rsi, qword ptr [rbp - 0xd0]
+  a0: mov r8, qword ptr [rbp - 0xd8]
+  a7: mov r9, qword ptr [rbp - 0xe0]
+  ae: mov r10, qword ptr [rbp - 0xe8]
+  b5: mov r11, qword ptr [rbp - 0xf0]
+  bc: movabs rdi, 0x7fffffffe340
+  c6: movabs rsi, 0x7fffffffe2a0
+  d0: movabs rdx, 0x7ffff7fb3000
+  da: movabs rcx, 0x7ffff79f5b34
+  e4: call rcx
+[DEOPT] Register(14, 8, [-104]), jitval: 0x7ffff6f2a010
+[DEOPT] Indirect(6, -72, 8), jitval: 2143840
+[DEOPT] Indirect(6, -64, 8), jitval: 140737336483872
+[DEOPT] Register(12, 8, [-112]), jitval: 0x7ffff6f2a028
+[DEOPT] Indirect(6, -80, 8), jitval: 2143840
+[DEOPT] Register(15, 8, [-120, 5]), jitval: 0x0
+[DEOPT] Indirect(6, -88, 8), jitval: 2
+[DEOPT] Indirect(6, -52, 4), jitval: 41
+[DEOPT] Register(13, 8, []), jitval: 0x2b
+[DEOPT] Register(0, 8, []), jitval: 0x0
+Transition: OptToUnopt ExecTrace: true
+Transition: OptToUnopt
+src_rbp: 0x7fffffffe340, reg_store: 0x7fffffffe230, src_frame_size: 0xa0, dst_frame_size: 0x90, rbp_offset_reg_store: 0x110
+Register2Register - src: Register(14, 8, [-152]) dst: Register(14, 8, [-104])
+Register2Register - src: Register(3, 8, []) dst: Register(13, 8, [-72])
+Register2Register - src: Register(15, 8, [-96]) dst: Register(15, 8, [-64])
+Register2Register - src: Register(12, 8, [-64]) dst: Register(12, 8, [-112])
+Register2Register - src: Register(13, 8, [-72, 5]) dst: Register(3, 8, [-80, 5])
+ASM DUMP:
+  0: movabs rbp, 0x7fffffffe340
+  a: movabs rsp, 0x7fffffffe340
+  14: sub rsp, 0x90
+  1b: mov rax, qword ptr [rbp - 0x108]
+  22: mov qword ptr [rbp - 0x68], rax
+  29: mov r14, qword ptr [rbp - 0x108]
+  30: mov rax, qword ptr [rbp - 0xc0]
+  37: mov qword ptr [rbp - 0x48], rax
+  3e: mov r13, qword ptr [rbp - 0xc0]
+  45: mov rax, qword ptr [rbp - 0x110]
+  4c: mov qword ptr [rbp - 0x40], rax
+  53: mov r15, qword ptr [rbp - 0x110]
+  5a: mov rax, qword ptr [rbp - 0xf8]
+  61: mov qword ptr [rbp - 0x70], rax
+  68: mov r12, qword ptr [rbp - 0xf8]
+  6f: mov rax, qword ptr [rbp - 0x100]
+  76: mov qword ptr [rbp - 0x50], rax
+  7d: mov rdi, qword ptr [rbp - 0x100]
+  84: mov rbx, qword ptr [rbp - 0x100]
+  8b: mov rax, qword ptr [rbp - 0xb0]
+  92: mov rcx, qword ptr [rbp - 0xb8]
+  99: mov rsi, qword ptr [rbp - 0xd0]
+  a0: mov r8, qword ptr [rbp - 0xd8]
+  a7: mov r9, qword ptr [rbp - 0xe0]
+  ae: mov r10, qword ptr [rbp - 0xe8]
+  b5: mov r11, qword ptr [rbp - 0xf0]
+  bc: movabs rdi, 0x7fffffffe340
+  c6: movabs rsi, 0x7fffffffe2b0
+  d0: movabs rdx, 0x7ffff7fb3000
+  da: movabs rcx, 0x7ffff79f5b34
+  e4: call rcx
+[DEOPT] Register(14, 8, [-104]), jitval: 0x7ffff79618f9
+[DEOPT] Indirect(6, -72, 8), jitval: 140737488347920
+[DEOPT] Indirect(6, -64, 8), jitval: 140737488347800
+[DEOPT] Register(12, 8, [-112]), jitval: 0x7ffff6f2a010
+[DEOPT] Indirect(6, -80, 8), jitval: 140737336483872
+[DEOPT] Register(15, 8, [-120, 5]), jitval: 0x20d6c2
+[DEOPT] Indirect(6, -88, 8), jitval: 2152132
+[DEOPT] Indirect(6, -52, 4), jitval: 2152133
+[DEOPT] Register(13, 8, []), jitval: 0x5
+[DEOPT] Register(0, 8, []), jitval: 0x20d6c2
+
+failures:
+    lang_tests::idempotent.c
+
+test result: [0m[31mFAILED[0m. 0 passed; 1 failed; 0 ignored; 0 measured; 156 filtered out
+
+[1m[31merror[0m[1m:[0m test failed, to rerun pass `-p tests --test c_tests`
+
+Caused by:
+  process didn't exit successfully: `/home/pd/yk-fork/target/debug/deps/c_tests-c5fcb71ef3567b74 '::idempotent.c' --nocapture` (exit status: 1)
+Shared connection to bencher16.soft-dev.org closed.
+CompletedProcess(args=['ssh', '-t', 'bencher16.soft-dev.org', 'cd', 'yk-fork', '&&', 'CP_VERBOSE_ASM=1', 'CP_VERBOSE=1', 'YKB_TRACER=swt', 'setarch', '-R', '/home/pd/.cargo/bin/cargo', 'test', '::idempotent.c', '--', '--nocapture'], returncode=1)
