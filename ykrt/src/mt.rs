@@ -1167,9 +1167,6 @@ pub(crate) unsafe extern "C" fn __yk_multi_module_exec_trace(
     )
 }
 
-
-
-
 #[cfg(target_arch = "x86_64")]
 #[unsafe(naked)]
 #[no_mangle]
@@ -1206,7 +1203,6 @@ unsafe extern "C" fn __yk_exec_trace(
         "ret",
     )
 }
-
 
 /// [MTThread]'s major job is to record what state in the "interpreting/tracing/executing"
 /// state-machine this thread is in. This enum contains the states.
