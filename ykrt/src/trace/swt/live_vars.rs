@@ -262,12 +262,6 @@ pub(crate) fn set_destination_live_vars(
                 let reg_store_offset = reg_num_to_ykrt_control_point_rsp_offset(*src_reg_num);
                 let reg_store_rbp_offset =
                     i32::try_from(rbp_offset_reg_store - reg_store_offset as i64).unwrap();
-                if *CP_VERBOSE {
-                    println!(
-                        "Src register {}, reg_store_offset 0x{:x}, rbp_offset 0x{:x}",
-                        src_reg_num, reg_store_offset, reg_store_rbp_offset
-                    );
-                }
                 match dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
                         if *dst_reg_num == TEMP_REG_PRIMARY.into()
@@ -602,12 +596,12 @@ fn allocate_buffer(
         if ptr.is_null() {
             handle_alloc_error(layout);
         }
-        if *CP_VERBOSE {
-            println!(
-                "Allocated buffer of size {} at {:p} for direction {:?}",
-                src_val_buffer_size, ptr, cp_direction
-            );
-        }
+        // if *CP_VERBOSE {
+        //     println!(
+        //         "Allocated buffer of size {} at {:p} for direction {:?}",
+        //         src_val_buffer_size, ptr, cp_direction
+        //     );
+        // }
         ThreadSafeBuffer::new(ptr, layout, src_val_buffer_size)
     });
 

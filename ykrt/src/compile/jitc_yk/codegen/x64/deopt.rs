@@ -1,4 +1,7 @@
 use super::{Register, VarLocation};
+use super::{X64CompiledTrace, RBP_DWARF_NUM, REG64_BYTESIZE};
+#[cfg(tracer_swt)]
+use crate::trace::swt::cfg::CP_VERBOSE;
 use crate::{
     aotsmp::AOT_STACKMAPS,
     compile::GuardIdx,
@@ -11,9 +14,6 @@ use libc::c_void;
 use std::collections::HashMap;
 use std::{ptr, sync::Arc};
 use yksmp::Location as SMLocation;
-#[cfg(tracer_swt)]
-use crate::trace::swt::cfg::CP_VERBOSE;
-use super::{X64CompiledTrace, RBP_DWARF_NUM, REG64_BYTESIZE};
 
 /// Registers (in DWARF notation) that we want to restore during deopt. Excludes `rsp` (7) and
 /// `return register` (16), which we do not care about.
@@ -53,7 +53,7 @@ pub(crate) extern "C" fn __yk_deopt(
         .unwrap();
     let gidx = GuardIdx::from(usize::try_from(gidx).unwrap());
     let aot_smaps = AOT_STACKMAPS.as_ref().unwrap();
-    
+
     let info = &ctr.deoptinfo[&usize::from(gidx)];
     let mt = Arc::clone(&ctr.mt);
 
@@ -201,7 +201,7 @@ pub(crate) extern "C" fn __yk_deopt(
             } else {
                 todo!("Deal with multi register locations");
             };
-            
+
             match aotloc {
                 SMLocation::Register(reg, size, extras) => {
                     #[cfg(debug_assertions)]
@@ -210,7 +210,7 @@ pub(crate) extern "C" fn __yk_deopt(
 
                     #[cfg(tracer_swt)]
                     if *CP_VERBOSE {
-                        println!("[DEOPT] {:?}, jitval: {}", aotloc, jitval);
+                        println!("[DEOPT] {:?}, jitval: 0x{:x}", aotloc, jitval);
                     }
                     for extra in extras {
                         #[cfg(debug_assertions)]

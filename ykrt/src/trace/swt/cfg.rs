@@ -29,10 +29,6 @@ pub static CP_PRINT_MACHINE_CODE: LazyLock<bool> = LazyLock::new(|| {
         .unwrap_or(false)
 });
 
-// Flag for cp patchpoint live var preservation
-pub static CP_PATCHPOINT: LazyLock<bool> =
-    LazyLock::new(|| env::var("CP_PATCHPOINT").map(|v| v == "1").unwrap_or(false));
-
 // Flag for verbose logging
 pub static CP_VERBOSE: LazyLock<bool> =
     LazyLock::new(|| env::var("CP_VERBOSE").map(|v| v == "1").unwrap_or(false));
@@ -45,12 +41,8 @@ pub static CP_VERBOSE_ASM: LazyLock<bool> = LazyLock::new(|| {
 });
 
 // Flag for verbose logging of trace actions
-pub static TRACE_VERBOSE: LazyLock<bool> = LazyLock::new(|| {
-    env::var("TRACE_VERBOSE")
-        .map(|v| v == "1")
-        .unwrap_or(false)
-});
-
+pub static TRACE_VERBOSE: LazyLock<bool> =
+    LazyLock::new(|| env::var("TRACE_VERBOSE").map(|v| v == "1").unwrap_or(false));
 
 // Flag for multi-module control point transition
 // Note: this is not 100% working.
@@ -59,7 +51,6 @@ pub static SWT_MULTI_MODULE: LazyLock<bool> = LazyLock::new(|| {
         .map(|v| v == "1")
         .unwrap_or(true)
 });
-
 
 // Flag for asm breakpoints
 pub(crate) static CP_BREAK: LazyLock<bool> =
