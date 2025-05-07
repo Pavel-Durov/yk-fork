@@ -417,3 +417,44 @@ Register(13, 8, [-72, 5]) - [0x48]
    0x000000000020802c <+1500>:	mov    esi,0x2f
    0x0000000000208031 <+1505>:	call   0x208780 <__yk_trace_basicblock_dummy@plt>
    0x0000000000208036 <+1510>:	jmp    0x208007 <main+1463>
+
+
+--------------------------------
+
+FROM opt asm:
+0x0000000000207bfd <+429>:	mov    QWORD PTR [rbp-0x48],r13 - 0x48 - 72
+0x0000000000207c01 <+433>:	mov    QWORD PTR [rbp-0x50],rbx - 0x50 - 80
+0x0000000000207c05 <+437>:	mov    QWORD PTR [rbp-0x60],r15 - 0x60 - 90
+0x0000000000207c09 <+441>:	mov    QWORD PTR [rbp-0x98],r14 - 0x98 - 152
+
+
+Transition: OptToUnopt
+src_rbp: 0x7ffec29b0f80, reg_store: 0x7ffec29b0e70, src_frame_size: 0xa0, dst_frame_size: 0x90, rbp_offset_reg_store: 0x110
+Register2Register - src: Register(14, 8, [-152]) dst: Register(14, 8, [-104])
+Register2Register - src: Register(3, 8, []) dst: Register(13, 8, [-72])
+Register2Register - src: Register(15, 8, [-96]) dst: Register(15, 8, [-64])
+Register2Register - src: Register(12, 8, [-64]) dst: Register(12, 8, [-112])
+Register2Register - src: Register(13, 8, [-72, 5]) dst: Register(3, 8, [-80, 5])
+
+
+********** End of Machine Code **********
+Patchpoint 0 - erasing TReg: 12 with SpillOffset: -64
+Patchpoint 0 - erasing TReg: 13 with SpillOffset: -72
+Patchpoint 0 - erasing TReg: 13 with SpillOffset: 5
+Patchpoint 0 - erasing TReg: 15 with SpillOffset: -96
+Patchpoint 0 - erasing TReg: 12 with SpillOffset: -64
+Patchpoint 0 - erasing TReg: 13 with SpillOffset: -72
+Patchpoint 0 - erasing TReg: 13 with SpillOffset: 5
+Patchpoint 0 - erasing TReg: 14 with SpillOffset: -152
+Patchpoint 0 - erasing TReg: 15 with SpillOffset: -96
+Patchpoint 0 - erasing TReg: 12 with SpillOffset: -64
+Patchpoint 0 - erasing TReg: 13 with SpillOffset: -72
+Patchpoint 0 - erasing TReg: 13 with SpillOffset: 5
+Patchpoint 0 - erasing TReg: 14 with SpillOffset: -152
+Patchpoint 0 - erasing TReg: 13 with SpillOffset: -72
+Patchpoint 0 - erasing TReg: 13 with SpillOffset: 5
+Patchpoint 0 - erasing TReg: 14 with SpillOffset: -152
+Patchpoint 0 - erasing TReg: 15 with SpillOffset: -96
+Patchpoint 0 - erasing TReg: 12 with SpillOffset: -64
+Patchpoint 0 - erasing TReg: 14 with SpillOffset: -152
+Patchpoint 0 - erasing TReg: 15 with SpillOffset: -96
