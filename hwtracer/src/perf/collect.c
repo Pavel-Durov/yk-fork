@@ -1,9 +1,6 @@
 #define _GNU_SOURCE
 
-// FIXME: This collector deals with overflow in the AUX but not the DATA
-// buffer. It would probably be better to either never handle it (for
-// simplicity) or fully handle it.
-
+#include <assert.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -210,9 +207,10 @@ static bool handle_sample(void *aux_buf, struct perf_event_mmap_page *hdr,
   __u64 head_monotonic = atomic_load_explicit((_Atomic __u64 *)&hdr->data_head,
                                               memory_order_acquire);
   __u64 size = hdr->data_size;        // No atomic load. Constant value.
-  __u64 head = head_monotonic % size; // Head must be manually wrapped.
-  __u64 tail = atomic_load_explicit((_Atomic __u64 *)&hdr->data_tail,
+  __u64 head = head_monotonic % size;
+  __u64 tail_monotonic = atomic_load_explicit((_Atomic __u64 *)&hdr->data_tail,
                                     memory_order_relaxed);
+  __u64 tail = tail_monotonic % size;
 
   // Copy samples out, removing wrap in the process.
   void *data_tmp_end = data_tmp;
@@ -227,11 +225,14 @@ static bool handle_sample(void *aux_buf, struct perf_event_mmap_page *hdr,
     memcpy(data_tmp + size - tail, data, head);
     data_tmp_end += head;
   }
-  atomic_store_explicit((_Atomic __u64 *)&hdr->data_tail, head,
+
+  // Inform the kernel that we've read up until the head. We write back the
+  // *unwrapped* value.
+  atomic_store_explicit((_Atomic __u64 *)&hdr->data_tail, head_monotonic,
                         memory_order_relaxed);
 
   void *next_sample = data_tmp;
-  while (next_sample != data_tmp_end) {
+  while (next_sample < data_tmp_end) {
     struct perf_event_header *sample_hdr = next_sample;
     struct perf_record_aux_sample *rec_aux_sample;
     switch (sample_hdr->type) {
@@ -257,9 +258,21 @@ static bool handle_sample(void *aux_buf, struct perf_event_mmap_page *hdr,
       // Shouldn't happen with PT.
       errx(EXIT_FAILURE, "Unexpected PERF_RECORD_LOST_SAMPLES sample");
       break;
+    case PERF_RECORD_AUX_OUTPUT_HW_ID:
+      errx(EXIT_FAILURE, "Unimplemented PERF_RECORD_AUX_OUTPUT_HW_ID sample");
+      break;
+    case PERF_RECORD_ITRACE_START:
+      // These sample kinds are uninteresting to us.
+      break;
+    default:
+      // In the interest of exhaustive matching, catch anything we've not seen
+      // or thought about before and handle them if/when they arise.
+      errx(EXIT_FAILURE, "unhandled sample type: %d\n", sample_hdr->type);
+      break;
     }
     next_sample += sample_hdr->size;
   }
+  assert(next_sample == data_tmp_end);
 
   return true;
 }
@@ -275,9 +288,10 @@ bool read_aux(void *aux_buf, struct perf_event_mmap_page *hdr,
   __u64 head_monotonic = atomic_load_explicit((_Atomic __u64 *)&hdr->aux_head,
                                               memory_order_acquire);
   __u64 size = hdr->aux_size;         // No atomic load. Constant value.
-  __u64 head = head_monotonic % size; // Head must be manually wrapped.
-  __u64 tail = atomic_load_explicit((_Atomic __u64 *)&hdr->aux_tail,
+  __u64 head = head_monotonic % size;
+  __u64 tail_monotonic = atomic_load_explicit((_Atomic __u64 *)&hdr->aux_tail,
                                     memory_order_relaxed);
+  __u64 tail = tail_monotonic % size;
 
   // Figure out how much more space we need in the trace storage buffer.
   __u64 new_data_size;
@@ -308,7 +322,10 @@ bool read_aux(void *aux_buf, struct perf_event_mmap_page *hdr,
     memcpy(trace->buf.p + trace->len, aux_buf, head);
     trace->len += head;
   }
-  atomic_store_explicit((_Atomic __u64 *)&hdr->aux_tail, head,
+
+  // Inform the kernel that we've read up until the head. We write back the
+  // *unwrapped* value.
+  atomic_store_explicit((_Atomic __u64 *)&hdr->aux_tail, head_monotonic,
                         memory_order_release);
   return true;
 }
@@ -624,6 +641,24 @@ bool hwt_perf_start_collector(struct hwt_perf_ctx *tr_ctx,
                               struct hwt_cerror *err) {
   int clean_sem = 0, clean_thread = 0;
   int ret = true;
+
+  // When a tracing session bombs out prematurely (e.g. PT overflow), it can
+  // leave the ring buffers in an inconsistent state meaning that they can't be
+  // re-used properly. Here we reset the tails to the heads thus resetting the
+  // ring buffers to the empty state.
+  //
+  // Data buffer:
+  struct perf_event_mmap_page *base_header = tr_ctx->base_buf;
+  __u64 data_head_monotonic = atomic_load_explicit(
+      (_Atomic __u64 *)&base_header->data_head,
+      memory_order_acquire);
+  atomic_store_explicit((_Atomic __u64 *) &base_header->data_tail,
+      data_head_monotonic, memory_order_relaxed);
+  // AUX buffer:
+  __u64 aux_head_monotonic = atomic_load_explicit(
+      (_Atomic __u64 *)&base_header->aux_head, memory_order_acquire);
+  atomic_store_explicit((_Atomic __u64 *) &base_header->aux_tail,
+      aux_head_monotonic, memory_order_relaxed);
 
   // A pipe to signal the trace thread to stop.
   //
