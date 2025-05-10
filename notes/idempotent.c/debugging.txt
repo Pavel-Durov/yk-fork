@@ -540,7 +540,83 @@ set $rdi = 0x7ffff6f2a020
 
 TRACE
 
-─── Assembly ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ 0x00007ffff7fb3000> ? sub    rsp,0x60
+ 0x00007ffff7fb3007  ? push   r11
+ 0x00007ffff7fb3009  ? movabs r11,0x7ffff7b2e720
+ 0x00007ffff7fb3013  ? call   r11
+ 0x00007ffff7fb3016  ? pop    r11
+ 0x00007ffff7fb3018  ? nop
+ 0x00007ffff7fb3019  ? nop
+ 0x00007ffff7fb301a  ? nop
+ 0x00007ffff7fb301b  ? nop
+ 0x00007ffff7fb301c  ? nop
+ 0x00007ffff7fb301d  ? nop
+ 0x00007ffff7fb301e  ? nop
+ 0x00007ffff7fb301f  ? nop
+ 0x00007ffff7fb3020  ? mov    rdi,QWORD PTR [r13+riz*1+0x0]
+ 0x00007ffff7fb3028  ? mov    QWORD PTR [rbp-0xa8],rdi
+ 0x00007ffff7fb302f  ? movabs rsi,0x2
+ 0x00007ffff7fb3039  ? movabs rax,0x2080a0
+ 0x00007ffff7fb3043  ? call   rax
+ 0x00007ffff7fb3045  ? mov    edi,DWORD PTR [r15+riz*1+0x0]
+ 0x00007ffff7fb304d  ? mov    QWORD PTR [rbp-0xb0],rax
+ 0x00007ffff7fb3054  ? rex mov esi,0x3
+ 0x00007ffff7fb305a  ? movabs rax,0x208100
+ 0x00007ffff7fb3064  ? call   rax
+ 0x00007ffff7fb3066  ? mov    rdi,QWORD PTR [r12+0x0]
+ 0x00007ffff7fb306e  ? rex mov DWORD PTR [rbp-0xb4],eax
+ 0x00007ffff7fb3075  ? movabs rsi,0x4
+ 0x00007ffff7fb307f  ? movabs rax,0x208150
+ 0x00007ffff7fb3089  ? call   rax
+ 0x00007ffff7fb308b  ? mov    rdi,QWORD PTR [rbp-0xa8]
+ 0x00007ffff7fb3092  ? cmp    rdi,0x25
+ 0x00007ffff7fb3099  ? jne    0x7ffff7fb3386
+ 0x00007ffff7fb309f  ? mov    r11d,DWORD PTR [r15+riz*1+0x0]
+ 0x00007ffff7fb30a7  ? cmp    r11d,0x26
+ 0x00007ffff7fb30ae  ? jne    0x7ffff7fb33a6
+ 0x00007ffff7fb30b4  ? mov    r10,QWORD PTR [r12+0x0]
+ 0x00007ffff7fb30bc  ? cmp    r10,0x27
+ 0x00007ffff7fb30c3  ? jne    0x7ffff7fb33c6
+ 0x00007ffff7fb30c9  ? movabs r11,0x20ab80
+ 0x00007ffff7fb30d3  ? mov    rdi,QWORD PTR [r11+riz*1+0x0]
+ 0x00007ffff7fb30db  ? mov    rdx,QWORD PTR [r14+riz*1+0x0]
+ 0x00007ffff7fb30e3  ? movabs rsi,0x20aa70
+ 0x00007ffff7fb30ed  ? mov    QWORD PTR [rbp-0xc0],rbx
+ 0x00007ffff7fb30f4  ? mov    QWORD PTR [rbp-0xc8],rax
+ 0x00007ffff7fb30fb  ? mov    QWORD PTR [rbp-0xd0],rsi
+ 0x00007ffff7fb3102  ? mov    QWORD PTR [rbp-0xd8],r11
+ 0x00007ffff7fb3109  ? mov    rcx,QWORD PTR [rbp-0xb0]
+ 0x00007ffff7fb3110  ? movabs r8,0x27
+ 0x00007ffff7fb311a  ? mov    rax,0x0
+ 0x00007ffff7fb3121  ? movabs rbx,0x7ffff7070df0
+ 0x00007ffff7fb312b  ? rex call rbx
+ 0x00007ffff7fb312e  ? mov    r11,QWORD PTR [rbp-0xd8]
+ 0x00007ffff7fb3135  ? mov    rdi,QWORD PTR [r11+riz*1+0x0]
+ 0x00007ffff7fb313d  ? mov    rdx,QWORD PTR [r14+riz*1+0x0]
+ 0x00007ffff7fb3145  ? movabs rsi,0x20aa64
+ 0x00007ffff7fb314f  ? rex mov ecx,DWORD PTR [rbp-0xb4]
+ 0x00007ffff7fb3156  ? mov    r8d,0x29
+ 0x00007ffff7fb315c  ? mov    rax,0x0
+ 0x00007ffff7fb3163  ? movabs rbx,0x7ffff7070df0
+ 0x00007ffff7fb316d  ? rex call rbx
+ 0x00007ffff7fb3170  ? mov    r11,QWORD PTR [rbp-0xd8]
+ 0x00007ffff7fb3177  ? mov    rdi,QWORD PTR [r11+riz*1+0x0]
+ 0x00007ffff7fb317f  ? mov    rdx,QWORD PTR [r14+riz*1+0x0]
+ 0x00007ffff7fb3187  ? mov    rcx,QWORD PTR [rbp-0xc8]
+ 0x00007ffff7fb318e  ? mov    rsi,QWORD PTR [rbp-0xd0]
+ 0x00007ffff7fb3195  ? movabs r8,0x2b
+ 0x00007ffff7fb319f  ? mov    rax,0x0
+ 0x00007ffff7fb31a6  ? movabs rbx,0x7ffff7070df0
+ 0x00007ffff7fb31b0  ? rex call rbx
+ 0x00007ffff7fb31b3  ? mov    r11,QWORD PTR [r14+riz*1+0x0]
+ 0x00007ffff7fb31bb  ? add    r11,0xffffffffffffffff
+ 0x00007ffff7fb31c2  ? mov    QWORD PTR [r14+riz*1+0x0],r11
+ 0x00007ffff7fb31ca  ? test   r11,r11
+ 0x00007ffff7fb31cd  ? je     0x7ffff7fb33e6
+
+
+
+
  0x00007ffff7fb3000> ? sub    rsp,0x60
  0x00007ffff7fb3007  ? push   r11
  0x00007ffff7fb3009  ? movabs r11,0x7ffff7b2e590
@@ -557,26 +633,42 @@ TRACE
  0x00007ffff7fb3020  ? mov    rdi,QWORD PTR [r13+riz*1+0x0]
  0x00007ffff7fb3028  ? mov    QWORD PTR [rbp-0xa8],rdi
  0x00007ffff7fb302f  ? movabs rsi,0x2
- 0x00007ffff7fb3039  ? movabs rax,0x2080a0
+ 0x00007ffff7fb3039  ? movabs rax,0x2080a0 <---------------------------- add_uintptr_t
  0x00007ffff7fb3043  ? call   rax
- 
+
  0x00007ffff7fb3045  ? mov    edi,DWORD PTR [r15+riz*1+0x0]
  0x00007ffff7fb304d  ? mov    QWORD PTR [rbp-0xb0],rax
  0x00007ffff7fb3054  ? rex mov esi,0x3
- 0x00007ffff7fb305a  ? movabs rax,0x208100
+ 0x00007ffff7fb305a  ? movabs rax,0x208100 <---------------------------- add_uint32_t
  0x00007ffff7fb3064  ? call   rax
 
  0x00007ffff7fb3066  ? mov    rdi,QWORD PTR [r12+0x0]
  0x00007ffff7fb306e  ? rex mov DWORD PTR [rbp-0xb4],eax
  0x00007ffff7fb3075  ? movabs rsi,0x4
- 0x00007ffff7fb307f  ? movabs rax,0x208150
+ 0x00007ffff7fb307f  ? movabs rax,0x208150 <---------------------------- add_uint64_t
  0x00007ffff7fb3089  ? call   rax
 
  0x00007ffff7fb308b  ? mov    rdi,QWORD PTR [rbp-0xa8]
  0x00007ffff7fb3092  ? cmp    rdi,0x25
- 0x00007ffff7fb3099  ? jne    0x7ffff7fb3386
+ 0x00007ffff7fb3099  ? jne    0x7ffff7fb3386 <------------------------------- guard failing
  0x00007ffff7fb309f  ? mov    r11d,DWORD PTR [r15+riz*1+0x0]
- 0x00007ffff7fb30a7  ? cmp    r11d,0x26 <------------------------------- guard failing
+ 0x00007ffff7fb30a7  ? cmp    r11d,0x26 
+
+original code:
+               0x000000000020844d  main+669 mov    rbx,rax
+
+                        >>> x/gx $rbp-0x40
+                        0x7fffffffe130:	0x00007ffff6f2a020
+                        >>> x/gx 0x00007ffff6f2a020
+                        0x7ffff6f2a020:	0x0000000000000026
+
+               0x0000000000208450> main+672 mov    rax,QWORD PTR [rbp-0x40]
+               0x0000000000208454  main+676 mov    DWORD PTR [rbp-0x34],r13d
+               0x0000000000208458  main+680 jmp    0x20845a <main+682>
+               0x000000000020845a  main+682 mov    edi,0x14
+               0x000000000020845f  main+687 mov    esi,0x16
+
+
 
  0x00007ffff7fb30ae  ? jne    0x7ffff7fb33a6
  0x00007ffff7fb30b4  ? mov    r10,QWORD PTR [r12+0x0]
@@ -618,3 +710,138 @@ TRACE
  0x00007ffff7fb31c2  ? mov    QWORD PTR [r14+riz*1+0x0],r11
  0x00007ffff7fb31ca  ? test   r11,r11
  0x00007ffff7fb31cd  ? je     0x7ffff7fb33e6
+
+
+
+
+Value at tracing (related to failing guard...)
+   rbp-0x40
+
+
+
+
+
+
+Opt -> Unopt
+
+Register2Register - src: Register(14, 8, [-152]) dst: Register(14, 8, [-104])
+Register2Register - src: Register(3, 8, []) dst: Register(13, 8, [-72])
+Register2Register - src: Register(15, 8, [-96]) dst: Register(15, 8, [-64])
+Register2Register - src: Register(12, 8, [-64]) dst: Register(12, 8, [-112])
+Register2Register - src: Register(13, 8, [-72, 5]) dst: Register(3, 8, [-80, 5])
+
+
+ movabs rbp,0x7fffffffe170
+ movabs rsp,0x7fffffffe170
+ sub    rsp,0x90
+ mov    rax,QWORD PTR [rbp-0x108]
+ mov    QWORD PTR [rbp-0x68],rax
+ mov    r14,QWORD PTR [rbp-0x108]
+
+ mov    rax,QWORD PTR [rbp-0xc0]
+ mov    QWORD PTR [rbp-0x48],rax
+ mov    r13,QWORD PTR [rbp-0xc0]
+
+ mov    rax,QWORD PTR [rbp-0x110]
+ mov    QWORD PTR [rbp-0x40],rax
+ mov    r15,QWORD PTR [rbp-0x110]
+
+ mov    rax,QWORD PTR [rbp-0xf8]
+ mov    QWORD PTR [rbp-0x70],rax
+ mov    r12,QWORD PTR [rbp-0xf8]
+
+ mov    rax,QWORD PTR [rbp-0x100]
+ mov    QWORD PTR [rbp-0x50],rax
+ mov    rdi,QWORD PTR [rbp-0x100]
+ mov    rbx,QWORD PTR [rbp-0x100]
+ mov    rax,QWORD PTR [rbp-0xb0]
+ mov    rcx,QWORD PTR [rbp-0xb8]
+ mov    rsi,QWORD PTR [rbp-0xd0]
+ mov    r8,QWORD PTR [rbp-0xd8]
+ mov    r9,QWORD PTR [rbp-0xe0]
+ mov    r10,QWORD PTR [rbp-0xe8]
+ mov    r11,QWORD PTR [rbp-0xf0]
+ movabs rcx,0x7ffff7af98e0
+ call   rcx
+ sub    rsp,0x10
+ mov    QWORD PTR [rsp],rax
+ movabs rax,0x20838a
+ mov    QWORD PTR [rsp+0x8],rax
+ pop    rax
+ ret
+
+>>> x/gx $rdi
+0x20b660:	0x0000000000000000
+>>> x/gx $rbp-0x100
+0x7fffffffe070:	0x0000000000
+>>> x/gx $rbx
+0x20b660:	0x0000000000000000
+
+
+Unopt -> Opt
+
+Register2Register - src: Register(14, 8, [-104]) dst: Register(14, 8, [-152])
+Register2Register - src: Register(13, 8, [-72]) dst: Register(3, 8, [])
+Register2Register - src: Register(15, 8, [-64]) dst: Register(15, 8, [-96])
+Register2Register - src: Register(12, 8, [-112]) dst: Register(12, 8, [-64])
+Register2Register - src: Register(3, 8, [-80, 5]) dst: Register(13, 8, [-72, 5])
+
+  1: movabs rbp, 0x7fffffffe170
+  b: movabs rsp, 0x7fffffffe170
+  15: sub rsp, 0xa0
+  1c: mov rax, qword ptr [rbp - 0xf8]
+  23: mov qword ptr [rbp - 0x98], rax
+  2a: mov r14, qword ptr [rbp - 0xf8]
+  31: mov rbx, qword ptr [rbp - 0xf0]
+  38: mov rax, qword ptr [rbp - 0x100]
+  3f: mov qword ptr [rbp - 0x60], rax
+  46: mov r15, qword ptr [rbp - 0x100]
+  4d: mov rax, qword ptr [rbp - 0xe8]
+  54: mov qword ptr [rbp - 0x40], rax
+  5b: mov r12, qword ptr [rbp - 0xe8]
+  62: mov rax, qword ptr [rbp - 0xb0]
+  69: mov qword ptr [rbp - 0x48], rax
+  70: mov rdi, qword ptr [rbp - 0xb0]
+  77: mov r13, qword ptr [rbp - 0xb0]
+  7e: mov rax, qword ptr [rbp - 0xa0]
+  85: mov rcx, qword ptr [rbp - 0xa8]
+  8c: mov rsi, qword ptr [rbp - 0xc0]
+  93: mov r8, qword ptr [rbp - 0xc8]
+  9a: mov r9, qword ptr [rbp - 0xd0]
+  a1: mov r10, qword ptr [rbp - 0xd8]
+  a8: mov r11, qword ptr [rbp - 0xe0]
+  af: movabs rcx, 0x7ffff7af98e0
+  b9: call rcx
+  bb: sub rsp, 0x10
+  bf: mov qword ptr [rsp], rax
+  c3: movabs rax, 0x207c96
+  cd: mov qword ptr [rsp + 8], rax
+  d2: pop rax
+  d3: ret
+
+>>> x/gx $r13
+0x20b660:	0x0000000000000000
+>>> x/gx $rbp-72
+0x7fffffffe128:	0x000000000020b660
+>>> x/gx $rdi
+0x20b660:	0x0000000000000000
+
+
+Opt -> Unopt
+
+Register2Register - src: Register(14, 8, [-152]) dst: Register(14, 8, [-104])
+Register2Register - src: Register(3, 8, []) dst: Register(13, 8, [-72])
+Register2Register - src: Register(15, 8, [-96]) dst: Register(15, 8, [-64])
+Register2Register - src: Register(12, 8, [-64]) dst: Register(12, 8, [-112])
+Register2Register - src: Register(13, 8, [-72, 5]) dst: Register(3, 8, [-80, 5])
+
+>>> x/gx $rbx
+0x20b660:	0x0000000000000000
+>>> x/gx $rbp-80
+0x7fffffffe120:	0x000000000020b660
+>>> x/gx $rdi
+0x20b660:	0x0000000000000000
+
+
+
+set $rdi = 0x20b660
