@@ -436,21 +436,21 @@ Register2Register - src: Register(15, 8, [-96]) dst: Register(15, 8, [-64])
 Register2Register - src: Register(12, 8, [-64]) dst: Register(12, 8, [-112])
 Register2Register - src: Register(13, 8, [-72, 5]) dst: Register(3, 8, [-80, 5])
 
-
+rbp-0x48
 ********** End of Machine Code **********
 Patchpoint 0 - erasing TReg: 12 with SpillOffset: -64
-Patchpoint 0 - erasing TReg: 13 with SpillOffset: -72
+Patchpoint 0 - erasing TReg: 13 with SpillOffset: -72 <--------0x48
 Patchpoint 0 - erasing TReg: 13 with SpillOffset: 5
+Patchpoint 0 - erasing TReg: 15 with SpillOffset: -96
+Patchpoint 0 - erasing TReg: 12 with SpillOffset: -64
+Patchpoint 0 - erasing TReg: 13 with SpillOffset: -72 <--------0x48
+Patchpoint 0 - erasing TReg: 13 with SpillOffset: 5
+Patchpoint 0 - erasing TReg: 14 with SpillOffset: -152
 Patchpoint 0 - erasing TReg: 15 with SpillOffset: -96
 Patchpoint 0 - erasing TReg: 12 with SpillOffset: -64
 Patchpoint 0 - erasing TReg: 13 with SpillOffset: -72
 Patchpoint 0 - erasing TReg: 13 with SpillOffset: 5
 Patchpoint 0 - erasing TReg: 14 with SpillOffset: -152
-Patchpoint 0 - erasing TReg: 15 with SpillOffset: -96
-Patchpoint 0 - erasing TReg: 12 with SpillOffset: -64
-Patchpoint 0 - erasing TReg: 13 with SpillOffset: -72
-Patchpoint 0 - erasing TReg: 13 with SpillOffset: 5
-Patchpoint 0 - erasing TReg: 14 with SpillOffset: -152
 Patchpoint 0 - erasing TReg: 13 with SpillOffset: -72
 Patchpoint 0 - erasing TReg: 13 with SpillOffset: 5
 Patchpoint 0 - erasing TReg: 14 with SpillOffset: -152
@@ -458,3 +458,51 @@ Patchpoint 0 - erasing TReg: 15 with SpillOffset: -96
 Patchpoint 0 - erasing TReg: 12 with SpillOffset: -64
 Patchpoint 0 - erasing TReg: 14 with SpillOffset: -152
 Patchpoint 0 - erasing TReg: 15 with SpillOffset: -96
+
+
+  MOV64mr $rbp, 1, $noreg, -80, $noreg, renamable $rbx :: (store (s64) into %stack.1)
+  MOV64mr $rbp, 1, $noreg, -104, $noreg, renamable $r14 :: (store (s64) into %stack.2)
+  MOV64mr $rbp, 1, $noreg, -72, $noreg, renamable $r13 :: (store (s64) into %stack.3)
+  MOV64mr $rbp, 1, $noreg, -112, $noreg, renamable $r12 :: (store (s64) into %stack.5)
+
+
+  Transition: OptToUnopt ExecTrace: true
+Transition: OptToUnopt
+src_rbp: 0x7ffcac26fa40, reg_store: 0x7ffcac26f930, src_frame_size: 0xa0, dst_frame_size: 0x90, rbp_offset_reg_store: 0x110
+Register2Register - src: Register(14, 8, [-152]) dst: Register(14, 8, [-104])
+Register2Register - src: Register(3, 8, []) dst: Register(13, 8, [-72])
+Register2Register - src: Register(15, 8, [-96]) dst: Register(15, 8, [-64])
+Register2Register - src: Register(12, 8, [-64]) dst: Register(12, 8, [-112])
+Register2Register - src: Register(13, 8, [-72, 5]) dst: Register(3, 8, [-80, 5])
+ASM DUMP:
+  0: movabs rbp, 0x7ffcac26fa40
+  a: movabs rsp, 0x7ffcac26fa40
+  14: sub rsp, 0x90
+  1b: mov rax, qword ptr [rbp - 0x108]
+  22: mov qword ptr [rbp - 0x68], rax
+  29: mov r14, qword ptr [rbp - 0x108]
+  30: mov rax, qword ptr [rbp - 0xc0]
+  37: mov qword ptr [rbp - 0x48], rax
+  3e: mov r13, qword ptr [rbp - 0xc0]
+  45: mov rax, qword ptr [rbp - 0x110]
+  4c: mov qword ptr [rbp - 0x40], rax
+  53: mov r15, qword ptr [rbp - 0x110]
+  5a: mov rax, qword ptr [rbp - 0xf8]
+  61: mov qword ptr [rbp - 0x70], rax
+  68: mov r12, qword ptr [rbp - 0xf8]
+  6f: mov rax, qword ptr [rbp - 0x100]
+  76: mov qword ptr [rbp - 0x50], rax
+  7d: mov rdi, qword ptr [rbp - 0x100]
+  84: mov rbx, qword ptr [rbp - 0x100]
+  8b: mov rax, qword ptr [rbp - 0xb0]
+  92: mov rcx, qword ptr [rbp - 0xb8]
+  99: mov rsi, qword ptr [rbp - 0xd0]
+  a0: mov r8, qword ptr [rbp - 0xd8]
+  a7: mov r9, qword ptr [rbp - 0xe0]
+  ae: mov r10, qword ptr [rbp - 0xe8]
+  b5: mov r11, qword ptr [rbp - 0xf0]
+  bc: movabs rdi, 0x7ffcac26fa40
+  c6: movabs rsi, 0x7ffcac26f9a0
+  d0: movabs rdx, 0x7f84be2a3000
+  da: movabs rcx, 0x7f84bdbf5b54
+  e4: call rcx
