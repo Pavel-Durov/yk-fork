@@ -8,7 +8,7 @@
 //     yk-jit-event: stop-tracing
 //     --- Begin jit-pre-opt ---
 //       ...
-//       call @indirect(%17, %18, %19, %20, %21)
+//       call @__yk_unopt_indirect(%17, %18, %19, %20, %21)
 //       ...
 //     --- End jit-pre-opt ---
 //     0: 4
