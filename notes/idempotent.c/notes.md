@@ -415,14 +415,250 @@ RETURN FROM PATCHPOINT HERE:
 
 
 
+Transition: OptToUnopt ExecTrace: false
+Transition: OptToUnopt
+src_rbp: 0x7ffc6d291970, reg_store: 0x7ffc6d291860, src_frame_size: 0xa0, dst_frame_size: 0x90, rbp_offset_reg_store: 0x110
+Register2Register - src: Register(14, 8, [-152]) dst: Register(14, 8, [-104])
+Register2Register - src: Register(3, 8, []) dst: Register(13, 8, [-72])
+Register2Register - src: Register(15, 8, [-96]) dst: Register(15, 8, [-64])
+Register2Register - src: Register(12, 8, [-64]) dst: Register(12, 8, [-112])
+Register2Register - src: Register(13, 8, [-72, 5]) dst: Register(3, 8, [-80, 5])
+ASM DUMP:
+  0: movabs rbp, 0x7ffc6d291970
+  a: movabs rsp, 0x7ffc6d291970
+  14: sub rsp, 0x90
 
-
-
-
-
-3rd transition:
-    start - __ykrt_control_point_real
-        >>> x/gx $r13
-        0x20b680:	0x0000000000000000
-        >>> x/gx $rbx
-        0x20b680:	0x0000000000000000
+  1b: mov rax, qword ptr [rbp - 0x108]
+  22: mov qword ptr [rbp - 0x68], rax
+  29: mov r14, qword ptr [rbp - 0x108]
+  
+  30: mov rax, qword ptr [rbp - 0xc0]
+  37: mov qword ptr [rbp - 0x48], rax
+  3e: mov r13, qword ptr [rbp - 0xc0]
+  
+  45: mov rax, qword ptr [rbp - 0x110]
+  4c: mov qword ptr [rbp - 0x40], rax
+  53: mov r15, qword ptr [rbp - 0x110]
+  
+  5a: mov rax, qword ptr [rbp - 0xf8]
+  61: mov qword ptr [rbp - 0x70], rax
+  68: mov r12, qword ptr [rbp - 0xf8]
+  
+  6f: mov rax, qword ptr [rbp - 0x100]
+  76: mov qword ptr [rbp - 0x50], rax
+  7d: mov rdi, qword ptr [rbp - 0x100]
+  84: mov rbx, qword ptr [rbp - 0x100]
+  
+  8b: mov rax, qword ptr [rbp - 0xb0]
+  92: mov rcx, qword ptr [rbp - 0xb8]
+  99: mov rsi, qword ptr [rbp - 0xd0]
+  a0: mov r8, qword ptr [rbp - 0xd8]
+  a7: mov r9, qword ptr [rbp - 0xe0]
+  ae: mov r10, qword ptr [rbp - 0xe8]
+  b5: mov r11, qword ptr [rbp - 0xf0]
+  bc: movabs rcx, 0x7f7a3ecf9750
+  c6: call rcx
+  c8: sub rsp, 0x10
+  cc: mov qword ptr [rsp], rax
+  d0: movabs rax, 0x20838a
+  da: mov qword ptr [rsp + 8], rax
+  df: pop rax
+  e0: ret 
+@@@ Start Register values @@@
+register:15, value: 0x7f7a3e12a020, *value: 0x26
+register:14, value: 0x7f7a3e12a010, *value: 0x4
+register:13, value: 0x7f7a3e12a018, *value: 0x25
+register:12, value: 0x7f7a3e12a028, *value: 0x27
+register:3, value: 0x208fa660, *value: 0x0
+rbp - 0xb0 - value: 0x7ffc6d2918c0, *value: 0x0
+rbp - 0xc0 - value: 0x7ffc6d2918b0, *value: 0x7f7a3e12a018
+rbp - 0x100 - value: 0x7ffc6d291870, *value: 0x208fa660
+@@@ End Register values @@@
+4: 39 39
+4: 41 41
+4: 43 43
+Transition: UnoptToOpt ExecTrace: false
+Transition: UnoptToOpt
+src_rbp: 0x7ffc6d291970, reg_store: 0x7ffc6d291870, src_frame_size: 0x90, dst_frame_size: 0xa0, rbp_offset_reg_store: 0x100
+Register2Register - src: Register(14, 8, [-104]) dst: Register(14, 8, [-152])
+Register2Register - src: Register(13, 8, [-72]) dst: Register(3, 8, [])
+Register2Register - src: Register(15, 8, [-64]) dst: Register(15, 8, [-96])
+Register2Register - src: Register(12, 8, [-112]) dst: Register(12, 8, [-64])
+Register2Register - src: Register(3, 8, [-80, 5]) dst: Register(13, 8, [-72, 5])
+ASM DUMP:
+  0: movabs rbp, 0x7ffc6d291970
+  a: movabs rsp, 0x7ffc6d291970
+  14: sub rsp, 0xa0
+  1b: mov rax, qword ptr [rbp - 0xf8]
+  22: mov qword ptr [rbp - 0x98], rax
+  29: mov r14, qword ptr [rbp - 0xf8]
+  30: mov rbx, qword ptr [rbp - 0xf0]
+  37: mov rax, qword ptr [rbp - 0x100]
+  3e: mov qword ptr [rbp - 0x60], rax
+  45: mov r15, qword ptr [rbp - 0x100]
+  4c: mov rax, qword ptr [rbp - 0xe8]
+  53: mov qword ptr [rbp - 0x40], rax
+  5a: mov r12, qword ptr [rbp - 0xe8]
+  61: mov rax, qword ptr [rbp - 0xb0]
+  68: mov qword ptr [rbp - 0x48], rax
+  6f: mov rdi, qword ptr [rbp - 0xb0]
+  76: mov r13, qword ptr [rbp - 0xb0]
+  7d: mov rax, qword ptr [rbp - 0xa0]
+  84: mov rcx, qword ptr [rbp - 0xa8]
+  8b: mov rsi, qword ptr [rbp - 0xc0]
+  92: mov r8, qword ptr [rbp - 0xc8]
+  99: mov r9, qword ptr [rbp - 0xd0]
+  a0: mov r10, qword ptr [rbp - 0xd8]
+  a7: mov r11, qword ptr [rbp - 0xe0]
+  ae: movabs rcx, 0x7f7a3ecf9750
+  b8: call rcx
+  ba: sub rsp, 0x10
+  be: mov qword ptr [rsp], rax
+  c2: movabs rax, 0x207c96
+  cc: mov qword ptr [rsp + 8], rax
+  d1: pop rax
+  d2: ret 
+@@@ Start Register values @@@
+register:15, value: 0x7f7a3e12a020, *value: 0x26
+register:14, value: 0x7f7a3e12a010, *value: 0x3
+register:13, value: 0x208fa660, *value: 0x0
+register:12, value: 0x7f7a3e12a028, *value: 0x27
+register:3, value: 0x7f7a3e12a018, *value: 0x25
+rbp - 0xb0 - value: 0x7ffc6d2918c0, *value: 0x208fa660
+rbp - 0xc0 - value: 0x7ffc6d2918b0, *value: 0x7ffc6d291940
+rbp - 0x100 - value: 0x7ffc6d291870, *value: 0x7f7a3e12a020
+@@@ End Register values @@@
+3: 39 39
+3: 41 41
+3: 43 43
+Transition: OptToUnopt ExecTrace: true
+Transition: OptToUnopt
+src_rbp: 0x7ffc6d291970, reg_store: 0x7ffc6d291860, src_frame_size: 0xa0, dst_frame_size: 0x90, rbp_offset_reg_store: 0x110
+Register2Register - src: Register(14, 8, [-152]) dst: Register(14, 8, [-104])
+Register2Register - src: Register(3, 8, []) dst: Register(13, 8, [-72])
+Register2Register - src: Register(15, 8, [-96]) dst: Register(15, 8, [-64])
+Register2Register - src: Register(12, 8, [-64]) dst: Register(12, 8, [-112])
+Register2Register - src: Register(13, 8, [-72, 5]) dst: Register(3, 8, [-80, 5])
+ASM DUMP:
+  0: movabs rbp, 0x7ffc6d291970
+  a: movabs rsp, 0x7ffc6d291970
+  14: sub rsp, 0x90
+  1b: mov rax, qword ptr [rbp - 0x108]
+  22: mov qword ptr [rbp - 0x68], rax
+  29: mov r14, qword ptr [rbp - 0x108]
+  30: mov rax, qword ptr [rbp - 0xc0]
+  37: mov qword ptr [rbp - 0x48], rax
+  3e: mov r13, qword ptr [rbp - 0xc0]
+  45: mov rax, qword ptr [rbp - 0x110]
+  4c: mov qword ptr [rbp - 0x40], rax
+  53: mov r15, qword ptr [rbp - 0x110]
+  5a: mov rax, qword ptr [rbp - 0xf8]
+  61: mov qword ptr [rbp - 0x70], rax
+  68: mov r12, qword ptr [rbp - 0xf8]
+  6f: mov rax, qword ptr [rbp - 0x100]
+  76: mov qword ptr [rbp - 0x50], rax
+  7d: mov rdi, qword ptr [rbp - 0x100]
+  84: mov rbx, qword ptr [rbp - 0x100]
+  8b: mov rax, qword ptr [rbp - 0xb0]
+  92: mov rcx, qword ptr [rbp - 0xb8]
+  99: mov rsi, qword ptr [rbp - 0xd0]
+  a0: mov r8, qword ptr [rbp - 0xd8]
+  a7: mov r9, qword ptr [rbp - 0xe0]
+  ae: mov r10, qword ptr [rbp - 0xe8]
+  b5: mov r11, qword ptr [rbp - 0xf0]
+  bc: movabs rcx, 0x7f7a3ecf9750
+  c6: call rcx
+  c8: movabs rdi, 0x7ffc6d291970
+  d2: movabs rsi, 0x7ffc6d2918d0
+  dc: movabs rdx, 0x7f7a3f291000
+  e6: movabs rcx, 0x7f7a3ebf6134
+  f0: call rcx
+@@@ Start Register values @@@
+register:15, value: 0x7f7a3e12a020, *value: 0x26
+register:14, value: 0x7f7a3e12a010, *value: 0x2
+register:13, value: 0x208fa660, *value: 0x0
+register:12, value: 0x7f7a3e12a028, *value: 0x27
+register:3, value: 0x208fa660, *value: 0x0
+rbp - 0xb0 - value: 0x7ffc6d2918c0, *value: 0x0
+rbp - 0xc0 - value: 0x7ffc6d2918b0, *value: 0x208fa660
+rbp - 0x100 - value: 0x7ffc6d291870, *value: 0x208fa660
+@@@ End Register values @@@
+[DEOPT] Register(14, 8, [-104]), jitval: 0x7f7a3e12a010
+[DEOPT] Indirect(6, -72, 8), jitval: 546285152
+[DEOPT] Indirect(6, -64, 8), jitval: 140163004145696
+[DEOPT] Register(12, 8, [-112]), jitval: 0x7f7a3e12a028
+[DEOPT] Indirect(6, -80, 8), jitval: 546285152
+[DEOPT] Register(15, 8, [-120, 5]), jitval: 0x0
+[DEOPT] Indirect(6, -88, 8), jitval: 2
+[DEOPT] Indirect(6, -52, 4), jitval: 41
+[DEOPT] Register(13, 8, []), jitval: 0x2b
+[DEOPT] Register(0, 8, []), jitval: 0x0
+2: 2 2
+2: 41 41
+2: 43 43
+Transition: OptToUnopt ExecTrace: true
+Transition: OptToUnopt
+src_rbp: 0x7ffc6d291970, reg_store: 0x7ffc6d291860, src_frame_size: 0xa0, dst_frame_size: 0x90, rbp_offset_reg_store: 0x110
+Register2Register - src: Register(14, 8, [-152]) dst: Register(14, 8, [-104])
+Register2Register - src: Register(3, 8, []) dst: Register(13, 8, [-72])
+Register2Register - src: Register(15, 8, [-96]) dst: Register(15, 8, [-64])
+Register2Register - src: Register(12, 8, [-64]) dst: Register(12, 8, [-112])
+Register2Register - src: Register(13, 8, [-72, 5]) dst: Register(3, 8, [-80, 5])
+ASM DUMP:
+  0: movabs rbp, 0x7ffc6d291970
+  a: movabs rsp, 0x7ffc6d291970
+  14: sub rsp, 0x90
+  1b: mov rax, qword ptr [rbp - 0x108]
+  22: mov qword ptr [rbp - 0x68], rax
+  29: mov r14, qword ptr [rbp - 0x108]
+  30: mov rax, qword ptr [rbp - 0xc0]
+  37: mov qword ptr [rbp - 0x48], rax
+  3e: mov r13, qword ptr [rbp - 0xc0]
+  45: mov rax, qword ptr [rbp - 0x110]
+  4c: mov qword ptr [rbp - 0x40], rax
+  53: mov r15, qword ptr [rbp - 0x110]
+  5a: mov rax, qword ptr [rbp - 0xf8]
+  61: mov qword ptr [rbp - 0x70], rax
+  68: mov r12, qword ptr [rbp - 0xf8]
+  6f: mov rax, qword ptr [rbp - 0x100]
+  76: mov qword ptr [rbp - 0x50], rax
+  7d: mov rdi, qword ptr [rbp - 0x100]
+  84: mov rbx, qword ptr [rbp - 0x100]
+  8b: mov rax, qword ptr [rbp - 0xb0]
+  92: mov rcx, qword ptr [rbp - 0xb8]
+  99: mov rsi, qword ptr [rbp - 0xd0]
+  a0: mov r8, qword ptr [rbp - 0xd8]
+  a7: mov r9, qword ptr [rbp - 0xe0]
+  ae: mov r10, qword ptr [rbp - 0xe8]
+  b5: mov r11, qword ptr [rbp - 0xf0]
+  bc: movabs rcx, 0x7f7a3ecf9750
+  c6: call rcx
+  c8: movabs rdi, 0x7ffc6d291970
+  d2: movabs rsi, 0x7ffc6d2918e0
+  dc: movabs rdx, 0x7f7a3f291000
+  e6: movabs rcx, 0x7f7a3ebf6134
+  f0: call rcx
+@@@ Start Register values @@@
+register:15, value: 0x7ffc6d2918c8, *value: 0x0
+register:14, value: 0x7f7a3eb61e79, *value: NULL
+register:13, value: 0x7ffc6d291940, *value: 0x208fc6c2
+register:12, value: 0x7f7a3e12a010, *value: 0x1
+register:3, value: 0x7f7a3e12a020, *value: 0x26
+rbp - 0xb0 - value: 0x7ffc6d2918c0, *value: 0x208fa660
+rbp - 0xc0 - value: 0x7ffc6d2918b0, *value: 0x7ffc6d291940
+rbp - 0x100 - value: 0x7ffc6d291870, *value: 0x7f7a3e12a020
+@@@ End Register values @@@
+[DEOPT] Register(14, 8, [-104]), jitval: 0x7f7a3eb61e79
+[DEOPT] Indirect(6, -72, 8), jitval: 140722139896128
+[DEOPT] Indirect(6, -64, 8), jitval: 140722139896008
+[DEOPT] Register(12, 8, [-112]), jitval: 0x7f7a3e12a010
+[DEOPT] Indirect(6, -80, 8), jitval: 140163004145696
+[DEOPT] Register(15, 8, [-120, 5]), jitval: 0x208fc6c2
+[DEOPT] Indirect(6, -88, 8), jitval: 546293444
+[DEOPT] Indirect(6, -52, 4), jitval: 546293445
+[DEOPT] Register(13, 8, []), jitval: 0x5
+[DEOPT] Register(0, 8, []), jitval: 0x208fc6c2
+6647697060311162689: 546293444 546293444
+6647697060311162689: 546293445 23
+6647697060311162689: 5 5
+Segmentation fault
