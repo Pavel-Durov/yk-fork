@@ -82,6 +82,7 @@ pub extern "C" fn __ykrt_control_point(
         // trace (at the moment we just rip out the control point's stack), which means we then
         // no longer need to recover callee-saved registers as the control point will do this
         // for us.
+        // "int3",
         "push rax",
         "push rcx",
         "push rbx",
@@ -115,7 +116,6 @@ pub extern "C" fn __ykrt_control_point(
         "ret",
     );
 }
-
 // The actual control point, after we have pushed the callee-saved registers.
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -127,6 +127,18 @@ pub extern "C" fn __ykrt_control_point_real(
     // Frame address of caller.
     frameaddr: *mut c_void,
 ) {
+    // use ykrt::trace::swt::cp::debug_print_register;
+    // println!("--------------------------------------------------------------------------");
+    // println!("__ykrt_control_point_real debug");
+    // unsafe {
+    //     debug_print_register(14, 0);
+    //     debug_print_register(13, 0);
+    //     debug_print_register(15, 0);
+    //     debug_print_register(12, 0);
+    //     debug_print_register(3, 0);
+    //     debug_print_register(0, 0);
+    // }
+    // println!("--------------------------------------------------------------------------");
     let mt = unsafe { &*mt };
     let loc = unsafe { &*loc };
     if !loc.is_null() {

@@ -2,7 +2,7 @@ use lang_tester::LangTester;
 use regex::Regex;
 use std::{
     env,
-    fs::read_to_string,
+    fs::{self, read_to_string},
     path::{Path, PathBuf},
     process::Command,
 };
@@ -16,7 +16,11 @@ const COMMENT_PREFIX: &str = "##";
 fn main() {
     println!("Running C tests...");
 
-    let tempdir = TempDir::new().unwrap();
+    // Create a local directory for test outputs instead of a temporary one
+    let output_dir = PathBuf::from("c_test_output");
+    if !output_dir.exists() {
+        fs::create_dir_all(&output_dir).unwrap();
+    }
 
     // Generate a `compile_commands.json` database for clangd.
     let ccg = CompletionWrapper::new(ykllvm_bin("clang"), "c_tests");
@@ -55,7 +59,7 @@ fn main() {
         })
         .test_cmds(move |p| {
             let mut exe = PathBuf::new();
-            exe.push(&tempdir);
+            exe.push(&output_dir);
             exe.push(p.file_stem().unwrap());
 
             // Decide if we have extra objects to link to the test.
@@ -64,7 +68,7 @@ fn main() {
                 .get(key)
                 .unwrap_or(&Vec::new())
                 .iter()
-                .map(|l| l.generate_obj(tempdir.path()))
+                .map(|l| l.generate_obj(output_dir.as_path()))
                 .collect::<Vec<PathBuf>>();
 
             let mut compiler =

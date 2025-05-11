@@ -12,6 +12,11 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
+pub mod cfg;
+pub mod cp;
+pub mod live_vars;
+pub use cfg::{CPTransitionDirection, ControlPointStackMapId, SWT_MULTI_MODULE};
+
 #[derive(Debug, Eq, PartialEq, Clone)]
 struct TracingBBlock {
     function_index: usize,
@@ -51,6 +56,7 @@ thread_local! {
 /// * `block_index` - The index of the basic block within the function.
 #[cfg(tracer_swt)]
 #[no_mangle]
+#[inline(never)]
 pub extern "C" fn __yk_trace_basicblock(function_index: usize, block_index: usize) {
     MTThread::with_borrow(|mtt| {
         if mtt.is_tracing() {
@@ -63,6 +69,18 @@ pub extern "C" fn __yk_trace_basicblock(function_index: usize, block_index: usiz
         }
     });
 }
+
+/// Does nothing except from exist. This function is just a placeholder
+/// for SWT multi-version IR execution.
+///
+/// # Arguments
+/// * `function_index` - The index of the function to which the basic
+/// block belongs.
+/// * `block_index` - The index of the basic block within the function.
+#[cfg(tracer_swt)]
+#[no_mangle]
+#[inline(never)]
+pub extern "C" fn __yk_trace_basicblock_dummy(function_index: usize, block_index: usize) {}
 
 pub(crate) struct SWTracer {}
 

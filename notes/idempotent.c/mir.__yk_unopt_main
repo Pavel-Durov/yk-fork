@@ -1,0 +1,765 @@
+Function: __yk_unopt_main
+# Machine code for function __yk_unopt_main: NoPHIs, TracksLiveness, NoVRegs, TiedOpsRewritten, TracksDebugUserValues
+Frame Objects:
+  fi#-6: size=8, align=8, fixed, at location [SP-48]
+  fi#-5: size=8, align=16, fixed, at location [SP-40]
+  fi#-4: size=8, align=8, fixed, at location [SP-32]
+  fi#-3: size=8, align=16, fixed, at location [SP-24]
+  fi#-2: size=8, align=8, fixed, at location [SP-16]
+  fi#-1: size=8, align=16, fixed, at location [SP-8]
+  fi#0: size=8, align=8, at location [SP-56]
+  fi#1: size=8, align=8, at location [SP-88]
+  fi#2: size=8, align=8, at location [SP-112]
+  fi#3: size=8, align=8, at location [SP-80]
+  fi#4: size=8, align=8, at location [SP-72]
+  fi#5: size=8, align=8, at location [SP-120]
+  fi#6: size=4, align=4, at location [SP-60]
+  fi#7: size=8, align=8, at location [SP-104]
+  fi#8: size=8, align=8, at location [SP-128]
+  fi#9: size=8, align=8, at location [SP-96]
+  fi#10: size=4, align=4, at location [SP-132]
+  fi#11: size=8, align=8, at location [SP-152]
+  fi#12: size=8, align=8, at location [SP-144]
+Function Live Ins: $edi, $rsi
+
+bb.0 (%ir-block.2, bb_id 0):
+  successors: %bb.1
+  liveins: $edi, $rsi, $r15, $r14, $r13, $r12, $rbx
+  frame-setup PUSH64r killed $rbp, implicit-def $rsp, implicit $rsp
+  frame-setup CFI_INSTRUCTION def_cfa_offset 16
+  frame-setup CFI_INSTRUCTION offset $rbp, -16
+  $rbp = frame-setup MOV64rr $rsp
+  frame-setup CFI_INSTRUCTION def_cfa_register $rbp
+  frame-setup PUSH64r killed $r15, implicit-def $rsp, implicit $rsp
+  frame-setup PUSH64r killed $r14, implicit-def $rsp, implicit $rsp
+  frame-setup PUSH64r killed $r13, implicit-def $rsp, implicit $rsp
+  frame-setup PUSH64r killed $r12, implicit-def $rsp, implicit $rsp
+  frame-setup PUSH64r killed $rbx, implicit-def $rsp, implicit $rsp
+  $rsp = frame-setup SUB64ri32 $rsp(tied-def 0), 104, implicit-def dead $eflags
+  CFI_INSTRUCTION offset $rbx, -56
+  CFI_INSTRUCTION offset $r12, -48
+  CFI_INSTRUCTION offset $r13, -40
+  CFI_INSTRUCTION offset $r14, -32
+  CFI_INSTRUCTION offset $r15, -24
+  KILL $rsi
+  KILL $edi
+  $edi = MOV32ri 20
+  $esi = XOR32rr undef $esi(tied-def 0), undef $esi, implicit-def dead $eflags
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, implicit-def $rsp, implicit-def $ssp
+  renamable $rax = MOV64rm $rip, 1, $noreg, target-flags(x86-gottpoff) @shadowstack_0, $noreg :: (load (s64) from got)
+  renamable $r14 = MOV64rm killed renamable $rax, 1, $noreg, 0, $fs :: (dereferenceable load (s64) from @shadowstack_0)
+  $r13 = MOV64rr $r14
+  renamable $r13 = ADD64ri32 killed renamable $r13(tied-def 0), 8, implicit-def dead $eflags
+  $rax = MOV64rr $r14
+  renamable $rax = ADD64ri32 killed renamable $rax(tied-def 0), 16, implicit-def dead $eflags
+  $r12 = MOV64rr $r14
+  renamable $r12 = ADD64ri32 killed renamable $r12(tied-def 0), 24, implicit-def dead $eflags
+  JMP_1 %bb.1, debug-location !291; c/idempotent.c:0
+
+bb.1 (%ir-block.9, bb_id 1):
+; predecessors: %bb.0
+  successors: %bb.2
+  liveins: $rax, $r12, $r13, $r14
+  MOV64mr $rbp, 1, $noreg, -64, $noreg, killed renamable $rax :: (store (s64) into %stack.4)
+  $edi = MOV32ri 20, debug-location !292; c/idempotent.c:101:14
+  $esi = MOV32ri 1, debug-location !292; c/idempotent.c:101:14
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !292; c/idempotent.c:101:14
+  DBG_VALUE $noreg, $noreg, !"argv", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:100
+  DBG_VALUE $noreg, $noreg, !"argc", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:100
+  dead $edi = XOR32rr undef $edi(tied-def 0), undef $edi, implicit-def dead $eflags, implicit-def $rdi, debug-location !292; c/idempotent.c:101:14
+  CALL64pcrel32 @yk_mt_new, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $rdi, implicit-def $rax, debug-location !292; c/idempotent.c:101:14
+  $rbx = MOV64rr $rax, debug-location !292; c/idempotent.c:101:14
+  JMP_1 %bb.2, debug-location !291; c/idempotent.c:0
+
+bb.2 (%ir-block.11, bb_id 2):
+; predecessors: %bb.1
+  successors: %bb.3
+  liveins: $rbx, $r12, $r13, $r14
+  $r15 = MOV64rr killed $r13
+  $edi = MOV32ri 20, debug-location !293; c/idempotent.c:102:3
+  $esi = MOV32ri 2, debug-location !293; c/idempotent.c:102:3
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !293; c/idempotent.c:102:3
+  DBG_VALUE $rbx, $noreg, !"mt", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:101
+  $rdi = MOV64rr $rbx, debug-location !293; c/idempotent.c:102:3
+  $esi = XOR32rr undef $esi(tied-def 0), undef $esi, implicit-def dead $eflags, debug-location !293; c/idempotent.c:102:3
+  CALL64pcrel32 @yk_mt_hot_threshold_set, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $rdi, implicit $esi, debug-location !293; c/idempotent.c:102:3
+  JMP_1 %bb.3, debug-location !294; c/idempotent.c:103:3
+
+bb.3 (%ir-block.12, bb_id 3):
+; predecessors: %bb.2
+  successors: %bb.4
+  liveins: $rbx, $r12, $r14, $r15
+  DBG_VALUE $rbx, $noreg, !"mt", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:101
+  $r13 = MOV64rr killed $rbx
+  DBG_VALUE $r13, $noreg, !"mt", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:101
+  $edi = MOV32ri 20, debug-location !294; c/idempotent.c:103:3
+  $esi = MOV32ri 3, debug-location !294; c/idempotent.c:103:3
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !294; c/idempotent.c:103:3
+  JMP_1 %bb.4, debug-location !295; c/idempotent.c:103:14
+
+bb.4 (%ir-block.13, bb_id 4):
+; predecessors: %bb.3
+  successors: %bb.5
+  liveins: $r12, $r13, $r14, $r15
+  DBG_VALUE $r13, $noreg, !"mt", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:101
+  $edi = MOV32ri 20, debug-location !296; c/idempotent.c:103:20
+  $esi = MOV32ri 4, debug-location !296; c/idempotent.c:103:20
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !296; c/idempotent.c:103:20
+  CALL64pcrel32 @yk_location_new, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit-def $rax, debug-location !296; c/idempotent.c:103:20
+  $rbx = MOV64rr $rax, debug-location !296; c/idempotent.c:103:20
+  JMP_1 %bb.5, debug-location !296; c/idempotent.c:103:20
+
+bb.5 (%ir-block.15, bb_id 5):
+; predecessors: %bb.4
+  successors: %bb.6
+  liveins: $rbx, $r12, $r13, $r14, $r15
+  DBG_VALUE $r13, $noreg, !"mt", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:101
+  $edi = MOV32ri 20, debug-location !296; c/idempotent.c:103:20
+  $esi = MOV32ri 5, debug-location !296; c/idempotent.c:103:20
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !296; c/idempotent.c:103:20
+  MOV64mr $rbp, 1, $noreg, -48, $noreg, killed renamable $rbx, debug-location !296 :: (store (s64) into %ir.4); c/idempotent.c:103:20
+  JMP_1 %bb.6, debug-location !291; c/idempotent.c:0
+
+bb.6 (%ir-block.16, bb_id 6):
+; predecessors: %bb.5
+  successors: %bb.7
+  liveins: $r12, $r13, $r14, $r15
+  DBG_VALUE $r13, $noreg, !"mt", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:101
+  $edi = MOV32ri 20, debug-location !298; c/idempotent.c:105:10
+  $esi = MOV32ri 6, debug-location !298; c/idempotent.c:105:10
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !298; c/idempotent.c:105:10
+  DBG_VALUE 4, 0, !"li", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:105
+  MOV64mi32 renamable $r14, 1, $noreg, 0, $noreg, 4, debug-location !298 :: (store (s64) into %ir.5, !tbaa !102); c/idempotent.c:105:10
+  $rbx = MOV64rr killed $r13
+  DBG_VALUE $rbx, $noreg, !"mt", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:101
+  JMP_1 %bb.7, debug-location !291; c/idempotent.c:0
+
+bb.7 (%ir-block.17, bb_id 7):
+; predecessors: %bb.6
+  successors: %bb.8
+  liveins: $rbx, $r12, $r14, $r15
+  DBG_VALUE 4, $noreg, !"li", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:105
+  DBG_VALUE $rbx, $noreg, !"mt", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:101
+  $edi = MOV32ri 20, debug-location !300; c/idempotent.c:106:13
+  $esi = MOV32ri 7, debug-location !300; c/idempotent.c:106:13
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !300; c/idempotent.c:106:13
+  DBG_VALUE 37, 0, !"j", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:106
+  $r13 = MOV64rr killed $r15
+  MOV64mi32 renamable $r13, 1, $noreg, 0, $noreg, 37, debug-location !300 :: (store (s64) into %ir.6, !tbaa !102); c/idempotent.c:106:13
+  JMP_1 %bb.8, debug-location !291; c/idempotent.c:0
+
+bb.8 (%ir-block.18, bb_id 8):
+; predecessors: %bb.7
+  successors: %bb.9
+  liveins: $rbx, $r12, $r13, $r14
+  DBG_VALUE 37, $noreg, !"j", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:106
+  DBG_VALUE 4, $noreg, !"li", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:105
+  DBG_VALUE $rbx, $noreg, !"mt", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:101
+  $edi = MOV32ri 20, debug-location !302; c/idempotent.c:107:12
+  $esi = MOV32ri 8, debug-location !302; c/idempotent.c:107:12
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !302; c/idempotent.c:107:12
+  DBG_VALUE 38, 0, !"k", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:107
+  renamable $r15 = MOV64rm $rbp, 1, $noreg, -64, $noreg :: (load (s64) from %stack.4)
+  MOV32mi renamable $r15, 1, $noreg, 0, $noreg, 38, debug-location !302 :: (store (s32) into %ir.7, !tbaa !110); c/idempotent.c:107:12
+  JMP_1 %bb.9, debug-location !291; c/idempotent.c:0
+
+bb.9 (%ir-block.19, bb_id 9):
+; predecessors: %bb.8
+  successors: %bb.10
+  liveins: $rbx, $r12, $r13, $r14, $r15
+  DBG_VALUE 38, $noreg, !"k", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:107
+  DBG_VALUE 37, $noreg, !"j", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:106
+  DBG_VALUE 4, $noreg, !"li", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:105
+  DBG_VALUE $rbx, $noreg, !"mt", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:101
+  $edi = MOV32ri 20, debug-location !304; c/idempotent.c:108:12
+  $esi = MOV32ri 9, debug-location !304; c/idempotent.c:108:12
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !304; c/idempotent.c:108:12
+  DBG_VALUE 39, 0, !"l", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:108
+  MOV64mi32 renamable $r12, 1, $noreg, 0, $noreg, 39, debug-location !304 :: (store (s64) into %ir.8, !tbaa !102); c/idempotent.c:108:12
+  INLINEASM &"" [sideeffect] [mayload] [maystore] [attdialect], $0:[mem:m], $rbp, 1, $noreg, -48, $noreg, $1:[mem:m], $rbp, 1, $noreg, -48, $noreg, $2:[clobber], implicit-def dead early-clobber $df, $3:[clobber], implicit-def early-clobber $fpsw, $4:[clobber], implicit-def dead early-clobber $eflags, !115, debug-location !305; c/idempotent.c:109:3
+  JMP_1 %bb.10, debug-location !291; c/idempotent.c:0
+
+bb.10 (%ir-block.20, bb_id 10):
+; predecessors: %bb.9
+  successors: %bb.11
+  liveins: $rbx, $r12, $r13, $r14, $r15
+  DBG_VALUE 39, $noreg, !"l", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:108
+  DBG_VALUE 38, $noreg, !"k", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:107
+  DBG_VALUE 37, $noreg, !"j", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:106
+  DBG_VALUE 4, $noreg, !"li", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:105
+  DBG_VALUE $rbx, $noreg, !"mt", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:101
+  $edi = MOV32ri 20, debug-location !306; c/idempotent.c:110:3
+  $esi = MOV32ri 10, debug-location !306; c/idempotent.c:110:3
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !306; c/idempotent.c:110:3
+  DBG_VALUE $r14, $noreg, !"li", !DIExpression(DW_OP_deref), debug-location !291; c/idempotent.c:0 line no:105
+  INLINEASM &"" [sideeffect] [mayload] [maystore] [attdialect], $0:[mem:m], renamable $r14, 1, $noreg, 0, $noreg, $1:[mem:m], renamable $r14, 1, $noreg, 0, $noreg, $2:[clobber], implicit-def dead early-clobber $df, $3:[clobber], implicit-def early-clobber $fpsw, $4:[clobber], implicit-def dead early-clobber $eflags, !117, debug-location !306; c/idempotent.c:110:3
+  JMP_1 %bb.11, debug-location !291; c/idempotent.c:0
+
+bb.11 (%ir-block.21, bb_id 11):
+; predecessors: %bb.10
+  successors: %bb.12
+  liveins: $rbx, $r12, $r13, $r14, $r15
+  DBG_VALUE $r14, $noreg, !"li", !DIExpression(DW_OP_deref), debug-location !291; c/idempotent.c:0 line no:105
+  DBG_VALUE 39, $noreg, !"l", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:108
+  DBG_VALUE 38, $noreg, !"k", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:107
+  DBG_VALUE 37, $noreg, !"j", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:106
+  DBG_VALUE $rbx, $noreg, !"mt", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:101
+  $edi = MOV32ri 20, debug-location !307; c/idempotent.c:111:3
+  $esi = MOV32ri 11, debug-location !307; c/idempotent.c:111:3
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !307; c/idempotent.c:111:3
+  DBG_VALUE $r13, $noreg, !"j", !DIExpression(DW_OP_deref), debug-location !291; c/idempotent.c:0 line no:106
+  INLINEASM &"" [sideeffect] [mayload] [maystore] [attdialect], $0:[mem:m], renamable $r13, 1, $noreg, 0, $noreg, $1:[mem:m], renamable $r13, 1, $noreg, 0, $noreg, $2:[clobber], implicit-def dead early-clobber $df, $3:[clobber], implicit-def early-clobber $fpsw, $4:[clobber], implicit-def dead early-clobber $eflags, !119, debug-location !307; c/idempotent.c:111:3
+  JMP_1 %bb.12, debug-location !291; c/idempotent.c:0
+
+bb.12 (%ir-block.22, bb_id 12):
+; predecessors: %bb.11
+  successors: %bb.13
+  liveins: $rbx, $r12, $r13, $r14, $r15
+  DBG_VALUE $r13, $noreg, !"j", !DIExpression(DW_OP_deref), debug-location !291; c/idempotent.c:0 line no:106
+  DBG_VALUE $r14, $noreg, !"li", !DIExpression(DW_OP_deref), debug-location !291; c/idempotent.c:0 line no:105
+  DBG_VALUE 39, $noreg, !"l", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:108
+  DBG_VALUE 38, $noreg, !"k", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:107
+  DBG_VALUE $rbx, $noreg, !"mt", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:101
+  $edi = MOV32ri 20, debug-location !308; c/idempotent.c:112:3
+  $esi = MOV32ri 12, debug-location !308; c/idempotent.c:112:3
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !308; c/idempotent.c:112:3
+  DBG_VALUE $r15, $noreg, !"k", !DIExpression(DW_OP_deref), debug-location !291; c/idempotent.c:0 line no:107
+  INLINEASM &"" [sideeffect] [mayload] [maystore] [attdialect], $0:[mem:m], renamable $r15, 1, $noreg, 0, $noreg, $1:[mem:m], renamable $r15, 1, $noreg, 0, $noreg, $2:[clobber], implicit-def dead early-clobber $df, $3:[clobber], implicit-def early-clobber $fpsw, $4:[clobber], implicit-def dead early-clobber $eflags, !121, debug-location !308; c/idempotent.c:112:3
+  JMP_1 %bb.13, debug-location !291; c/idempotent.c:0
+
+bb.13 (%ir-block.23, bb_id 13):
+; predecessors: %bb.12
+  successors: %bb.14
+  liveins: $rbx, $r12, $r13, $r14, $r15
+  DBG_VALUE $r15, $noreg, !"k", !DIExpression(DW_OP_deref), debug-location !291; c/idempotent.c:0 line no:107
+  DBG_VALUE $r13, $noreg, !"j", !DIExpression(DW_OP_deref), debug-location !291; c/idempotent.c:0 line no:106
+  DBG_VALUE $r14, $noreg, !"li", !DIExpression(DW_OP_deref), debug-location !291; c/idempotent.c:0 line no:105
+  DBG_VALUE 39, $noreg, !"l", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:108
+  DBG_VALUE $rbx, $noreg, !"mt", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:101
+  $edi = MOV32ri 20, debug-location !309; c/idempotent.c:113:3
+  $esi = MOV32ri 13, debug-location !309; c/idempotent.c:113:3
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !309; c/idempotent.c:113:3
+  DBG_VALUE $r12, $noreg, !"l", !DIExpression(DW_OP_deref), debug-location !291; c/idempotent.c:0 line no:108
+  INLINEASM &"" [sideeffect] [mayload] [maystore] [attdialect], $0:[mem:m], renamable $r12, 1, $noreg, 0, $noreg, $1:[mem:m], renamable $r12, 1, $noreg, 0, $noreg, $2:[clobber], implicit-def dead early-clobber $df, $3:[clobber], implicit-def early-clobber $fpsw, $4:[clobber], implicit-def dead early-clobber $eflags, !123, debug-location !309; c/idempotent.c:113:3
+  JMP_1 %bb.14, debug-location !310; c/idempotent.c:114:10
+
+bb.14 (%ir-block.24, bb_id 14):
+; predecessors: %bb.13
+  successors: %bb.37, %bb.15
+  liveins: $rbx, $r12, $r13, $r14, $r15
+  DBG_VALUE $r12, $noreg, !"l", !DIExpression(DW_OP_deref), debug-location !291; c/idempotent.c:0 line no:108
+  DBG_VALUE $r15, $noreg, !"k", !DIExpression(DW_OP_deref), debug-location !291; c/idempotent.c:0 line no:107
+  DBG_VALUE $r13, $noreg, !"j", !DIExpression(DW_OP_deref), debug-location !291; c/idempotent.c:0 line no:106
+  DBG_VALUE $r14, $noreg, !"li", !DIExpression(DW_OP_deref), debug-location !291; c/idempotent.c:0 line no:105
+  DBG_VALUE $rbx, $noreg, !"mt", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:101
+  $edi = MOV32ri 20, debug-location !310; c/idempotent.c:114:10
+  $esi = MOV32ri 14, debug-location !310; c/idempotent.c:114:10
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !310; c/idempotent.c:114:10
+  renamable $rax = MOV64rm renamable $r14, 1, $noreg, 0, $noreg, debug-location !310 :: (load (s64) from %ir.5, !tbaa !102); c/idempotent.c:114:10
+  DBG_VALUE $rax, $noreg, !"li", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:105
+  CMP64ri32 killed renamable $rax, 0, implicit-def $eflags, debug-location !311; c/idempotent.c:114:13
+  renamable $al = SETCCr 4, implicit killed $eflags, debug-location !311; c/idempotent.c:114:13
+  STACKMAP 13, 0, 0, $rbp, -48, 3, renamable $r14, 3, renamable $r13, 3, renamable $r15, 3, renamable $r12, 3, renamable $rbx, 3, renamable $al, 3, implicit-def dead early-clobber $r11, debug-location !312 :: (load (s64) from %stack.0); c/idempotent.c:114:3
+  TEST8ri killed renamable $al, 1, implicit-def $eflags, debug-location !312; c/idempotent.c:114:3
+  JCC_1 %bb.37, 5, implicit killed $eflags, debug-location !312; c/idempotent.c:114:3
+  JMP_1 %bb.15, debug-location !312; c/idempotent.c:114:3
+
+bb.15 (%ir-block.27, bb_id 15):
+; predecessors: %bb.14
+  successors: %bb.16
+  liveins: $rbx, $r12, $r13, $r14, $r15
+  DBG_VALUE $r12, $noreg, !"l", !DIExpression(DW_OP_deref), debug-location !291; c/idempotent.c:0 line no:108
+  DBG_VALUE $r15, $noreg, !"k", !DIExpression(DW_OP_deref), debug-location !291; c/idempotent.c:0 line no:107
+  DBG_VALUE $r13, $noreg, !"j", !DIExpression(DW_OP_deref), debug-location !291; c/idempotent.c:0 line no:106
+  DBG_VALUE $rbx, $noreg, !"mt", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:101
+  $edi = MOV32ri 20, debug-location !312; c/idempotent.c:114:3
+  $esi = MOV32ri 15, debug-location !312; c/idempotent.c:114:3
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !312; c/idempotent.c:114:3
+  MOV64mr $rbp, 1, $noreg, -80, $noreg, renamable $rbx :: (store (s64) into %stack.1)
+  MOV64mr $rbp, 1, $noreg, -104, $noreg, renamable $r14 :: (store (s64) into %stack.2)
+  MOV64mr $rbp, 1, $noreg, -72, $noreg, renamable $r13 :: (store (s64) into %stack.3)
+  MOV64mr $rbp, 1, $noreg, -112, $noreg, renamable $r12 :: (store (s64) into %stack.5)
+  JMP_1 %bb.16, debug-location !312; c/idempotent.c:114:3
+
+bb.16 (%ir-block.28, bb_id 16):
+; predecessors: %bb.15, %bb.45
+  successors: %bb.17
+  liveins: $rbx, $r12, $r13, $r14, $r15
+  $edi = MOV32ri 20, debug-location !313; c/idempotent.c:115:5
+  $esi = MOV32ri 16, debug-location !313; c/idempotent.c:115:5
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !313; c/idempotent.c:115:5
+  renamable $rsi = LEA64r $rbp, 1, $noreg, -48, $noreg, debug-location !313; c/idempotent.c:115:5
+  $rdi = MOV64rr $rbx, debug-location !313; c/idempotent.c:115:5
+  $edx = MOV32ri 1, implicit-def $rdx, debug-location !313; c/idempotent.c:115:5
+  PATCHPOINT 1, 13, @__ykrt_control_point, 3, 0, $rdi, $rsi, $rdx, 0, $rbp, -48, 3, renamable $r14, 3, renamable $r13, 3, killed renamable $r15, 3, renamable $r12, 3, renamable $rbx, 3, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, liveout($bh, $bl, $bx, $ebx, $hbx, $rbx, $r12, $r13, $r14, $r12b, $r13b, $r14b, $r12bh, $r13bh, $r14bh, $r12d, $r13d, $r14d, $r12w, $r13w, $r14w, $r12wh, $r13wh, $r14wh), implicit-def dead early-clobber $r11, debug-location !313 :: (load (s64) from %stack.0); c/idempotent.c:115:5
+  $r15 = MOV64rr killed $r13
+  DBG_VALUE $r15, $noreg, !"j", !DIExpression(DW_OP_deref), debug-location !291; c/idempotent.c:0 line no:106
+  JMP_1 %bb.17, debug-location !314; c/idempotent.c:118:33
+
+bb.17 (%ir-block.29, bb_id 17):
+; predecessors: %bb.16
+  successors: %bb.18
+  liveins: $rbx, $r12, $r14, $r15
+  $edi = MOV32ri 20, debug-location !314; c/idempotent.c:118:33
+  $esi = MOV32ri 17, debug-location !314; c/idempotent.c:118:33
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !314; c/idempotent.c:118:33
+  renamable $r13 = MOV64rm renamable $r15, 1, $noreg, 0, $noreg, debug-location !314 :: (load (s64) from %ir.6, !tbaa !102); c/idempotent.c:118:33
+  DBG_VALUE $r13, $noreg, !"j", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:106
+  $rdi = MOV64rr $r13, debug-location !315; c/idempotent.c:118:19
+  $esi = MOV32ri 2, implicit-def $rsi, debug-location !315; c/idempotent.c:118:19
+  CALL64pcrel32 @__yk_unopt_add_uintptr_t, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $rdi, implicit $rsi, implicit-def $rax, debug-location !315; c/idempotent.c:118:19
+  STACKMAP 14, 0, 0, $rbp, -48, 3, killed renamable $r14, 3, killed renamable $r15, 3, 1, 8, $rbp, -64, 3, killed renamable $r12, 3, killed renamable $rbx, 3, killed renamable $r13, 3, implicit-def dead early-clobber $r11, debug-location !316; c/idempotent.c:119:31
+  MOV64mr $rbp, 1, $noreg, -136, $noreg, $rax :: (store (s64) into %stack.12)
+  MOV64mr $rbp, 1, $noreg, -120, $noreg, renamable $r13 :: (store (s64) into %stack.8)
+  DBG_VALUE $rbp, 0, !"j", !DIExpression(DW_OP_constu, 120, DW_OP_minus), debug-location !291; c/idempotent.c:0 line no:106 indirect
+  renamable $rax = MOV64rm $rbp, 1, $noreg, -64, $noreg :: (load (s64) from %stack.4)
+  JMP_1 %bb.18, debug-location !316; c/idempotent.c:119:31
+
+bb.18 (%ir-block.32, bb_id 18):
+; predecessors: %bb.17
+  successors: %bb.19
+
+  DBG_VALUE $rbp, 0, !"j", !DIExpression(DW_OP_constu, 120, DW_OP_minus), debug-location !291; c/idempotent.c:0 line no:106 indirect
+  $edi = MOV32ri 20, debug-location !316; c/idempotent.c:119:31
+  $esi = MOV32ri 18, debug-location !316; c/idempotent.c:119:31
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !316; c/idempotent.c:119:31
+  $rdi = MOV64rm $rbp, 1, $noreg, -136, $noreg :: (load (s64) from %stack.12)
+  CALL64pcrel32 target-flags(x86-plt) @__yk_idempotent_promote_i64, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $rdi, implicit-def $rax, debug-location !316; c/idempotent.c:119:31
+  $r13 = MOV64rr $rax, debug-location !316; c/idempotent.c:119:31
+  JMP_1 %bb.19, debug-location !317; c/idempotent.c:0
+
+bb.19 (%ir-block.34, bb_id 19):
+; predecessors: %bb.18
+  successors: %bb.20
+  liveins: $r13
+  DBG_VALUE $rbp, 0, !"j", !DIExpression(DW_OP_constu, 120, DW_OP_minus), debug-location !291; c/idempotent.c:0 line no:106 indirect
+  $edi = MOV32ri 20, debug-location !316; c/idempotent.c:119:31
+  $esi = MOV32ri 19, debug-location !316; c/idempotent.c:119:31
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !316; c/idempotent.c:119:31
+  DBG_VALUE $noreg, $noreg, !"a", !DIExpression(), debug-location !317; c/idempotent.c:0 line no:118
+  renamable $rax = MOV64rm $rbp, 1, $noreg, -64, $noreg :: (load (s64) from %stack.4)
+  renamable $r15d = MOV32rm killed renamable $rax, 1, $noreg, 0, $noreg, debug-location !316 :: (load (s32) from %ir.7, !tbaa !110); c/idempotent.c:119:31
+  DBG_VALUE $r15d, $noreg, !"k", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:107
+  $edi = MOV32rr $r15d, debug-location !318; c/idempotent.c:119:18
+  $esi = MOV32ri 3, debug-location !318; c/idempotent.c:119:18
+  CALL64pcrel32 @__yk_unopt_add_uint32_t, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, implicit-def $eax, debug-location !318; c/idempotent.c:119:18
+  STACKMAP 15, 0, 0, $rbp, -48, 3, 1, 8, $rbp, -104, 3, 1, 8, $rbp, -72, 3, 1, 8, $rbp, -64, 3, 1, 8, $rbp, -112, 3, 1, 8, $rbp, -80, 3, 1, 8, $rbp, -120, 3, killed renamable $r13, 3, killed renamable $r15d, 3, implicit-def dead early-clobber $r11, debug-location !319; c/idempotent.c:120:31
+  $ebx = MOV32rr $eax, debug-location !318; c/idempotent.c:119:18
+  renamable $r12 = MOV64rm $rbp, 1, $noreg, -112, $noreg :: (load (s64) from %stack.5)
+  renamable $r14 = MOV64rm $rbp, 1, $noreg, -104, $noreg :: (load (s64) from %stack.2)
+  MOV64mr $rbp, 1, $noreg, -88, $noreg, renamable $r13 :: (store (s64) into %stack.9)
+  JMP_1 %bb.20, debug-location !319; c/idempotent.c:120:31
+
+bb.20 (%ir-block.37, bb_id 20):
+; predecessors: %bb.19
+  successors: %bb.21
+  liveins: $ebx, $r12, $r14
+  DBG_VALUE $r15d, $noreg, !"k", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:107
+  DBG_VALUE $rbp, 0, !"j", !DIExpression(DW_OP_constu, 120, DW_OP_minus), debug-location !291; c/idempotent.c:0 line no:106 indirect
+  $edi = MOV32ri 20, debug-location !319; c/idempotent.c:120:31
+  $esi = MOV32ri 20, debug-location !319; c/idempotent.c:120:31
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !319; c/idempotent.c:120:31
+  $edi = MOV32rr killed $ebx, debug-location !319; c/idempotent.c:120:31
+  CALL64pcrel32 target-flags(x86-plt) @__yk_idempotent_promote_i32, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit-def $eax, debug-location !319; c/idempotent.c:120:31
+  $r13d = MOV32rr $eax, debug-location !319; c/idempotent.c:120:31
+  JMP_1 %bb.21, debug-location !317; c/idempotent.c:0
+
+bb.21 (%ir-block.39, bb_id 21):
+; predecessors: %bb.20
+  successors: %bb.22
+  liveins: $r12, $r14, $r13d
+  DBG_VALUE $r15d, $noreg, !"k", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:107
+  DBG_VALUE $rbp, 0, !"j", !DIExpression(DW_OP_constu, 120, DW_OP_minus), debug-location !291; c/idempotent.c:0 line no:106 indirect
+  $edi = MOV32ri 20, debug-location !319; c/idempotent.c:120:31
+  $esi = MOV32ri 21, debug-location !319; c/idempotent.c:120:31
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !319; c/idempotent.c:120:31
+  DBG_VALUE $noreg, $noreg, !"b", !DIExpression(), debug-location !317; c/idempotent.c:0 line no:119
+  renamable $r15 = MOV64rm renamable $r12, 1, $noreg, 0, $noreg, debug-location !319 :: (load (s64) from %ir.8, !tbaa !102); c/idempotent.c:120:31
+  DBG_VALUE $r15, $noreg, !"l", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:108
+  $rdi = MOV64rr $r15, debug-location !320; c/idempotent.c:120:18
+  $esi = MOV32ri 4, implicit-def $rsi, debug-location !320; c/idempotent.c:120:18
+  CALL64pcrel32 @__yk_unopt_add_uint64_t, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $rdi, implicit $rsi, implicit-def $rax, debug-location !320; c/idempotent.c:120:18
+  STACKMAP 16, 0, 0, $rbp, -48, 3, renamable $r14, 3, 1, 8, $rbp, -72, 3, 1, 8, $rbp, -64, 3, renamable $r12, 3, 1, 8, $rbp, -80, 3, 1, 8, $rbp, -120, 3, 1, 8, $rbp, -88, 3, killed renamable $r13d, 3, killed renamable $r15, 3, implicit-def dead early-clobber $r11, debug-location !321; c/idempotent.c:121:19
+  $rbx = MOV64rr $rax, debug-location !320; c/idempotent.c:120:18
+  renamable $rax = MOV64rm $rbp, 1, $noreg, -64, $noreg :: (load (s64) from %stack.4)
+  MOV32mr $rbp, 1, $noreg, -52, $noreg, renamable $r13d :: (store (s32) into %stack.6)
+  JMP_1 %bb.22, debug-location !321; c/idempotent.c:121:19
+
+bb.22 (%ir-block.42, bb_id 22):
+; predecessors: %bb.21
+  successors: %bb.23
+  liveins: $rbx, $r12, $r14
+  DBG_VALUE $r15, $noreg, !"l", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:108
+  DBG_VALUE $rbp, 0, !"j", !DIExpression(DW_OP_constu, 120, DW_OP_minus), debug-location !291; c/idempotent.c:0 line no:106 indirect
+  $edi = MOV32ri 20, debug-location !321; c/idempotent.c:121:19
+  $esi = MOV32ri 22, debug-location !321; c/idempotent.c:121:19
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !321; c/idempotent.c:121:19
+  $rdi = MOV64rr killed $rbx, debug-location !321; c/idempotent.c:121:19
+  CALL64pcrel32 target-flags(x86-plt) @__yk_idempotent_promote_i64, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $rdi, implicit-def $rax, debug-location !321; c/idempotent.c:121:19
+  $r13 = MOV64rr $rax, debug-location !321; c/idempotent.c:121:19
+  JMP_1 %bb.23, debug-location !317; c/idempotent.c:0
+
+bb.23 (%ir-block.44, bb_id 23):
+; predecessors: %bb.22
+  successors: %bb.24
+  liveins: $r12, $r13, $r14
+  DBG_VALUE $r15, $noreg, !"l", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:108
+  DBG_VALUE $rbp, 0, !"j", !DIExpression(DW_OP_constu, 120, DW_OP_minus), debug-location !291; c/idempotent.c:0 line no:106 indirect
+  $edi = MOV32ri 20, debug-location !321; c/idempotent.c:121:19
+  $esi = MOV32ri 23, debug-location !321; c/idempotent.c:121:19
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !321; c/idempotent.c:121:19
+  DBG_VALUE $noreg, $noreg, !"c", !DIExpression(), debug-location !317; c/idempotent.c:0 line no:120
+  renamable $r15 = MOV64rm $rbp, 1, $noreg, -120, $noreg :: (load (s64) from %stack.8)
+  $rdi = MOV64rr $r15, debug-location !321; c/idempotent.c:121:19
+  CALL64pcrel32 @__yk_promote_usize, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $rdi, implicit-def $rax, debug-location !321; c/idempotent.c:121:19
+  STACKMAP 17, 0, 0, $rbp, -48, 3, killed renamable $r14, 3, 1, 8, $rbp, -72, 3, 1, 8, $rbp, -64, 3, renamable $r12, 3, 1, 8, $rbp, -80, 3, killed renamable $r15, 3, 1, 8, $rbp, -88, 3, 1, 4, $rbp, -52, 3, renamable $r13, 3, $rax, 3, implicit-def dead early-clobber $r11, debug-location !317; c/idempotent.c:0
+  $rbx = MOV64rr $rax, debug-location !321; c/idempotent.c:121:19
+  renamable $rax = MOV64rm $rbp, 1, $noreg, -64, $noreg :: (load (s64) from %stack.4)
+  $r15 = MOV64rr killed $rax
+  MOV64mr $rbp, 1, $noreg, -96, $noreg, killed renamable $r13 :: (store (s64) into %stack.7)
+  JMP_1 %bb.24, debug-location !317; c/idempotent.c:0
+
+bb.24 (%ir-block.46, bb_id 24):
+; predecessors: %bb.23
+  successors: %bb.25
+  liveins: $rbx, $r12, $r15
+  DBG_VALUE $rbp, 0, !"j", !DIExpression(DW_OP_constu, 120, DW_OP_minus), debug-location !291; c/idempotent.c:0 line no:106 indirect
+  $edi = MOV32ri 20, debug-location !322; c/idempotent.c:122:18
+  $esi = MOV32ri 24, debug-location !322; c/idempotent.c:122:18
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !322; c/idempotent.c:122:18
+  DBG_VALUE $rbx, $noreg, !"d", !DIExpression(), debug-location !317; c/idempotent.c:0 line no:121
+  $r14 = MOV64rr killed $r15
+  renamable $r15d = MOV32rm renamable $r14, 1, $noreg, 0, $noreg, debug-location !322 :: (load (s32) from %ir.7, !tbaa !110); c/idempotent.c:122:18
+  DBG_VALUE $r15d, $noreg, !"k", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:107
+  $edi = MOV32rr $r15d, debug-location !322; c/idempotent.c:122:18
+  CALL64pcrel32 @__yk_promote_c_unsigned_int, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit-def $eax, debug-location !322; c/idempotent.c:122:18
+  STACKMAP 18, 0, 0, $rbp, -48, 3, 1, 8, $rbp, -104, 3, 1, 8, $rbp, -72, 3, killed renamable $r14, 3, renamable $r12, 3, 1, 8, $rbp, -80, 3, 1, 8, $rbp, -88, 3, 1, 4, $rbp, -52, 3, 1, 8, $rbp, -96, 3, renamable $rbx, 3, killed renamable $r15d, 3, $eax, 3, implicit-def dead early-clobber $r11, debug-location !317; c/idempotent.c:0
+  $r13d = MOV32rr $eax, debug-location !322; c/idempotent.c:122:18
+  JMP_1 %bb.25, debug-location !317; c/idempotent.c:0
+
+bb.25 (%ir-block.49, bb_id 25):
+; predecessors: %bb.24
+  successors: %bb.26
+  liveins: $rbx, $r12, $r13d
+  DBG_VALUE $rbx, $noreg, !"d", !DIExpression(), debug-location !317; c/idempotent.c:0 line no:121
+  DBG_VALUE $r15d, $noreg, !"k", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:107
+  DBG_VALUE $rbp, 0, !"j", !DIExpression(DW_OP_constu, 120, DW_OP_minus), debug-location !291; c/idempotent.c:0 line no:106 indirect
+  $edi = MOV32ri 20, debug-location !323; c/idempotent.c:123:18
+  $esi = MOV32ri 25, debug-location !323; c/idempotent.c:123:18
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !323; c/idempotent.c:123:18
+  DBG_VALUE $r13d, $noreg, !"e", !DIExpression(), debug-location !317; c/idempotent.c:0 line no:122
+  renamable $r15 = MOV64rm renamable $r12, 1, $noreg, 0, $noreg, debug-location !323 :: (load (s64) from %ir.8, !tbaa !102); c/idempotent.c:123:18
+  DBG_VALUE $r15, $noreg, !"l", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:108
+  $rdi = MOV64rr $r15, debug-location !323; c/idempotent.c:123:18
+  CALL64pcrel32 @__yk_promote_usize, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $rdi, implicit-def $rax, debug-location !323; c/idempotent.c:123:18
+  STACKMAP 19, 0, 0, $rbp, -48, 3, 1, 8, $rbp, -104, 3, 1, 8, $rbp, -72, 3, 1, 8, $rbp, -64, 3, renamable $r12, 3, 1, 8, $rbp, -80, 3, 1, 8, $rbp, -88, 3, 1, 4, $rbp, -52, 3, 1, 8, $rbp, -96, 3, renamable $rbx, 3, renamable $r13d, 3, killed renamable $r15, 3, $rax, 3, implicit-def dead early-clobber $r11, debug-location !317; c/idempotent.c:0
+  $r14 = MOV64rr $rax, debug-location !323; c/idempotent.c:123:18
+  JMP_1 %bb.26, debug-location !317; c/idempotent.c:0
+
+bb.26 (%ir-block.52, bb_id 26):
+; predecessors: %bb.25
+  successors: %bb.27
+  liveins: $rbx, $r12, $r14, $r13d
+  DBG_VALUE $r13d, $noreg, !"e", !DIExpression(), debug-location !317; c/idempotent.c:0 line no:122
+  DBG_VALUE $rbx, $noreg, !"d", !DIExpression(), debug-location !317; c/idempotent.c:0 line no:121
+  DBG_VALUE $r15, $noreg, !"l", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:108
+  DBG_VALUE $rbp, 0, !"j", !DIExpression(DW_OP_constu, 120, DW_OP_minus), debug-location !291; c/idempotent.c:0 line no:106 indirect
+  $edi = MOV32ri 20, debug-location !324; c/idempotent.c:125:19
+  $esi = MOV32ri 26, debug-location !324; c/idempotent.c:125:19
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !324; c/idempotent.c:125:19
+  DBG_VALUE $r14, $noreg, !"f", !DIExpression(), debug-location !317; c/idempotent.c:0 line no:123
+  $rdi = MOV64rr $rbx, debug-location !324; c/idempotent.c:125:19
+  $esi = MOV32ri 2, implicit-def $rsi, debug-location !324; c/idempotent.c:125:19
+  CALL64pcrel32 @__yk_unopt_add_uintptr_t, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $rdi, implicit $rsi, implicit-def $rax, debug-location !324; c/idempotent.c:125:19
+  STACKMAP 20, 0, 0, $rbp, -48, 3, 1, 8, $rbp, -104, 3, 1, 8, $rbp, -72, 3, 1, 8, $rbp, -64, 3, killed renamable $r12, 3, 1, 8, $rbp, -80, 3, 1, 8, $rbp, -88, 3, 1, 4, $rbp, -52, 3, 1, 8, $rbp, -96, 3, killed renamable $rbx, 3, killed renamable $r13d, 3, renamable $r14, 3, implicit-def dead early-clobber $r11, debug-location !325; c/idempotent.c:126:18
+  $r15 = MOV64rr $rax, debug-location !324; c/idempotent.c:125:19
+  MOV32mr $rbp, 1, $noreg, -124, $noreg, renamable $r13d :: (store (s32) into %stack.10)
+  renamable $rax = MOV64rm $rbp, 1, $noreg, -96, $noreg :: (load (s64) from %stack.7)
+  renamable $rcx = MOV64rm $rbp, 1, $noreg, -88, $noreg :: (load (s64) from %stack.9)
+  $r13 = MOV64rr killed $rcx
+  JMP_1 %bb.27, debug-location !325; c/idempotent.c:126:18
+
+bb.27 (%ir-block.54, bb_id 27):
+; predecessors: %bb.26
+  successors: %bb.28
+  liveins: $r13, $r14, $r15
+  DBG_VALUE $r14, $noreg, !"f", !DIExpression(), debug-location !317; c/idempotent.c:0 line no:123
+  DBG_VALUE $rbx, $noreg, !"d", !DIExpression(), debug-location !317; c/idempotent.c:0 line no:121
+  DBG_VALUE $rbp, 0, !"j", !DIExpression(DW_OP_constu, 120, DW_OP_minus), debug-location !291; c/idempotent.c:0 line no:106 indirect
+  $edi = MOV32ri 20, debug-location !325; c/idempotent.c:126:18
+  $esi = MOV32ri 27, debug-location !325; c/idempotent.c:126:18
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !325; c/idempotent.c:126:18
+  $rdi = MOV64rr killed $r15, debug-location !325; c/idempotent.c:126:18
+  CALL64pcrel32 target-flags(x86-plt) @__yk_idempotent_promote_i64, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $rdi, implicit-def $rax, debug-location !325; c/idempotent.c:126:18
+  $rbx = MOV64rr $rax, debug-location !325; c/idempotent.c:126:18
+  JMP_1 %bb.28, debug-location !317; c/idempotent.c:0
+
+bb.28 (%ir-block.56, bb_id 28):
+; predecessors: %bb.27
+  successors: %bb.29
+  liveins: $rbx, $r13, $r14
+  DBG_VALUE $r14, $noreg, !"f", !DIExpression(), debug-location !317; c/idempotent.c:0 line no:123
+  DBG_VALUE $rbp, 0, !"j", !DIExpression(DW_OP_constu, 120, DW_OP_minus), debug-location !291; c/idempotent.c:0 line no:106 indirect
+  $edi = MOV32ri 20, debug-location !325; c/idempotent.c:126:18
+  $esi = MOV32ri 28, debug-location !325; c/idempotent.c:126:18
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !325; c/idempotent.c:126:18
+  DBG_VALUE $noreg, $noreg, !"g", !DIExpression(), debug-location !317; c/idempotent.c:0 line no:125
+  renamable $r12d = MOV32rm $rbp, 1, $noreg, -124, $noreg :: (load (s32) from %stack.10)
+  $edi = MOV32rr $r12d, debug-location !325; c/idempotent.c:126:18
+  $esi = MOV32ri 3, debug-location !325; c/idempotent.c:126:18
+  CALL64pcrel32 @__yk_unopt_add_uint32_t, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, implicit-def $eax, debug-location !325; c/idempotent.c:126:18
+  STACKMAP 21, 0, 0, $rbp, -48, 3, 1, 8, $rbp, -104, 3, 1, 8, $rbp, -72, 3, 1, 8, $rbp, -64, 3, 1, 8, $rbp, -112, 3, 1, 8, $rbp, -80, 3, killed renamable $r13, 3, 1, 4, $rbp, -52, 3, 1, 8, $rbp, -96, 3, killed renamable $r12d, 3, renamable $r14, 3, renamable $rbx, 3, implicit-def dead early-clobber $r11, debug-location !326; c/idempotent.c:127:18
+  $r15d = MOV32rr $eax, debug-location !325; c/idempotent.c:126:18
+  JMP_1 %bb.29, debug-location !326; c/idempotent.c:127:18
+
+bb.29 (%ir-block.58, bb_id 29):
+; predecessors: %bb.28
+  successors: %bb.30
+  liveins: $rbx, $r14, $r15d
+  DBG_VALUE $r14, $noreg, !"f", !DIExpression(), debug-location !317; c/idempotent.c:0 line no:123
+  DBG_VALUE $rbp, 0, !"j", !DIExpression(DW_OP_constu, 120, DW_OP_minus), debug-location !291; c/idempotent.c:0 line no:106 indirect
+  $edi = MOV32ri 20, debug-location !326; c/idempotent.c:127:18
+  $esi = MOV32ri 29, debug-location !326; c/idempotent.c:127:18
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !326; c/idempotent.c:127:18
+  $edi = MOV32rr killed $r15d, debug-location !326; c/idempotent.c:127:18
+  CALL64pcrel32 target-flags(x86-plt) @__yk_idempotent_promote_i32, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit-def $eax, debug-location !326; c/idempotent.c:127:18
+  $r12d = MOV32rr $eax, debug-location !326; c/idempotent.c:127:18
+  JMP_1 %bb.30, debug-location !317; c/idempotent.c:0
+
+bb.30 (%ir-block.60, bb_id 30):
+; predecessors: %bb.29
+  successors: %bb.31
+  liveins: $rbx, $r14, $r12d
+  DBG_VALUE $r14, $noreg, !"f", !DIExpression(), debug-location !317; c/idempotent.c:0 line no:123
+  DBG_VALUE $rbp, 0, !"j", !DIExpression(DW_OP_constu, 120, DW_OP_minus), debug-location !291; c/idempotent.c:0 line no:106 indirect
+  $edi = MOV32ri 20, debug-location !326; c/idempotent.c:127:18
+  $esi = MOV32ri 30, debug-location !326; c/idempotent.c:127:18
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !326; c/idempotent.c:127:18
+  DBG_VALUE $noreg, $noreg, !"h", !DIExpression(), debug-location !317; c/idempotent.c:0 line no:126
+  $r13 = MOV64rr killed $r14
+  DBG_VALUE $r13, $noreg, !"f", !DIExpression(), debug-location !317; c/idempotent.c:0 line no:123
+  $rdi = MOV64rr $r13, debug-location !326; c/idempotent.c:127:18
+  $esi = MOV32ri 4, implicit-def $rsi, debug-location !326; c/idempotent.c:127:18
+  CALL64pcrel32 @__yk_unopt_add_uint64_t, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $rdi, implicit $rsi, implicit-def $rax, debug-location !326; c/idempotent.c:127:18
+  STACKMAP 22, 0, 0, $rbp, -48, 3, 1, 8, $rbp, -104, 3, 1, 8, $rbp, -72, 3, 1, 8, $rbp, -64, 3, 1, 8, $rbp, -112, 3, 1, 8, $rbp, -80, 3, 1, 8, $rbp, -88, 3, 1, 4, $rbp, -52, 3, 1, 8, $rbp, -96, 3, killed renamable $r13, 3, renamable $rbx, 3, renamable $r12d, 3, implicit-def dead early-clobber $r11, debug-location !327; c/idempotent.c:128:13
+  $r15 = MOV64rr $rax, debug-location !326; c/idempotent.c:127:18
+  renamable $r14 = MOV64rm $rbp, 1, $noreg, -104, $noreg :: (load (s64) from %stack.2)
+  JMP_1 %bb.31, debug-location !327; c/idempotent.c:128:13
+
+bb.31 (%ir-block.62, bb_id 31):
+; predecessors: %bb.30
+  successors: %bb.32
+  liveins: $rbx, $r14, $r15, $r12d
+  DBG_VALUE $r13, $noreg, !"f", !DIExpression(), debug-location !317; c/idempotent.c:0 line no:123
+  DBG_VALUE $rbp, 0, !"j", !DIExpression(DW_OP_constu, 120, DW_OP_minus), debug-location !291; c/idempotent.c:0 line no:106 indirect
+  $edi = MOV32ri 20, debug-location !327; c/idempotent.c:128:13
+  $esi = MOV32ri 31, debug-location !327; c/idempotent.c:128:13
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !327; c/idempotent.c:128:13
+  $rdi = MOV64rr killed $r15, debug-location !327; c/idempotent.c:128:13
+  CALL64pcrel32 target-flags(x86-plt) @__yk_idempotent_promote_i64, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $rdi, implicit-def $rax, debug-location !327; c/idempotent.c:128:13
+  MOV64mr $rbp, 1, $noreg, -144, $noreg, $rax :: (store (s64) into %stack.11)
+  JMP_1 %bb.32, debug-location !317; c/idempotent.c:0
+
+bb.32 (%ir-block.64, bb_id 32):
+; predecessors: %bb.31
+  successors: %bb.33
+  liveins: $rbx, $r14, $r12d
+  DBG_VALUE $r13, $noreg, !"f", !DIExpression(), debug-location !317; c/idempotent.c:0 line no:123
+  DBG_VALUE $rbp, 0, !"j", !DIExpression(DW_OP_constu, 120, DW_OP_minus), debug-location !291; c/idempotent.c:0 line no:106 indirect
+  $edi = MOV32ri 20, debug-location !327; c/idempotent.c:128:13
+  $esi = MOV32ri 32, debug-location !327; c/idempotent.c:128:13
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !327; c/idempotent.c:128:13
+  DBG_VALUE $noreg, $noreg, !"i", !DIExpression(), debug-location !317; c/idempotent.c:0 line no:127
+  renamable $rdi = MOV64rm $noreg, 1, $noreg, @stderr, $noreg, debug-location !327 :: (load (s64) from @stderr, !tbaa !142); c/idempotent.c:128:13
+  renamable $rdx = MOV64rm renamable $r14, 1, $noreg, 0, $noreg, debug-location !328 :: (load (s64) from %ir.5, !tbaa !102); c/idempotent.c:128:57
+  DBG_VALUE $rdx, $noreg, !"li", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:105
+  renamable $rsi = MOV64ri @.str, debug-location !329; c/idempotent.c:128:5
+  $rcx = MOV64rm $rbp, 1, $noreg, -88, $noreg :: (load (s64) from %stack.9)
+  $r8 = MOV64rr killed $rbx, debug-location !329; c/idempotent.c:128:5
+  $al = MOV8ri 0, debug-location !329; c/idempotent.c:128:5
+  CALL64pcrel32 @fprintf, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $al, implicit $rdi, implicit $rsi, implicit $rdx, implicit $rcx, implicit $r8, implicit-def $eax, debug-location !329; c/idempotent.c:128:5
+  renamable $r15 = MOV64rm $rbp, 1, $noreg, -64, $noreg :: (load (s64) from %stack.4)
+  JMP_1 %bb.33, debug-location !330; c/idempotent.c:129:13
+
+bb.33 (%ir-block.68, bb_id 33):
+; predecessors: %bb.32
+  successors: %bb.34
+  liveins: $r14, $r15, $r12d
+  DBG_VALUE $r13, $noreg, !"f", !DIExpression(), debug-location !317; c/idempotent.c:0 line no:123
+  DBG_VALUE $rbp, 0, !"j", !DIExpression(DW_OP_constu, 120, DW_OP_minus), debug-location !291; c/idempotent.c:0 line no:106 indirect
+  $edi = MOV32ri 20, debug-location !330; c/idempotent.c:129:13
+  $esi = MOV32ri 33, debug-location !330; c/idempotent.c:129:13
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !330; c/idempotent.c:129:13
+  renamable $rdi = MOV64rm $noreg, 1, $noreg, @stderr, $noreg, debug-location !330 :: (load (s64) from @stderr, !tbaa !142); c/idempotent.c:129:13
+  renamable $rdx = MOV64rm renamable $r14, 1, $noreg, 0, $noreg, debug-location !331 :: (load (s64) from %ir.5, !tbaa !102); c/idempotent.c:129:55
+  DBG_VALUE $rdx, $noreg, !"li", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:105
+  renamable $rsi = MOV64ri @.str.1, debug-location !332; c/idempotent.c:129:5
+  $ecx = MOV32rm $rbp, 1, $noreg, -52, $noreg :: (load (s32) from %stack.6)
+  $r8d = MOV32rr killed $r12d, debug-location !332; c/idempotent.c:129:5
+  $al = MOV8ri 0, debug-location !332; c/idempotent.c:129:5
+  CALL64pcrel32 @fprintf, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $al, implicit $rdi, implicit $rsi, implicit $rdx, implicit $ecx, implicit $r8d, implicit-def $eax, debug-location !332; c/idempotent.c:129:5
+  renamable $r13 = MOV64rm $rbp, 1, $noreg, -72, $noreg :: (load (s64) from %stack.3)
+  JMP_1 %bb.34, debug-location !333; c/idempotent.c:130:13
+
+bb.34 (%ir-block.72, bb_id 34):
+; predecessors: %bb.33
+  successors: %bb.35
+  liveins: $r13, $r14, $r15
+  DBG_VALUE $rbp, 0, !"j", !DIExpression(DW_OP_constu, 120, DW_OP_minus), debug-location !291; c/idempotent.c:0 line no:106 indirect
+  $edi = MOV32ri 20, debug-location !333; c/idempotent.c:130:13
+  $esi = MOV32ri 34, debug-location !333; c/idempotent.c:130:13
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !333; c/idempotent.c:130:13
+  renamable $rdi = MOV64rm $noreg, 1, $noreg, @stderr, $noreg, debug-location !333 :: (load (s64) from @stderr, !tbaa !142); c/idempotent.c:130:13
+  renamable $rdx = MOV64rm renamable $r14, 1, $noreg, 0, $noreg, debug-location !334 :: (load (s64) from %ir.5, !tbaa !102); c/idempotent.c:130:55
+  DBG_VALUE $rdx, $noreg, !"li", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:105
+  renamable $rsi = MOV64ri @.str, debug-location !335; c/idempotent.c:130:5
+  $rcx = MOV64rm $rbp, 1, $noreg, -96, $noreg :: (load (s64) from %stack.7)
+  $r8 = MOV64rm $rbp, 1, $noreg, -144, $noreg :: (load (s64) from %stack.11)
+  $al = MOV8ri 0, debug-location !335; c/idempotent.c:130:5
+  CALL64pcrel32 @fprintf, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $al, implicit $rdi, implicit $rsi, implicit $rdx, implicit $rcx, implicit $r8, implicit-def $eax, debug-location !335; c/idempotent.c:130:5
+  JMP_1 %bb.35, debug-location !336; c/idempotent.c:131:7
+
+bb.35 (%ir-block.76, bb_id 35):
+; predecessors: %bb.34
+  successors: %bb.36, %bb.45
+  liveins: $r13, $r14, $r15
+  DBG_VALUE $rbp, 0, !"j", !DIExpression(DW_OP_constu, 120, DW_OP_minus), debug-location !291; c/idempotent.c:0 line no:106 indirect
+  $edi = MOV32ri 20, debug-location !336; c/idempotent.c:131:7
+  $esi = MOV32ri 35, debug-location !336; c/idempotent.c:131:7
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !336; c/idempotent.c:131:7
+  renamable $rax = MOV64rm renamable $r14, 1, $noreg, 0, $noreg, debug-location !336 :: (load (s64) from %ir.5, !tbaa !102); c/idempotent.c:131:7
+  DBG_VALUE $rax, $noreg, !"li", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:105
+  renamable $rax = ADD64ri32 killed renamable $rax(tied-def 0), -1, implicit-def dead $eflags, debug-location !336; c/idempotent.c:131:7
+  DBG_VALUE $rax, $noreg, !"li", !DIExpression(), debug-location !291; c/idempotent.c:0 line no:105
+  MOV64mr renamable $r14, 1, $noreg, 0, $noreg, renamable $rax, debug-location !336 :: (store (s64) into %ir.5, !tbaa !102); c/idempotent.c:131:7
+  CMP64ri32 killed renamable $rax, 0, implicit-def $eflags, debug-location !311; c/idempotent.c:114:13
+  renamable $al = SETCCr 4, implicit killed $eflags, debug-location !311; c/idempotent.c:114:13
+  renamable $rbx = MOV64rm $rbp, 1, $noreg, -80, $noreg :: (load (s64) from %stack.1)
+  renamable $r12 = MOV64rm $rbp, 1, $noreg, -112, $noreg :: (load (s64) from %stack.5)
+  STACKMAP 23, 0, 0, $rbp, -48, 3, renamable $r14, 3, renamable $r13, 3, renamable $r15, 3, renamable $r12, 3, renamable $rbx, 3, renamable $al, 3, implicit-def dead early-clobber $r11, debug-location !312 :: (load (s64) from %stack.0); c/idempotent.c:114:3
+  TEST8ri killed renamable $al, 1, implicit-def $eflags, debug-location !312; c/idempotent.c:114:3
+  JCC_1 %bb.36, 5, implicit killed $eflags, debug-location !312; c/idempotent.c:114:3
+  JMP_1 %bb.45, debug-location !312; c/idempotent.c:114:3
+
+bb.36 (%ir-block.80, bb_id 36):
+; predecessors: %bb.35
+  successors: %bb.37
+  liveins: $rbx
+  DBG_VALUE $rbp, 0, !"j", !DIExpression(DW_OP_constu, 120, DW_OP_minus), debug-location !291; c/idempotent.c:0 line no:106 indirect
+  $edi = MOV32ri 20, debug-location !339; c/idempotent.c:133:3
+  $esi = MOV32ri 36, debug-location !339; c/idempotent.c:133:3
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !339; c/idempotent.c:133:3
+  JMP_1 %bb.37, debug-location !339; c/idempotent.c:133:3
+
+bb.37 (%ir-block.81, bb_id 37):
+; predecessors: %bb.14, %bb.36
+  successors: %bb.38
+  liveins: $rbx
+  $edi = MOV32ri 20, debug-location !339; c/idempotent.c:133:3
+  $esi = MOV32ri 37, debug-location !339; c/idempotent.c:133:3
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !339; c/idempotent.c:133:3
+  renamable $rdi = MOV64rm $rbp, 1, $noreg, -48, $noreg, debug-location !339 :: (load (s64) from %ir.4); c/idempotent.c:133:3
+  CALL64pcrel32 @yk_location_drop, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $rdi, debug-location !339; c/idempotent.c:133:3
+  JMP_1 %bb.38, debug-location !340; c/idempotent.c:134:3
+
+bb.38 (%ir-block.83, bb_id 38):
+; predecessors: %bb.37
+  successors: %bb.39
+  liveins: $rbx
+  $edi = MOV32ri 20, debug-location !340; c/idempotent.c:134:3
+  $esi = MOV32ri 38, debug-location !340; c/idempotent.c:134:3
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !340; c/idempotent.c:134:3
+  $rdi = MOV64rr killed $rbx, debug-location !340; c/idempotent.c:134:3
+  CALL64pcrel32 @yk_mt_shutdown, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $rdi, debug-location !340; c/idempotent.c:134:3
+  JMP_1 %bb.39, debug-location !341; c/idempotent.c:136:1
+
+bb.39 (%ir-block.84, bb_id 39):
+; predecessors: %bb.38
+  successors: %bb.40
+
+  $edi = MOV32ri 20, debug-location !341; c/idempotent.c:136:1
+  $esi = MOV32ri 39, debug-location !341; c/idempotent.c:136:1
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !341; c/idempotent.c:136:1
+  JMP_1 %bb.40, debug-location !341; c/idempotent.c:136:1
+
+bb.40 (%ir-block.85, bb_id 40):
+; predecessors: %bb.39
+  successors: %bb.41
+
+  $edi = MOV32ri 20, debug-location !341; c/idempotent.c:136:1
+  $esi = MOV32ri 40, debug-location !341; c/idempotent.c:136:1
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !341; c/idempotent.c:136:1
+  JMP_1 %bb.41, debug-location !341; c/idempotent.c:136:1
+
+bb.41 (%ir-block.86, bb_id 41):
+; predecessors: %bb.40
+  successors: %bb.42
+
+  $edi = MOV32ri 20, debug-location !341; c/idempotent.c:136:1
+  $esi = MOV32ri 41, debug-location !341; c/idempotent.c:136:1
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !341; c/idempotent.c:136:1
+  JMP_1 %bb.42, debug-location !341; c/idempotent.c:136:1
+
+bb.42 (%ir-block.87, bb_id 42):
+; predecessors: %bb.41
+  successors: %bb.43
+
+  $edi = MOV32ri 20, debug-location !341; c/idempotent.c:136:1
+  $esi = MOV32ri 42, debug-location !341; c/idempotent.c:136:1
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !341; c/idempotent.c:136:1
+  JMP_1 %bb.43, debug-location !341; c/idempotent.c:136:1
+
+bb.43 (%ir-block.88, bb_id 43):
+; predecessors: %bb.42
+  successors: %bb.44
+
+  $edi = MOV32ri 20, debug-location !341; c/idempotent.c:136:1
+  $esi = MOV32ri 43, debug-location !341; c/idempotent.c:136:1
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !341; c/idempotent.c:136:1
+  JMP_1 %bb.44, debug-location !342; c/idempotent.c:135:3
+
+bb.44 (%ir-block.89, bb_id 44):
+; predecessors: %bb.43
+  successors: %bb.47
+
+  $edi = MOV32ri 20, debug-location !342; c/idempotent.c:135:3
+  $esi = MOV32ri 44, debug-location !342; c/idempotent.c:135:3
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !342; c/idempotent.c:135:3
+  JMP_1 %bb.47, debug-location !342; c/idempotent.c:135:3
+
+bb.45 (%ir-block.90, bb_id 45):
+; predecessors: %bb.35
+  successors: %bb.16
+  liveins: $rbx, $r12, $r13, $r14, $r15
+  DBG_VALUE $rbp, 0, !"j", !DIExpression(DW_OP_constu, 120, DW_OP_minus), debug-location !291; c/idempotent.c:0 line no:106 indirect
+  $edi = MOV32ri 20
+  $esi = MOV32ri 45
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi
+  JMP_1 %bb.16
+
+bb.46 (%ir-block.91, bb_id 46):
+; predecessors: %bb.47
+
+  $edi = MOV32ri 20, debug-location !342; c/idempotent.c:135:3
+  $esi = MOV32ri 46, debug-location !342; c/idempotent.c:135:3
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !342; c/idempotent.c:135:3
+  $eax = XOR32rr undef $eax(tied-def 0), undef $eax, implicit-def dead $eflags, debug-location !342; c/idempotent.c:135:3
+  $rsp = frame-destroy ADD64ri32 $rsp(tied-def 0), 104, implicit-def dead $eflags, debug-location !342; c/idempotent.c:135:3
+  $rbx = frame-destroy POP64r implicit-def $rsp, implicit $rsp, debug-location !342; c/idempotent.c:135:3
+  $r12 = frame-destroy POP64r implicit-def $rsp, implicit $rsp, debug-location !342; c/idempotent.c:135:3
+  $r13 = frame-destroy POP64r implicit-def $rsp, implicit $rsp, debug-location !342; c/idempotent.c:135:3
+  $r14 = frame-destroy POP64r implicit-def $rsp, implicit $rsp, debug-location !342; c/idempotent.c:135:3
+  $r15 = frame-destroy POP64r implicit-def $rsp, implicit $rsp, debug-location !342; c/idempotent.c:135:3
+  $rbp = frame-destroy POP64r implicit-def $rsp, implicit $rsp, debug-location !342; c/idempotent.c:135:3
+  frame-destroy CFI_INSTRUCTION def_cfa $rsp, 8, debug-location !342; c/idempotent.c:135:3
+  RET64 implicit $eax, debug-location !342; c/idempotent.c:135:3
+
+bb.47 (%ir-block.92, bb_id 47):
+; predecessors: %bb.44
+  successors: %bb.46
+
+  CFI_INSTRUCTION def_cfa $rbp, 16, debug-location !342; c/idempotent.c:135:3
+  $edi = MOV32ri 20, debug-location !342; c/idempotent.c:135:3
+  $esi = MOV32ri 47, debug-location !342; c/idempotent.c:135:3
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !342; c/idempotent.c:135:3
+  JMP_1 %bb.46, debug-location !342; c/idempotent.c:135:3
