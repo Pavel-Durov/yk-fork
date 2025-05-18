@@ -126,8 +126,8 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
         dynasm!(asm
             ; .arch x64
             // start of ebug print of hardcoded registers
-            ; mov rcx, QWORD print_regs as i64
-            ; call rcx
+            // ; mov rcx, QWORD print_regs as i64
+            // ; call rcx
             // end of debug print of hardcoded registers
             // First argument
             ; mov rdi, QWORD frameaddr as i64
@@ -146,8 +146,8 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
         dynasm!(asm
             ; .arch x64
             // start of ebug print of hardcoded registers
-            ; mov rcx, QWORD print_regs as i64
-            ; call rcx
+            // ; mov rcx, QWORD print_regs as i64
+            // ; call rcx
             // end of ebug print of hardcoded registers
             // Reserve 16 bytes on the stack
             ; sub rsp, 0x10
