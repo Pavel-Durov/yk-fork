@@ -58,16 +58,14 @@ thread_local! {
 #[no_mangle]
 #[inline(never)]
 pub extern "C" fn __yk_trace_basicblock(function_index: usize, block_index: usize) {
-    MTThread::with_borrow(|mtt| {
-        if mtt.is_tracing() {
-            BASIC_BLOCKS.with(|v| {
-                v.borrow_mut().push(TracingBBlock {
-                    function_index,
-                    block_index,
-                });
-            })
-        }
-    });
+    if MTThread::is_tracing() {
+        BASIC_BLOCKS.with(|v| {
+            v.borrow_mut().push(TracingBBlock {
+                function_index,
+                block_index,
+            });
+        })
+    }
 }
 
 /// Does nothing except from exist. This function is just a placeholder

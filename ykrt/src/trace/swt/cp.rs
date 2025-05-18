@@ -1,7 +1,7 @@
 use crate::aotsmp::AOT_STACKMAPS;
 use crate::trace::swt::cfg::{
-    dwarf_to_dynasm_reg, reg_num_to_ykrt_control_point_rsp_offset, CP_BREAK, CP_VERBOSE,
-    CP_VERBOSE_ASM, REG64_BYTESIZE, REG_OFFSETS, CP_BREAK_TRACE
+    dwarf_to_dynasm_reg, reg_num_to_ykrt_control_point_rsp_offset, CP_BREAK, CP_BREAK_TRACE,
+    CP_VERBOSE, CP_VERBOSE_ASM, REG64_BYTESIZE, REG_OFFSETS,
 };
 use crate::trace::swt::cfg::{CPTransitionDirection, ControlPointStackMapId};
 use crate::trace::swt::live_vars::{copy_live_vars_to_temp_buffer, set_destination_live_vars};

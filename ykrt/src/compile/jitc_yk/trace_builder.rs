@@ -9,8 +9,6 @@ use super::{
     jit_ir::{self, Const, Operand, PackedOperand, ParamIdx, TraceKind},
     AOT_MOD,
 };
-use std::env;
-use std::sync::LazyLock;
 use crate::{
     aotsmp::AOT_STACKMAPS,
     compile::{CompilationError, CompiledTrace},
@@ -18,14 +16,13 @@ use crate::{
     mt::{TraceId, MT},
     trace::{AOTTraceIterator, AOTTraceIteratorError, TraceAction},
 };
+use std::env;
+use std::sync::LazyLock;
 use std::{collections::HashMap, ffi::CString, marker::PhantomData, sync::Arc};
 
 // Flag for verbose logging of trace actions
-pub(crate) static TRACE_VERBOSE: LazyLock<bool> = LazyLock::new(|| {
-    env::var("TRACE_VERBOSE")
-        .map(|v| v == "1")
-        .unwrap_or(false)
-});
+pub(crate) static TRACE_VERBOSE: LazyLock<bool> =
+    LazyLock::new(|| env::var("TRACE_VERBOSE").map(|v| v == "1").unwrap_or(false));
 
 /// Given an execution trace and AOT IR, creates a JIT IR trace.
 pub(crate) struct TraceBuilder<Register: Send + Sync> {
@@ -758,7 +755,9 @@ impl<Register: Send + Sync + 'static> TraceBuilder<Register> {
         // `__yk_trace_basicblock` instruction calls into the beginning of
         // every basic block. These calls can be ignored as they are
         // only used to collect runtime information for the tracer itself.
-        if AOT_MOD.func(*callee).name() == "__yk_trace_basicblock"  || AOT_MOD.func(*callee).name() == "__yk_trace_basicblock_dummy" {
+        if AOT_MOD.func(*callee).name() == "__yk_trace_basicblock"
+            || AOT_MOD.func(*callee).name() == "__yk_trace_basicblock_dummy"
+        {
             return Ok(());
         }
 
@@ -1451,8 +1450,13 @@ impl<Register: Send + Sync + 'static> TraceBuilder<Register> {
                             eprintln!("  [{}] {:?}", inst_idx, inst);
                             // Special handling for promote instructions
                             if let aot_ir::Inst::Promote { val, tyidx, .. } = inst {
-                                eprintln!("    PROMOTE: val={:?}, tyidx={:?}, promote_idx={}/{}", 
-                                        val, tyidx, self.promote_idx, self.promotions.len());
+                                eprintln!(
+                                    "    PROMOTE: val={:?}, tyidx={:?}, promote_idx={}/{}",
+                                    val,
+                                    tyidx,
+                                    self.promote_idx,
+                                    self.promotions.len()
+                                );
                             }
                         }
                     }

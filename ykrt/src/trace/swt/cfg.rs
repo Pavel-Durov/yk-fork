@@ -57,10 +57,13 @@ pub(crate) static CP_BREAK: LazyLock<bool> =
     LazyLock::new(|| env::var("CP_BREAK").map(|v| v == "1").unwrap_or(false));
 
 // Flag for asm breakpoints
-pub(crate) static CP_BREAK_TRACE: LazyLock<bool> =
-    LazyLock::new(|| env::var("CP_BREAK_TRACE").map(|v| v == "1").unwrap_or(false));
+pub(crate) static CP_BREAK_TRACE: LazyLock<bool> = LazyLock::new(|| {
+    env::var("CP_BREAK_TRACE")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+});
 
-    // Maps DWARF register numbers to `dynasm` register numbers.
+// Maps DWARF register numbers to `dynasm` register numbers.
 // This function takes a DWARF register number as input and returns the
 // corresponding dynasm register number1. The mapping is based on the
 // x86_64 architecture, and it's important to note that some registers
