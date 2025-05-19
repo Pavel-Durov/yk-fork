@@ -17,7 +17,7 @@
 //     --- End aot ---
 //     --- Begin jit-pre-opt ---
 //     ...
-//     call @foo(%{{4}})
+//     call @__yk_unopt_foo(%{{4}})
 //     ...
 //     --- End jit-pre-opt ---
 //     0
@@ -35,6 +35,8 @@
 //     exit
 
 // Test outlining of recursive calls.
+
+// SWT Note: Signal 11 after exec trace
 
 #include <assert.h>
 #include <stdio.h>

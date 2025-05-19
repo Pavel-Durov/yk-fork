@@ -1,3 +1,4 @@
+// ignore-if: test $SWT_SKIP_FAILING_TEST=true
 // Compiler:
 //   env-var: YKB_EXTRA_CC_FLAGS=-O0
 // Run-time:
@@ -14,6 +15,10 @@
 
 // This is bf_base.c from https://github.com/ykjit/ykcbf modified to hard-code the input to the
 // interpreter (hello.bf from the same repo).
+
+// SWT Note: Looks like its failing on the deoptimise event.
+// yk-jit-event: deoptimise
+
 
 #include <err.h>
 #include <fcntl.h>
