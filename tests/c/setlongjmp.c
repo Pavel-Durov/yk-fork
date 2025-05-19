@@ -3,11 +3,11 @@
 // Run-time:
 //   env-var: YKD_LOG_IR=jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YKD_LOG=4
+//   env-var: YKD_LOG=3
 //   stderr:
-//     yk-jit-event: start-tracing
+//     yk-tracing: start-tracing
 //     we jumped
-//     yk-jit-event: stop-tracing
+//     yk-tracing: stop-tracing
 //     yk-warning: trace-compilation-aborted: longjmp encountered
 //     ...
 

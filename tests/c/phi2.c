@@ -5,9 +5,9 @@
 //   env-var: YKD_LOG=4
 //   env-var: YKD_LOG_STATS=/dev/null
 //   stderr:
-//     yk-jit-event: start-tracing
+//     yk-tracing: start-tracing
 //     i=4, val=6
-//     yk-jit-event: stop-tracing
+//     yk-tracing: stop-tracing
 //     --- Begin aot ---
 //     ...
 //     %{{23_0}}: i32 = phi bb{{bb22}} -> 100i32, bb{{bb21}} -> 6i32
@@ -25,10 +25,10 @@
 //     ...
 //     --- End jit-pre-opt ---
 //     i=3, val=6
-//     yk-jit-event: enter-jit-code
+//     yk-execution: enter-jit-code
 //     i=2, val=6
 //     i=1, val=6
-//     yk-jit-event: deoptimise
+//     yk-execution: deoptimise
 
 // Check that PHI nodes JIT properly.
 

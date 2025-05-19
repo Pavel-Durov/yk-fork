@@ -6,9 +6,9 @@
 //   env-var: YKD_LOG=4
 //   stderr:
 //     ...
-//     yk-jit-event: enter-jit-code
+//     yk-execution: enter-jit-code
 //     ...
-//     yk-jit-event: deoptimise
+//     yk-execution: deoptimise
 //     ...
 //   stdout:
 //     Hello World!

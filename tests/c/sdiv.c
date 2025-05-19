@@ -6,7 +6,7 @@
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   env-var: YKD_LOG=4
 //   stderr:
-//     yk-jit-event: start-tracing
+//     yk-tracing: start-tracing
 //     sdiv1 -10922
 //     sdiv2 -715827882
 //     sdiv3 -3074457345618258602
@@ -15,7 +15,7 @@
 //     sdiv6 -715827882
 //     sdiv7 -3074457345618258602
 //     sdiv8 -42
-//     yk-jit-event: stop-tracing
+//     yk-tracing: stop-tracing
 //     --- Begin jit-pre-opt ---
 //     ...
 //     %{{_}}: i16 = sdiv %{{_}}, 3i16
@@ -35,7 +35,7 @@
 //     sdiv6 -715827882
 //     sdiv7 -3074457345618258602
 //     sdiv8 -42
-//     yk-jit-event: enter-jit-code
+//     yk-execution: enter-jit-code
 //     sdiv1 -10922
 //     sdiv2 -715827882
 //     sdiv3 -3074457345618258602
@@ -52,7 +52,7 @@
 //     sdiv6 -715827882
 //     sdiv7 -3074457345618258602
 //     sdiv8 -42
-//     yk-jit-event: deoptimise
+//     yk-execution: deoptimise
 //     exit
 
 // Test signed division.

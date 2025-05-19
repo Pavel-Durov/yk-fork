@@ -17,11 +17,11 @@
 //     --- End jit-pre-opt ---
 //     ...
 //     Can't JIT this!
-//     yk-jit-event: enter-jit-code
+//     yk-execution: enter-jit-code
 //     Can't JIT this!
 //     Can't JIT this!
 //     Can't JIT this!
-//     yk-jit-event: deoptimise
+//     yk-execution: deoptimise
 //     ...
 
 // Check that the `yk_outline` annotation works.

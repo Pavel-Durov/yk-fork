@@ -3,13 +3,13 @@
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   env-var: YKD_LOG=4
 //   stderr:
-//     yk-jit-event: start-tracing
+//     yk-tracing: start-tracing
 //     0
 //     1
 //     2
 //     3
 //     4
-//     yk-jit-event: stop-tracing
+//     yk-tracing: stop-tracing
 //     --- Begin aot ---
 //     ...
 //     func main(%arg0: i32, %arg1: ptr) -> i32 {
@@ -24,13 +24,13 @@
 //     1
 //     2
 //     3
-//     yk-jit-event: enter-jit-code
+//     yk-execution: enter-jit-code
 //     0
 //     1
 //     2
 //     0
 //     1
-//     yk-jit-event: deoptimise
+//     yk-execution: deoptimise
 //     0
 //     exit
 

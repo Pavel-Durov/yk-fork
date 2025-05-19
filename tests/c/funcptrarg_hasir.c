@@ -6,7 +6,7 @@
 //   stderr:
 //     ...
 //     FIXME: match the indirect call
-//     yk-jit-event: enter-jit-code
+//     yk-execution: enter-jit-code
 //     z=4
 //     ...
 

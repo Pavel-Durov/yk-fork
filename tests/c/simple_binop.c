@@ -4,7 +4,7 @@
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   env-var: YKD_LOG=4
 //   stderr:
-//     yk-jit-event: start-tracing
+//     yk-tracing: start-tracing
 //     and 0
 //     or 5
 //     lshr 2
@@ -14,7 +14,7 @@
 //     xor2 -5
 //     shl 8
 //     ---
-//     yk-jit-event: stop-tracing
+//     yk-tracing: stop-tracing
 //     --- Begin jit-pre-opt ---
 //     ...
 //     %{{result}}: i32 = and %{{1}}, 1i32
@@ -29,7 +29,7 @@
 //     xor2 -4
 //     shl 6
 //     ---
-//     yk-jit-event: enter-jit-code
+//     yk-execution: enter-jit-code
 //     and 0
 //     or 3
 //     lshr 1
@@ -48,7 +48,7 @@
 //     xor2 -2
 //     shl 2
 //     ---
-//     yk-jit-event: deoptimise
+//     yk-execution: deoptimise
 //     exit
 
 #include <assert.h>

@@ -3,10 +3,10 @@
 // ## on hwt.
 // Run-time:
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YKD_LOG=4
+//   env-var: YKD_LOG=3
 //   stderr:
 //     ...
-//     yk-warning: stop-tracing-aborted: Trace too long
+//     yk-warning: stop-tracing-aborted: Trace overflowed recorder's storage
 
 #include <assert.h>
 #include <stdio.h>

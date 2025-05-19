@@ -8,9 +8,9 @@
 --     0
 --     1
 --     2
---     yk-jit-event: start-tracing: while_loop.lua:35: LEI
+--     yk-tracing: start-tracing: while_loop.lua:35: LEI
 --     3
---     yk-jit-event: stop-tracing: ...
+--     yk-tracing: stop-tracing: ...
 --     --- Begin debugstrs: header: while_loop.lua:35: LEI ---
 --       while_loop.lua:36: GETTABUP
 --       while_loop.lua:36: GETFIELD
@@ -25,10 +25,10 @@
 --       while_loop.lua:35: LEI
 --     --- End debugstrs ---
 --     4
---     yk-jit-event: enter-jit-code: while_loop.lua:35: LEI
+--     yk-execution: enter-jit-code: while_loop.lua:35: LEI
 --     5
 --     6
---     yk-jit-event: deoptimise
+--     yk-execution: deoptimise
 --     exit
 
 local x = 0

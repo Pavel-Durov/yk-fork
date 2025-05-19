@@ -6,11 +6,11 @@
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   env-var: YKD_LOG=4
 //   stderr:
-//     yk-jit-event: start-tracing
+//     yk-tracing: start-tracing
 //     4: 39 39
 //     4: 41 41
 //     4: 43 43
-//     yk-jit-event: stop-tracing
+//     yk-tracing: stop-tracing
 //     ...
 //     --- Begin aot ---
 //     ...
@@ -61,14 +61,14 @@
 //     3: 39 39
 //     3: 41 41
 //     3: 43 43
-//     yk-jit-event: enter-jit-code
+//     yk-execution: enter-jit-code
 //     2: 39 39
 //     2: 41 41
 //     2: 43 43
 //     1: 39 39
 //     1: 41 41
 //     1: 43 43
-//     yk-jit-event: deoptimise
+//     yk-execution: deoptimise
 
 // Check that idempotent functions work.
 

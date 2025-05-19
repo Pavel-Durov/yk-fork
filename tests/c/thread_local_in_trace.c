@@ -18,7 +18,7 @@
 //     Run trace in a thread.
 //     ...
 //     res: {{thread_ptr}} 2
-//     yk-jit-event: deoptimise
+//     yk-execution: deoptimise
 //     res: {{thread_ptr}} 2
 //     ...
 

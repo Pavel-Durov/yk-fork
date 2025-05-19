@@ -18,14 +18,14 @@
 //     ...
 //     Can't JIT this!
 //     Or this!
-//     yk-jit-event: enter-jit-code
+//     yk-execution: enter-jit-code
 //     Can't JIT this!
 //     Or this!
 //     Can't JIT this!
 //     Or this!
 //     Can't JIT this!
 //     Or this!
-//     yk-jit-event: deoptimise
+//     yk-execution: deoptimise
 //     ...
 
 // Check that the `yk_outline` annotation works when a `yk_outline` annotated

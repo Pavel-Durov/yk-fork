@@ -16,7 +16,7 @@
 //       ...
 //     --- End jit-pre-opt ---
 //     2:97
-//     yk-jit-event: enter-jit-code
+//     yk-execution: enter-jit-code
 //     1:97
 //     ...
 

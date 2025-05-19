@@ -6,7 +6,7 @@
 //     i=12
 //     i=13
 //     i=14
-//     yk-jit-event: deoptimise
+//     yk-execution: deoptimise
 //     ...
 
 // Check that tracing mutation of a global pointer works.

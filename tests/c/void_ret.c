@@ -4,10 +4,10 @@
 //   env-var: YKD_LOG=4
 //   stderr:
 //     ...
-//     yk-jit-event: enter-jit-code
+//     yk-execution: enter-jit-code
 //     inside f
 //     inside f
-//     yk-jit-event: deoptimise
+//     yk-execution: deoptimise
 //     ...
 
 // Check inlining a function into the trace that has a void return type.

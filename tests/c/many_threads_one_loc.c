@@ -15,7 +15,7 @@
 //     }
 //     ...
 //     --- End aot ---
-//     yk-jit-event: enter-jit-code
+//     yk-execution: enter-jit-code
 //     ...
 
 // Check that compiling and running traces in parallel works.

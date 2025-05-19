@@ -6,9 +6,9 @@
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   env-var: YKD_LOG=4
 //   stderr:
-//     yk-jit-event: start-tracing
+//     yk-tracing: start-tracing
 //     4: 28
-//     yk-jit-event: stop-tracing
+//     yk-tracing: stop-tracing
 //     ...
 //     --- Begin aot ---
 //     ...
@@ -31,11 +31,11 @@
 //     ...
 //     --- End jit-post-opt ---
 //     3: 24
-//     yk-jit-event: enter-jit-code
-//     yk-jit-event: deoptimise
+//     yk-execution: enter-jit-code
+//     yk-execution: deoptimise
 //     2: 20
-//     yk-jit-event: enter-jit-code
-//     yk-jit-event: deoptimise
+//     yk-execution: enter-jit-code
+//     yk-execution: deoptimise
 //     1: 16
 
 // Check that idempotent functions work when they call functions that

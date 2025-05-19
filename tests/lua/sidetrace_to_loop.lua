@@ -7,8 +7,8 @@
 --   env-var: YKD_SERIALISE_COMPILATION=1
 --   stderr:
 --     h1
---     yk-jit-event: start-tracing: sidetrace_to_loop.lua:35: GTI
---     yk-jit-event: stop-tracing: sidetrace_to_loop.lua:35: GTI
+--     yk-tracing: start-tracing: sidetrace_to_loop.lua:35: GTI
+--     yk-tracing: stop-tracing: sidetrace_to_loop.lua:35: GTI
 --     --- Begin debugstrs: header: sidetrace_to_loop.lua:35: GTI ---
 --       sidetrace_to_loop.lua:36: TEST
 --       sidetrace_to_loop.lua:36: JMP
@@ -17,18 +17,18 @@
 --       sidetrace_to_loop.lua:35: GTI
 --     --- End debugstrs ---
 --     h2
---     yk-jit-event: enter-jit-code: sidetrace_to_loop.lua:35: GTI
---     yk-jit-event: deoptimise
---     yk-jit-event: enter-jit-code: sidetrace_to_loop.lua:35: GTI
---     yk-jit-event: deoptimise
+--     yk-execution: enter-jit-code: sidetrace_to_loop.lua:35: GTI
+--     yk-execution: deoptimise
+--     yk-execution: enter-jit-code: sidetrace_to_loop.lua:35: GTI
+--     yk-execution: deoptimise
 --     h3
---     yk-jit-event: enter-jit-code: sidetrace_to_loop.lua:35: GTI
---     yk-jit-event: deoptimise
---     yk-jit-event: start-side-tracing: sidetrace_to_loop.lua:35: GTI
+--     yk-execution: enter-jit-code: sidetrace_to_loop.lua:35: GTI
+--     yk-execution: deoptimise
+--     yk-tracing: start-side-tracing: sidetrace_to_loop.lua:35: GTI
 --     yk-warning: tracing-aborted: tracing unrolled a loop: sidetrace_to_loop.lua:40: FORLOOP
---     yk-jit-event: enter-jit-code: sidetrace_to_loop.lua:35: GTI
---     yk-jit-event: deoptimise
---     yk-jit-event: start-side-tracing: sidetrace_to_loop.lua:35: GTI
+--     yk-execution: enter-jit-code: sidetrace_to_loop.lua:35: GTI
+--     yk-execution: deoptimise
+--     yk-tracing: start-side-tracing: sidetrace_to_loop.lua:35: GTI
 --     exit
 
 function h(i, b1, b2)

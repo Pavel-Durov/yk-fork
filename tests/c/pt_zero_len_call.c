@@ -4,7 +4,7 @@
 //   env-var: YKD_LOG=4
 //   stderr:
 //     ...
-//     yk-jit-event: enter-jit-code
+//     yk-execution: enter-jit-code
 //     ...
 //  stdout:
 //     exit

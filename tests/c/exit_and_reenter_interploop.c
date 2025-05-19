@@ -1,13 +1,13 @@
 // Run-time:
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YKD_LOG=4
+//   env-var: YKD_LOG=3
 //   stderr:
 //     enter
-//     yk-jit-event: start-tracing
+//     yk-tracing: start-tracing
 //     1
 //     exit
 //     enter
-//     yk-jit-event: stop-tracing
+//     yk-tracing: stop-tracing
 //     yk-warning: trace-compilation-aborted: returned from function that started tracing
 //     ...
 
