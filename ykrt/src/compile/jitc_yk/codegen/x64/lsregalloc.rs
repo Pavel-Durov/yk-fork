@@ -493,6 +493,13 @@ impl LSRegAlloc<'_> {
         self.force_tmp_register(asm, RegSet::with_gp_reserved())
     }
 
+    /// Return a temporary register suitable for `write_vars`. Note: this might cause the value
+    /// originally in the returned value to be spilled.
+    pub(super) fn tmp_register_for_write_vars(&mut self, asm: &mut Assembler) -> Rq {
+        self.find_empty_gp_reg()
+            .unwrap_or_else(|| self.force_tmp_register(asm, RegSet::with_gp_reserved()))
+    }
+
     /// Assign general purpose registers for the instruction at position `iidx`.
     ///
     /// This is a convenience function for [Self::assign_regs] when there are no FP registers.
@@ -2180,6 +2187,7 @@ impl<R: dynasmrt::Register> RegConstraint<R> {
 
 /// The information the register allocator records at the point of a guard's code generation that
 /// it later needs to get a failing guard ready for deopt.
+#[derive(Debug)]
 pub(super) struct GuardSnapshot {
     /// The registers we need to zero extend: the `u32` is the `from_bitw` that is passed to
     /// `force_zero_extend_to_reg64`.

@@ -14,26 +14,21 @@
 //!   * When a value is in a register, we make no guarantees about what the upper bits are set to.
 //!     You must sign or zero extend at all points that these values are important.
 
-use super::{
-    super::{
-        aot_ir::DeoptSafepoint,
-        arbbitint::ArbBitInt,
-        jit_ir::{self, BinOp, FloatTy, Inst, InstIdx, Module, Operand, TraceKind, Ty},
-        CompilationError,
-    },
-    CodeGen,
-};
 #[cfg(any(debug_assertions, test))]
 use crate::compile::jitc_yk::gdb::{self, GdbCtx};
 use crate::{
     aotsmp::AOT_STACKMAPS,
     compile::{
         jitc_yk::{
-            aot_ir,
-            jit_ir::{Const, IndirectCallIdx, InlinedFrame},
-            YkSideTraceInfo,
+            aot_ir::{self, DeoptSafepoint},
+            arbbitint::ArbBitInt,
+            jit_ir::{
+                self, BinOp, Const, FloatTy, IndirectCallIdx, InlinedFrame, Inst, InstIdx, Module,
+                Operand, TraceKind, Ty,
+            },
+            CodeGen, YkSideTraceInfo,
         },
-        CompiledTrace, Guard, GuardIdx, SideTraceInfo,
+        CompilationError, CompiledTrace, Guard, GuardIdx, SideTraceInfo,
     },
     location::HotLocation,
     mt::{TraceId, MT},
@@ -51,7 +46,6 @@ use parking_lot::Mutex;
 use std::{
     assert_matches::debug_assert_matches,
     cell::Cell,
-    collections::HashMap,
     error::Error,
     slice,
     sync::{atomic::fence, Arc, Weak},
@@ -337,11 +331,7 @@ struct Assemble<'a> {
     body_start_locs: Vec<VarLocation>,
     asm: dynasmrt::x64::Assembler,
     /// Deopt info, with one entry per guard, in the order that the guards appear in the trace.
-    deoptinfo: HashMap<usize, (GuardSnapshot, DeoptInfo)>,
-    /// An available register at the time of a guard failure. We need this register to patch 64-bit
-    /// jumps when patching side-traces into their parents.
-    patch_reg: HashMap<usize, Rq>,
-    ///
+    guards: Vec<CompilingGuard>,
     /// Maps assembly offsets to comments.
     ///
     /// Comments used by the trace printer for debugging and testing only.
@@ -409,8 +399,7 @@ impl<'a> Assemble<'a> {
             asm,
             header_start_locs: Vec::new(),
             body_start_locs: Vec::new(),
-            deoptinfo: HashMap::new(),
-            patch_reg: HashMap::new(),
+            guards: Vec::new(),
             comments: Cell::new(IndexMap::new()),
             sp_offset,
             prologue_offset: AssemblyOffset(0),
@@ -428,28 +417,19 @@ impl<'a> Assemble<'a> {
 
         let mut patch_deopts = Vec::new();
 
-        if !self.deoptinfo.is_empty() {
+        if !self.guards.is_empty() {
             // We now have to construct the "full" deopt points. Inside the trace itself, are just
             // a pair of instructions: a `cmp` followed by a `jnz` to a `fail_label` that has not
             // yet been defined. We now have to construct a full call to `__yk_deopt` for each of
             // those labels. Since, in general, we'll have multiple guards, we construct a simple
             // stub which puts an ID in a register then JMPs to (shared amongst all guards) code
             // which does the full call to __yk_deopt.
-            #[allow(unused_mut)] // `mut` required in debug builds. See below.
-            let mut infos = self
-                .deoptinfo
-                .iter()
-                .map(|(id, (_regset, di))| (*id, di.fail_label))
-                .collect::<Vec<_>>();
-            // Debugging deopt asm is much easier if the stubs are in order.
-            infos.sort_by(|a, b| a.0.cmp(&b.0));
-
             let deopt_label = self.asm.new_dynamic_label();
             let guardcheck_label = self.asm.new_dynamic_label();
-            for (deoptid, fail_label) in infos {
-                self.comment(format!("Deopt ID and patch point for guard {deoptid:?}"));
+            for i in 0..self.guards.len() {
+                self.comment(format!("Deopt ID and patch point for guard {i:?}"));
                 self.ra
-                    .get_ready_for_deopt(&mut self.asm, &self.deoptinfo[&deoptid].0);
+                    .get_ready_for_deopt(&mut self.asm, &self.guards[i].guard_snapshot);
                 // FIXME: Why are `deoptid`s 64 bit? We're not going to have that many guards!
 
                 // Align this location in such a way that the operand of the below `mov`
@@ -465,10 +445,11 @@ impl<'a> Assemble<'a> {
                 self.push_nops(align - off - 2);
                 // Store the future patch offset for this guard.
                 let mov_off = self.asm.offset();
-                self.deoptinfo.get_mut(&deoptid).unwrap().1.fail_offset = mov_off;
+                self.guards.get_mut(i).unwrap().fail_offset = mov_off;
                 // Emit the guard failure code.
-                let jumpreg = self.patch_reg[&deoptid];
-                let deoptid = i32::try_from(deoptid).unwrap();
+                let jumpreg = self.guards[i].patch_reg;
+                let deoptid = i32::try_from(i).unwrap();
+                let fail_label = self.guards[i].fail_label;
                 dynasm!(self.asm
                     ;=> fail_label
                     // After compiling a side-trace for this location, we want to patch in a jump
@@ -573,11 +554,11 @@ impl<'a> Assemble<'a> {
             safepoint: self.m.safepoint.as_ref().cloned(),
             mt,
             buf,
-            deoptinfo: self
-                .deoptinfo
+            compiled_guards: self
+                .guards
                 .into_iter()
-                .map(|(id, (_gsnap, di))| (id, di))
-                .collect::<HashMap<_, _>>(),
+                .map(CompiledGuard::from)
+                .collect::<Vec<_>>(),
             sp_offset: self.ra.stack_size(),
             prologue_offset: self.prologue_offset.0,
             entry_vars: self.header_start_locs.clone(),
@@ -652,7 +633,7 @@ impl<'a> Assemble<'a> {
                     //   *%1 = %2
                     if let Some((b_iidx, Inst::BinOp(b_inst))) = next
                         && b_inst.binop() == BinOp::Add
-                        && self.op_to_zero_ext_i32(&b_inst.rhs(self.m)).is_some()
+                        && self.op_to_sign_ext_i32(&b_inst.rhs(self.m)).is_some()
                         && let Some((s_iidx, Inst::Store(s_inst))) = iter.peek()
                     {
                         // Now we have to check that -- taking into account ptr offsets -- the two
@@ -732,6 +713,7 @@ impl<'a> Assemble<'a> {
                 jit_ir::Inst::DebugStr(..) => (),
                 jit_ir::Inst::PtrToInt(i) => self.cg_ptrtoint(iidx, i),
                 jit_ir::Inst::IntToPtr(i) => self.cg_inttoptr(iidx, i),
+                jit_ir::Inst::UIToFP(i) => self.cg_uitofp(iidx, i),
             }
 
             next = iter.next();
@@ -947,7 +929,7 @@ impl<'a> Assemble<'a> {
             BinOp::And | BinOp::Or | BinOp::Xor => {
                 let bitw = lhs.bitw(self.m);
                 // We only optimise the canonicalised case.
-                if let Some(v) = self.op_to_zero_ext_i32(&rhs) {
+                if let Some(v) = self.op_to_imm64(&rhs) {
                     let [lhs_reg] = self.ra.assign_gp_regs(
                         &mut self.asm,
                         iidx,
@@ -965,6 +947,7 @@ impl<'a> Assemble<'a> {
                     match inst.binop() {
                         BinOp::And => match bitw {
                             1..=32 => dynasm!(self.asm; and Rd(lhs_reg.code()), v),
+                            // OPT: We could `and` with a 32 bit register.
                             64 => dynasm!(self.asm; and Rq(lhs_reg.code()), v),
                             _ => unreachable!(),
                         },
@@ -1612,7 +1595,7 @@ impl<'a> Assemble<'a> {
                     );
                     dynasm!(self.asm ; mov DWORD [Rq(tgt_reg.code()) + off], v);
                 } else if bitw == 64
-                    && let Some(v) = self.op_to_zero_ext_i32(&val)
+                    && let Some(v) = self.op_to_imm64(&val)
                 {
                     let [tgt_reg] = self.ra.assign_gp_regs(
                         &mut self.asm,
@@ -1645,7 +1628,7 @@ impl<'a> Assemble<'a> {
                         ],
                     );
                     match bitw {
-                        8 => {
+                        1 | 8 => {
                             dynasm!(self.asm ; mov BYTE [Rq(tgt_reg.code()) + off], Rb(val_reg.code()))
                         }
                         16 => {
@@ -1737,17 +1720,22 @@ impl<'a> Assemble<'a> {
                 self.cg_abs(iidx, op, is_int_min);
                 Ok(())
             }
-            x if x.starts_with("llvm.ctpop") => {
+            x if x.starts_with("llvm.ctpop.") => {
                 let [op] = args.try_into().unwrap();
                 self.cg_ctpop(iidx, op);
                 Ok(())
             }
-            x if x.starts_with("llvm.floor") => {
+            x if x.starts_with("llvm.floor.") => {
                 let [op] = args.try_into().unwrap();
                 self.cg_floor(iidx, op);
                 Ok(())
             }
-            x if x.starts_with("llvm.memcpy") => {
+            x if x.starts_with("llvm.fshl.i") => {
+                let [op_a, op_b, op_c] = args.try_into().unwrap();
+                self.cg_fshl(iidx, op_a, op_b, op_c);
+                Ok(())
+            }
+            x if x.starts_with("llvm.memcpy.") => {
                 let [dst, src, len, is_volatile] = args.try_into().unwrap();
                 self.cg_memcpy(iidx, dst, src, len, is_volatile);
                 Ok(())
@@ -1757,12 +1745,12 @@ impl<'a> Assemble<'a> {
                 self.cg_memset(iidx, dst, val, len, is_volatile);
                 Ok(())
             }
-            x if x.starts_with("llvm.smax") => {
+            x if x.starts_with("llvm.smax.") => {
                 let [lhs_op, rhs_op] = args.try_into().unwrap();
                 self.cg_smax(iidx, lhs_op, rhs_op);
                 Ok(())
             }
-            x if x.starts_with("llvm.smin") => {
+            x if x.starts_with("llvm.smin.") => {
                 let [lhs_op, rhs_op] = args.try_into().unwrap();
                 self.cg_smin(iidx, lhs_op, rhs_op);
                 Ok(())
@@ -2014,7 +2002,11 @@ impl<'a> Assemble<'a> {
             [
                 GPConstraint::Input {
                     op: op.clone(),
-                    in_ext: RegExtension::ZeroExtended,
+                    in_ext: if bitw == 32 || bitw == 64 {
+                        RegExtension::Undefined
+                    } else {
+                        RegExtension::ZeroExtended
+                    },
                     force_reg: None,
                     clobber_reg: false,
                 },
@@ -2026,7 +2018,13 @@ impl<'a> Assemble<'a> {
             ],
         );
         assert!(bitw > 1 && bitw <= 64);
-        dynasm!(self.asm; popcnt Rq(out_reg.code()), Rq(in_reg.code()));
+        if bitw <= 32 {
+            dynasm!(self.asm; popcnt Rd(out_reg.code()), Rd(in_reg.code()));
+        } else if bitw == 64 {
+            dynasm!(self.asm; popcnt Rq(out_reg.code()), Rq(in_reg.code()));
+        } else {
+            todo!("{bitw}");
+        }
     }
 
     fn cg_floor(&mut self, iidx: InstIdx, op: Operand) {
@@ -2049,6 +2047,38 @@ impl<'a> Assemble<'a> {
                 }
             }
             Ty::Unimplemented(_) => todo!(),
+        }
+    }
+
+    fn cg_fshl(&mut self, iidx: InstIdx, op_a: Operand, op_b: Operand, op_c: Operand) {
+        let bitw = op_a.bitw(self.m);
+        match bitw {
+            64 => {
+                if let Some(c) = self.op_to_zero_ext_i8(&op_c) {
+                    let [a_reg, b_reg] = self.ra.assign_gp_regs(
+                        &mut self.asm,
+                        iidx,
+                        [
+                            GPConstraint::InputOutput {
+                                op: op_a,
+                                in_ext: RegExtension::SignExtended,
+                                out_ext: RegExtension::SignExtended,
+                                force_reg: None,
+                            },
+                            GPConstraint::Input {
+                                op: op_b,
+                                in_ext: RegExtension::SignExtended,
+                                force_reg: None,
+                                clobber_reg: false,
+                            },
+                        ],
+                    );
+                    dynasm!(self.asm; shld Rq(a_reg.code()), Rq(b_reg.code()), c);
+                } else {
+                    todo!();
+                }
+            }
+            x => todo!("{x}"),
         }
     }
 
@@ -2218,6 +2248,26 @@ impl<'a> Assemble<'a> {
         None
     }
 
+    /// If an `Operand` refers to a constant integer that can be represented as a sign-extended
+    /// imm64, return an `i32`, otherwise return `None`.
+    fn op_to_imm64(&self, op: &Operand) -> Option<i32> {
+        if let Operand::Const(cidx) = op {
+            match self.m.const_(*cidx) {
+                Const::Float(_, _) => todo!(),
+                Const::Int(_, v) => v
+                    .to_zero_ext_u32()
+                    .filter(|x| *x <= i32::MAX.cast_unsigned())
+                    .map(|x| x.cast_signed()),
+                Const::Ptr(v) => ArbBitInt::from_u64(64, u64::try_from(*v).unwrap())
+                    .to_zero_ext_u32()
+                    .filter(|x| *x <= i32::MAX.cast_unsigned())
+                    .map(|x| x.cast_signed()),
+            }
+        } else {
+            None
+        }
+    }
+
     /// If an `Operand` refers to a constant integer that can be represented as an `i8`, return
     /// it zero-extended to 8 bits, otherwise return `None`.
     fn op_to_zero_ext_i8(&self, op: &Operand) -> Option<i8> {
@@ -2300,6 +2350,8 @@ impl<'a> Assemble<'a> {
         let bitw = self.m.type_(lhs.tyidx(self.m)).bitw().unwrap();
         let (imm, mut in_ext) = if pred.signed() {
             (self.op_to_sign_ext_i32(&rhs), RegExtension::SignExtended)
+        } else if bitw == 64 {
+            (self.op_to_imm64(&rhs), RegExtension::ZeroExtended)
         } else {
             (self.op_to_zero_ext_i32(&rhs), RegExtension::ZeroExtended)
         };
@@ -2343,8 +2395,7 @@ impl<'a> Assemble<'a> {
         // Codegen guard
         self.ra.expire_regs(g_iidx);
         let patch_reg = self.ra.tmp_register_for_icmp_guard(&mut self.asm, g_iidx);
-        self.patch_reg.insert(g_inst.gidx.into(), patch_reg);
-        let fail_label = self.guard_to_deopt(&g_inst);
+        let fail_label = self.guard_to_deopt(&g_inst, patch_reg);
         self.comment(Inst::Guard(g_inst).display(self.m, g_iidx).to_string());
 
         if g_inst.expect() {
@@ -2381,6 +2432,8 @@ impl<'a> Assemble<'a> {
         let bitw = self.m.type_(lhs.tyidx(self.m)).bitw().unwrap();
         let (imm, mut in_ext) = if pred.signed() {
             (self.op_to_sign_ext_i32(&rhs), RegExtension::SignExtended)
+        } else if bitw == 64 {
+            (self.op_to_imm64(&rhs), RegExtension::ZeroExtended)
         } else {
             (self.op_to_zero_ext_i32(&rhs), RegExtension::ZeroExtended)
         };
@@ -2648,7 +2701,7 @@ impl<'a> Assemble<'a> {
             }
         };
 
-        // First of all we work out what to do with registers
+        // First of all we work out what to do with registers.
         let mut gp_regs = lsregalloc::GP_REGS
             .iter()
             .map(|_| GPConstraint::None)
@@ -2687,14 +2740,14 @@ impl<'a> Assemble<'a> {
             }
         }
 
-        // If we're lucky -- and we normally are! -- there will be a register which we don't need
-        // for the jump that we can use as the scratch register for moving spills around.
-        let spare_reg = self.ra.find_empty_gp_reg().unwrap();
+        // Second we handle moving spill locations around.
 
-        // Second we handle moving spill locations around
+        // We may need a temporary register to move values around, but obtaining this might force a
+        // spill. We thus put off obtaining a temporary register unless we know we really need it.
+        let mut tmp_reg = None;
         for (i, op) in src_ops.iter().enumerate() {
             let op = op.unpack(self.m);
-            let src = self.op_to_var_location(op.clone());
+            let mut src = self.op_to_var_location(op.clone());
             let dst = tgt_vars[i];
             if dst == src {
                 // The value is already in the correct place.
@@ -2706,9 +2759,9 @@ impl<'a> Assemble<'a> {
                     size: size_dst,
                 } => {
                     let off_dst = i32::try_from(off_dst).unwrap();
+                    // Deal with everything that doesn't need a temporary register first.
                     match src {
                         VarLocation::Register(Register::GP(reg)) => {
-                            assert_ne!(reg, spare_reg);
                             match size_dst {
                                 8 => dynasm!(self.asm;
                                     mov QWORD [rbp - off_dst], Rq(reg.code())
@@ -2718,18 +2771,45 @@ impl<'a> Assemble<'a> {
                                 ),
                                 _ => todo!(),
                             }
+                            continue;
                         }
+                        VarLocation::ConstInt { bits, v } => match bits {
+                            32 => {
+                                dynasm!(self.asm;
+                                    mov DWORD [rbp - off_dst], v as i32
+                                );
+                                continue;
+                            }
+                            8 => {
+                                dynasm!(self.asm;
+                                mov BYTE [rbp - off_dst], v as i8);
+                                continue;
+                            }
+                            _ => (),
+                        },
+                        VarLocation::ConstPtr(_) => (),
+                        VarLocation::Stack { .. } => (),
+                        e => todo!("{:?}", e),
+                    }
+
+                    // We really have to have a temporary register. Oh well.
+                    if tmp_reg.is_none() {
+                        tmp_reg = Some(self.ra.tmp_register_for_write_vars(&mut self.asm));
+                        // The temporary register could have caused a spill which causes `src` to
+                        // change its location, so recalculate.
+                        src = self.op_to_var_location(op.clone());
+                    }
+                    let spare_reg = tmp_reg.unwrap();
+                    match src {
+                        // Handled in the earlier `match`.
+                        VarLocation::Register(Register::GP(_)) => unreachable!(),
                         VarLocation::ConstInt { bits, v } => match bits {
                             64 => dynasm!(self.asm
                                 ; mov Rq(spare_reg.code()), QWORD v.cast_signed()
                                 ; mov QWORD [rbp - off_dst], Rq(spare_reg.code())
                             ),
-                            32 => dynasm!(self.asm;
-                                mov DWORD [rbp - off_dst], v as i32
-                            ),
-                            8 => dynasm!(self.asm;
-                                mov BYTE [rbp - off_dst], v as i8),
-                            x => todo!("{x}"),
+                            // Handled in the earlier `match`.
+                            _ => unreachable!(),
                         },
                         VarLocation::ConstPtr(v) => {
                             dynasm!(self.asm
@@ -3092,6 +3172,66 @@ impl<'a> Assemble<'a> {
         }
     }
 
+    fn cg_uitofp(&mut self, iidx: InstIdx, inst: &jit_ir::UIToFPInst) {
+        let ([src_reg], [tgt_reg, tmp_reg]) = self.ra.assign_regs(
+            &mut self.asm,
+            iidx,
+            [GPConstraint::Input {
+                op: inst.val(self.m),
+                // 64 bit values are already sign extended, and we read 32 bit values from 32 bit
+                // registers, thus we don't need to sign extend them to 64 bits.
+                in_ext: RegExtension::Undefined,
+                force_reg: None,
+                clobber_reg: false,
+            }],
+            [RegConstraint::Output, RegConstraint::Temporary],
+        );
+
+        let src_bitw = inst.val(self.m).bitw(self.m);
+        match self.m.type_(inst.dest_tyidx()) {
+            jit_ir::Ty::Float(jit_ir::FloatTy::Float) => todo!(),
+            jit_ir::Ty::Float(jit_ir::FloatTy::Double) => match src_bitw {
+                64 => {
+                    // This is a port of what clang does when you cast a `uint64_t` to a `double`.
+                    // It relies on loading magic constants from memory.
+                    //
+                    // FIXME: There's no need to repeatedly emit this data for every conversion.
+                    let const0: [u32; 4] = [1127219200, 1160773632, 0, 0];
+                    let const0_bytes: &[u8] = unsafe {
+                        std::slice::from_raw_parts(
+                            const0.as_ptr() as *const u8,
+                            const0.len() * std::mem::size_of::<u32>(),
+                        )
+                    };
+                    let const1: [u64; 2] = [0x4330000000000000, 0x4530000000000000];
+                    let const1_bytes: &[u8] = unsafe {
+                        std::slice::from_raw_parts(
+                            const1.as_ptr() as *const u8,
+                            const1.len() * std::mem::size_of::<u64>(),
+                        )
+                    };
+                    dynasm!(self.asm
+                        ; jmp >body
+                        ; .align 16
+                        ; lcpi0_0:
+                        ;  .bytes const0_bytes
+                        ; lcpi0_1:
+                        ;  .bytes const1_bytes
+                        ; body:
+                        ; movq Rx(tmp_reg.code()), Rq(src_reg.code())
+                        ; punpckldq Rx(tmp_reg.code()), [<lcpi0_0]
+                        ; subpd Rx(tmp_reg.code()), [<lcpi0_1]
+                        ; movapd  Rx(tgt_reg.code()), Rx(tmp_reg.code())
+                        ; unpckhpd Rx(tgt_reg.code()), Rx(tmp_reg.code())
+                        ; addsd Rx(tgt_reg.code()), Rx(tmp_reg.code())
+                    );
+                }
+                _ => todo!(),
+            },
+            _ => panic!(),
+        }
+    }
+
     fn cg_fptosi(&mut self, iidx: InstIdx, inst: &jit_ir::FPToSIInst) {
         let from_val = inst.val(self.m);
         let to_ty = self.m.type_(inst.dest_tyidx());
@@ -3174,40 +3314,99 @@ impl<'a> Assemble<'a> {
     }
 
     fn cg_select_int_ptr(&mut self, iidx: jit_ir::InstIdx, inst: &jit_ir::SelectInst) {
-        let [true_reg, cond_reg, false_reg] = self.ra.assign_gp_regs(
-            &mut self.asm,
-            iidx,
-            [
-                GPConstraint::InputOutput {
-                    op: inst.trueval(self.m),
-                    in_ext: RegExtension::Undefined,
-                    out_ext: RegExtension::Undefined,
-                    force_reg: None,
-                },
-                GPConstraint::Input {
-                    op: inst.cond(self.m),
-                    in_ext: RegExtension::Undefined,
-                    force_reg: None,
-                    clobber_reg: false,
-                },
-                GPConstraint::Input {
-                    op: inst.falseval(self.m),
-                    in_ext: RegExtension::Undefined,
-                    force_reg: None,
-                    clobber_reg: false,
-                },
-            ],
-        );
-        debug_assert_eq!(
-            self.m
-                .type_(inst.cond(self.m).tyidx(self.m))
-                .bitw()
-                .unwrap(),
-            1
-        );
-
-        dynasm!(self.asm ; bt Rd(cond_reg.code()), 0);
-        dynasm!(self.asm ; cmovnc Rq(true_reg.code()), Rq(false_reg.code()));
+        let condval = inst.cond(self.m);
+        assert_eq!(condval.bitw(self.m), 1);
+        let trueval = inst.trueval(self.m);
+        let falseval = inst.falseval(self.m);
+        assert_eq!(trueval.bitw(self.m), falseval.bitw(self.m));
+        if trueval.bitw(self.m) == 1
+            && let Some(c) = self.op_to_zero_ext_i8(&trueval)
+        {
+            let [cond_reg, val_reg] = self.ra.assign_gp_regs(
+                &mut self.asm,
+                iidx,
+                [
+                    GPConstraint::InputOutput {
+                        op: condval,
+                        in_ext: RegExtension::Undefined,
+                        out_ext: RegExtension::Undefined,
+                        force_reg: None,
+                    },
+                    GPConstraint::Input {
+                        op: falseval,
+                        in_ext: RegExtension::Undefined,
+                        force_reg: None,
+                        clobber_reg: false,
+                    },
+                ],
+            );
+            match c {
+                0 => dynasm!(self.asm
+                    ; not Rd(cond_reg.code())
+                    ; and Rd(cond_reg.code()), Rd(val_reg.code())
+                ),
+                1 => dynasm!(self.asm; or Rd(cond_reg.code()), Rd(val_reg.code())),
+                _ => unreachable!(),
+            }
+        } else if trueval.bitw(self.m) == 1
+            && let Some(c) = self.op_to_zero_ext_i8(&falseval)
+        {
+            let [cond_reg, val_reg] = self.ra.assign_gp_regs(
+                &mut self.asm,
+                iidx,
+                [
+                    GPConstraint::InputOutput {
+                        op: condval,
+                        in_ext: RegExtension::Undefined,
+                        out_ext: RegExtension::Undefined,
+                        force_reg: None,
+                    },
+                    GPConstraint::Input {
+                        op: trueval,
+                        in_ext: RegExtension::Undefined,
+                        force_reg: None,
+                        clobber_reg: false,
+                    },
+                ],
+            );
+            match c {
+                0 => dynasm!(self.asm; and Rd(cond_reg.code()), Rd(val_reg.code())),
+                1 => dynasm!(self.asm
+                    ; not Rd(cond_reg.code())
+                    ; or Rd(cond_reg.code()), Rd(val_reg.code())
+                ),
+                _ => unreachable!(),
+            }
+        } else {
+            let [cond_reg, true_reg, false_reg] = self.ra.assign_gp_regs(
+                &mut self.asm,
+                iidx,
+                [
+                    GPConstraint::Input {
+                        op: condval,
+                        in_ext: RegExtension::Undefined,
+                        force_reg: None,
+                        clobber_reg: false,
+                    },
+                    GPConstraint::InputOutput {
+                        op: trueval,
+                        in_ext: RegExtension::Undefined,
+                        out_ext: RegExtension::Undefined,
+                        force_reg: None,
+                    },
+                    GPConstraint::Input {
+                        op: inst.falseval(self.m),
+                        in_ext: RegExtension::Undefined,
+                        force_reg: None,
+                        clobber_reg: false,
+                    },
+                ],
+            );
+            dynasm!(self.asm
+                ; bt Rd(cond_reg.code()), 0
+                ; cmovnc Rq(true_reg.code()), Rq(false_reg.code())
+            );
+        }
     }
 
     fn cg_select_float(&mut self, iidx: jit_ir::InstIdx, inst: &jit_ir::SelectInst) {
@@ -3265,7 +3464,7 @@ impl<'a> Assemble<'a> {
         }
     }
 
-    fn guard_to_deopt(&mut self, inst: &jit_ir::GuardInst) -> DynamicLabel {
+    fn guard_to_deopt(&mut self, inst: &jit_ir::GuardInst, patch_reg: Rq) -> DynamicLabel {
         // Convert the guard info into deopt info and store it on the heap.
         let mut lives = Vec::new();
         let gi = inst.guard_info(self.m);
@@ -3301,17 +3500,17 @@ impl<'a> Assemble<'a> {
 
         let fail_label = self.asm.new_dynamic_label();
         // FIXME: Move `frames` instead of copying them (requires JIT module to be consumable).
-        let deoptinfo = DeoptInfo {
+        let gd = CompilingGuard {
+            patch_reg,
+            guard_snapshot: self.ra.guard_snapshot(inst),
             bid: gi.bid().clone(),
             fail_label,
             // We don't know the offset yet but will fill this in later.
             fail_offset: AssemblyOffset(0),
             live_vars: lives,
             inlined_frames: gi.inlined_frames().to_vec(),
-            guard: Guard::new(),
         };
-        self.deoptinfo
-            .insert(inst.gidx.into(), (self.ra.guard_snapshot(inst), deoptinfo));
+        self.guards.push(gd);
         fail_label
     }
 
@@ -3353,8 +3552,7 @@ impl<'a> Assemble<'a> {
     fn cg_guard(&mut self, iidx: jit_ir::InstIdx, inst: &jit_ir::GuardInst) {
         let cond = inst.cond(self.m);
         let (reg, patch_reg) = self.ra.tmp_registers_for_guard(&mut self.asm, iidx, cond);
-        let fail_label = self.guard_to_deopt(inst);
-        self.patch_reg.insert(inst.gidx.into(), patch_reg);
+        let fail_label = self.guard_to_deopt(inst, patch_reg);
         dynasm!(self.asm ; bt Rd(reg.code()), 0);
         if inst.expect() {
             dynasm!(self.asm ; jnb =>fail_label);
@@ -3364,9 +3562,13 @@ impl<'a> Assemble<'a> {
     }
 }
 
-/// Information required by deoptimisation.
+/// Information required by guards while we're compiling them.
 #[derive(Debug)]
-struct DeoptInfo {
+struct CompilingGuard {
+    /// An available register at the time of a guard failure. We need this register to patch 64-bit
+    /// jumps when patching side-traces into their parents.
+    patch_reg: Rq,
+    guard_snapshot: GuardSnapshot,
     /// The AOT block that the failing guard originated from.
     bid: aot_ir::BBlockId,
     fail_label: DynamicLabel,
@@ -3374,8 +3576,31 @@ struct DeoptInfo {
     /// Live variables, mapping AOT vars to JIT vars.
     live_vars: Vec<(aot_ir::InstID, VarLocation)>,
     inlined_frames: Vec<InlinedFrame>,
+}
+
+/// A compiled guard: contains information required by deoptimisation.
+#[derive(Debug)]
+struct CompiledGuard {
+    /// The AOT block that the failing guard originated from.
+    bid: aot_ir::BBlockId,
+    fail_offset: AssemblyOffset,
+    /// Live variables, mapping AOT vars to JIT vars.
+    live_vars: Vec<(aot_ir::InstID, VarLocation)>,
+    inlined_frames: Vec<InlinedFrame>,
     /// Keeps track of deopt amount and compiled side-trace.
     guard: Guard,
+}
+
+impl From<CompilingGuard> for CompiledGuard {
+    fn from(gd: CompilingGuard) -> Self {
+        Self {
+            bid: gd.bid,
+            fail_offset: gd.fail_offset,
+            live_vars: gd.live_vars,
+            inlined_frames: gd.inlined_frames,
+            guard: Guard::new(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -3388,8 +3613,8 @@ pub(crate) struct X64CompiledTrace {
     safepoint: Option<DeoptSafepoint>,
     /// The executable code itself.
     buf: ExecutableBuffer,
-    /// Deoptimisation info: maps a [GuardIdx] to [DeoptInfo].
-    deoptinfo: HashMap<usize, DeoptInfo>,
+    /// Information about compiled guards; mostly used for deoptimisation.
+    compiled_guards: Vec<CompiledGuard>,
     /// Stack pointer offset from the base pointer of interpreter frame as defined in
     /// [YkSideTraceInfo::sp_offset].
     sp_offset: usize,
@@ -3417,6 +3642,11 @@ impl X64CompiledTrace {
     fn entry_vars(&self) -> &[VarLocation] {
         &self.entry_vars
     }
+
+    /// Return the [CompiledGuard] at `gidx`.
+    fn compiled_guard(&self, gidx: GuardIdx) -> &CompiledGuard {
+        &self.compiled_guards[usize::from(gidx)]
+    }
 }
 
 impl CompiledTrace for X64CompiledTrace {
@@ -3438,33 +3668,32 @@ impl CompiledTrace for X64CompiledTrace {
 
     fn sidetraceinfo(
         &self,
-        root_ctr: Arc<dyn CompiledTrace>,
         gidx: GuardIdx,
-        connect_ctr: Option<Arc<dyn CompiledTrace>>,
+        target_ctr: Arc<dyn CompiledTrace>,
     ) -> Arc<dyn SideTraceInfo> {
-        let root_ctr = root_ctr.as_any().downcast::<X64CompiledTrace>().unwrap();
+        let target_ctr = target_ctr.as_any().downcast::<X64CompiledTrace>().unwrap();
         // FIXME: Can we reference these instead of copying them, e.g. by passing in a reference to
         // the `CompiledTrace` and `gidx` or better a reference to `DeoptInfo`?
-        let deoptinfo = &self.deoptinfo[&usize::from(gidx)];
-        let lives = deoptinfo
+        let gd = &self.compiled_guards[usize::from(gidx)];
+        let lives = gd
             .live_vars
             .iter()
             .map(|(a, l)| (a.clone(), l.into()))
             .collect();
-        let callframes = deoptinfo.inlined_frames.clone();
+        let callframes = gd.inlined_frames.clone();
 
         Arc::new(YkSideTraceInfo {
-            bid: deoptinfo.bid.clone(),
+            bid: gd.bid.clone(),
             lives,
             callframes,
-            entry_vars: root_ctr.entry_vars().to_vec(),
+            entry_vars: target_ctr.entry_vars().to_vec(),
             sp_offset: self.sp_offset,
-            target_ctr: connect_ctr.unwrap_or(root_ctr),
+            target_ctr,
         })
     }
 
     fn guard(&self, gidx: GuardIdx) -> &crate::compile::Guard {
-        &self.deoptinfo[&usize::from(gidx)].guard
+        &self.compiled_guards[usize::from(gidx)].guard
     }
 
     /// Patch the address of a side-trace directly into the parent trace.
@@ -3476,7 +3705,7 @@ impl CompiledTrace for X64CompiledTrace {
         let _lock = LK_PATCH.lock();
 
         // Calculate a pointer to the address we want to patch.
-        let patch_offset = self.deoptinfo[&usize::from(gidx)].fail_offset;
+        let patch_offset = self.compiled_guards[usize::from(gidx)].fail_offset;
         // Add 2 bytes to get to the address operand of the mov instruction.
         let patch_addr = unsafe { self.buf.ptr(patch_offset).offset(2) };
         // FIXME: Is it better/faster to protect the entire buffer in one go and then patch each
@@ -3830,7 +4059,7 @@ mod tests {
         let m = Module::from_str(mod_str);
         let mt = MT::new().unwrap();
         let hl = HotLocation {
-            kind: HotLocationKind::Tracing,
+            kind: HotLocationKind::Tracing(mt.next_trace_id()),
             tracecompilation_errors: 0,
             #[cfg(feature = "ykd")]
             debug_str: None,
@@ -3923,6 +4152,31 @@ mod tests {
                 ",
             false,
         );
+        codegen_and_test(
+            "
+              entry:
+                %0: ptr = param reg
+                %1: ptr = param reg
+                %2: i64 = load %0
+                %3: i64 = add %2, 2147483647i64
+                *%0 = %3
+                %5: i64 = load %1
+                %6: i64 = add %5, 18446744073709551615i64
+                *%1 = %6
+            ",
+            "
+                ...
+                ; %2: i64 = load %0
+                ; %3: i64 = add %2, 2147483647i64
+                ; *%0 = %3
+                add qword ptr [r.64._], 0x7FFFFFFF
+                ; %5: i64 = load %1
+                ; %6: i64 = add %5, 18446744073709551615i64
+                ; *%1 = %6
+                add qword ptr [r.64._], 0xffffffffffffffff
+                ",
+            false,
+        );
 
         // Check it doesn't optimise when it shouldn't
         codegen_and_test(
@@ -3988,6 +4242,28 @@ mod tests {
                 ; *%0 = %3
                 and r.32.y, 0xff
                 mov [rax], r.8.y
+                ",
+            false,
+        );
+
+        codegen_and_test(
+            "
+              entry:
+                %0: ptr = param reg
+                %1: i64 = load %0
+                %2: i64 = add %1, 2147483648i64
+                *%0 = %2
+                black_box %2
+            ",
+            "
+                ...
+                ; %1: i64 = load %0
+                mov r.64.a, [r.64._]
+                ; %2: i64 = add %1, 2147483648i64
+                mov r.64.b, 0x80000000
+                add r.64.a, r.64.b
+                ; *%0 = %2
+                mov [rax], r.64.a
                 ",
             false,
         );
@@ -4491,23 +4767,34 @@ mod tests {
               entry:
                 %0: i8 = param reg
                 %1: i8 = param reg
-                %2: i1 = eq %0, 2i8
-                %3: i8 = and %1, 3i8
-                %4: i1 = eq %3, 4i8
-                black_box %2
-                black_box %4
+                %2: i64 = param reg
+                %3: i1 = eq %0, 2i8
+                %4: i8 = and %1, 3i8
+                %5: i1 = eq %4, 4i8
+                %6: i64 = and %2, 2147483647i64
+                %7: i64 = and %2, 2147483648i64
+                black_box %3
+                black_box %5
+                black_box %6
+                black_box %7
             ",
             "
                 ...
-                ; %2: i1 = eq %0, 2i8
+                ; %3: i1 = eq %0, 2i8
                 and r.32.a, 0xff
                 cmp r.32.a, 0x02
                 setz ...
-                ; %3: i8 = and %1, 3i8
+                ; %4: i8 = and %1, 3i8
                 and r.32.b, 0x03
-                ; %4: i1 = eq %3, 4i8
+                ; %5: i1 = eq %4, 4i8
                 cmp r.32.b, 0x04
                 setz ...
+                ; %6: i64 = and %2, 2147483647i64
+                mov r.64.x, r.64.y
+                and r.64.y, 0x7fffffff
+                ; %7: i64 = and %2, 2147483648i64
+                mov r.64.z, 0x80000000
+                and r.64.x, r.64.z
                 ",
             false,
         );
@@ -4655,6 +4942,45 @@ mod tests {
                 ",
             false,
         );
+
+        // Check that OR implicitly zero extends
+        codegen_and_test(
+            "
+              entry:
+                %0: i8 = param reg
+                %1: i8 = param reg
+                %2: i64 = param reg
+                %3: i1 = eq %0, 2i8
+                %4: i8 = or %1, 3i8
+                %5: i1 = eq %4, 4i8
+                %6: i64 = or %2, 2147483647i64
+                %7: i64 = or %2, 2147483648i64
+                black_box %3
+                black_box %5
+                black_box %6
+                black_box %7
+            ",
+            "
+                ...
+                ; %3: i1 = eq %0, 2i8
+                and r.32.a, 0xff
+                cmp r.32.a, 0x02
+                setz ...
+                ; %4: i8 = or %1, 3i8
+                or r.32.b, 0x03
+                ; %5: i1 = eq %4, 4i8
+                and r.32.b, 0xff
+                cmp r.32.b, 0x04
+                setz ...
+                ; %6: i64 = or %2, 2147483647i64
+                mov r.64.x, r.64.y
+                or r.64.y, 0x7fffffff
+                ; %7: i64 = or %2, 2147483648i64
+                mov r.64.z, 0x80000000
+                or r.64.x, r.64.z
+                ",
+            false,
+        );
     }
 
     #[test]
@@ -4781,6 +5107,45 @@ mod tests {
                 xor r.32.c, r.32.d
                 ; %7: i1 = xor %4, 1i1
                 xor r.32.e, 0x01
+                ",
+            false,
+        );
+
+        // Check that XOR implicitly zero extends
+        codegen_and_test(
+            "
+              entry:
+                %0: i8 = param reg
+                %1: i8 = param reg
+                %2: i64 = param reg
+                %3: i1 = eq %0, 2i8
+                %4: i8 = xor %1, 3i8
+                %5: i1 = eq %4, 4i8
+                %6: i64 = xor %2, 2147483647i64
+                %7: i64 = xor %2, 2147483648i64
+                black_box %3
+                black_box %5
+                black_box %6
+                black_box %7
+            ",
+            "
+                ...
+                ; %3: i1 = eq %0, 2i8
+                and r.32.a, 0xff
+                cmp r.32.a, 0x02
+                setz ...
+                ; %4: i8 = xor %1, 3i8
+                xor r.32.b, 0x03
+                ; %5: i1 = eq %4, 4i8
+                and r.32.b, 0xff
+                cmp r.32.b, 0x04
+                setz ...
+                ; %6: i64 = xor %2, 2147483647i64
+                mov r.64.x, r.64.y
+                xor r.64.y, 0x7fffffff
+                ; %7: i64 = xor %2, 2147483648i64
+                mov r.64.z, 0x80000000
+                xor r.64.x, r.64.z
                 ",
             false,
         );
@@ -5001,7 +5366,22 @@ mod tests {
             "
                ...
                ; %1: i32 = call @llvm.ctpop.i32(%0)
-               mov r.32.a, r.32.a
+               popcnt r.32._, r.32.a
+            ",
+            false,
+        );
+
+        codegen_and_test(
+            "
+             func_decl llvm.ctpop.i64 (i64) -> i64
+             entry:
+               %0: i64 = param reg
+               %1: i64 = call @llvm.ctpop.i64(%0)
+               black_box %1
+            ",
+            "
+               ...
+               ; %1: i64 = call @llvm.ctpop.i64(%0)
                popcnt r.64._, r.64.a
             ",
             false,
@@ -5022,6 +5402,26 @@ mod tests {
                ...
                ; %1: double = call @llvm.floor.f64(%0)
                roundsd fp.128._, fp.128._, 0x01
+            ",
+            false,
+        );
+    }
+
+    #[test]
+    fn cg_call_fshl() {
+        codegen_and_test(
+            "
+             func_decl llvm.fshl.i64 (i64, i64, i64) -> i64
+             entry:
+               %0: i64 = param reg
+               %1: i64 = param reg
+               %2: i64 = call @llvm.fshl.i64(%0, %1, 17i64)
+               black_box %2
+            ",
+            "
+               ...
+               ; %2: i64 = call @llvm.fshl.i64(%0, %1, 17i64)
+               shld r.64.x, r.64.y, 0x11
             ",
             false,
         );
@@ -5501,6 +5901,39 @@ mod tests {
             ",
             false,
         );
+
+        codegen_and_test(
+            "
+              entry:
+                %0: i64 = param reg
+                %1: i1 = eq %0, 2147483647i64
+                %2: i1 = eq %0, 2147483648i64
+                %3: i1 = slt %0, 4294967296i64
+                %4: i1 = slt %0, 18446744073709551615i64
+                black_box %1
+                black_box %2
+                black_box %3
+                black_box %4
+            ",
+            "
+                ...
+                ; %1: i1 = eq %0, 2147483647i64
+                cmp r.64.x, 0x7fffffff
+                setz r.8._
+                ; %2: i1 = eq %0, 2147483648i64
+                mov r.64.y, 0x80000000
+                cmp r.64.x, r.64.y
+                setz r.8._
+                ; %3: i1 = slt %0, 4294967296i64
+                mov r.64.z, 0x100000000
+                cmp r.64.x, r.64.z
+                setl r.8._
+                ; %4: i1 = slt %0, 18446744073709551615i64
+                cmp r.64.x, 0xffffffffffffffff
+                setl r.8._
+            ",
+            false,
+        );
     }
 
     #[test]
@@ -5672,21 +6105,66 @@ mod tests {
     }
 
     #[test]
-    fn cg_select_int() {
+    fn cg_select_i1_consts() {
         codegen_and_test(
             "
               entry:
                 %0: i1 = param reg
-                %1: i32 = %0 ? 1i32 : 2i32
-                black_box %1
+                %1: i1 = param reg
+                %2: i1 = %0 ? %1 : 0i1
+                black_box %2
             ",
             "
                 ...
-                ; %1: i32 = %0 ? 1i32 : 2i32
-                mov r.32.x, 0x01
-                mov r.32.y, 0x02
-                bt r.32.z, 0x00
-                cmovnb r.64.x, r.64.y
+                ; %2: i1 = %0 ? %1 : 0i1
+                and eax, ecx
+            ",
+            false,
+        );
+        codegen_and_test(
+            "
+              entry:
+                %0: i1 = param reg
+                %1: i1 = param reg
+                %2: i1 = %0 ? %1 : 1i1
+                black_box %2
+            ",
+            "
+                ...
+                ; %2: i1 = %0 ? %1 : 1i1
+                not eax
+                or eax, ecx
+            ",
+            false,
+        );
+        codegen_and_test(
+            "
+              entry:
+                %0: i1 = param reg
+                %1: i1 = param reg
+                %2: i1 = %0 ? 0i1 : %1
+                black_box %2
+            ",
+            "
+                ...
+                ; %2: i1 = %0 ? 0i1 : %1
+                not eax
+                and eax, ecx
+            ",
+            false,
+        );
+        codegen_and_test(
+            "
+              entry:
+                %0: i1 = param reg
+                %1: i1 = param reg
+                %2: i1 = %0 ? 1i1 : %1
+                black_box %2
+            ",
+            "
+                ...
+                ; %2: i1 = %0 ? 1i1 : %1
+                or eax, ecx
             ",
             false,
         );
@@ -5797,6 +6275,31 @@ mod tests {
                 ...
                 ; %1: double = si_to_fp %0
                 cvtsi2sd fp.128.x, r.32.x
+                ...
+                ",
+            false,
+        );
+    }
+
+    #[test]
+    fn cg_uitofp_double() {
+        codegen_and_test(
+            "
+              entry:
+                %0: i64 = param reg
+                %1: double = ui_to_fp %0
+                black_box %1
+            ",
+            "
+                ...
+                ; %1: double = ui_to_fp %0
+                ...
+                movq fp.128.x, r.64.x
+                punpckldq fp.128.x, [0x{{addr1}}]
+                subpd fp.128.x, [0x{{addr2}}]
+                movapd fp.128.y, fp.128.x
+                unpckhpd fp.128.y, fp.128.x
+                addsd fp.128.y, fp.128.x
                 ...
                 ",
             false,
@@ -6422,7 +6925,7 @@ mod tests {
 
         let mt = MT::new().unwrap();
         let hl = HotLocation {
-            kind: HotLocationKind::Tracing,
+            kind: HotLocationKind::Tracing(mt.next_trace_id()),
             tracecompilation_errors: 0,
             #[cfg(feature = "ykd")]
             debug_str: None,

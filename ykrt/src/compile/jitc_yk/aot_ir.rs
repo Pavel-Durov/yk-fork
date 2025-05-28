@@ -39,7 +39,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
-use typed_index_collections::TiVec;
+use typed_index_collections::{TiSlice, TiVec};
 
 /// A magic number that all bytecode payloads begin with.
 const MAGIC: u32 = 0xedd5f00d;
@@ -659,6 +659,7 @@ pub(crate) enum CastKind {
     BitCast = 6,
     PtrToInt = 7,
     IntToPtr = 8,
+    UIToFP = 9,
 }
 
 impl Display for CastKind {
@@ -673,6 +674,7 @@ impl Display for CastKind {
             Self::BitCast => "bitcast",
             Self::IntToPtr => "int_to_ptr",
             Self::PtrToInt => "ptr_to_int",
+            Self::UIToFP => "ui_to_fp",
         };
         write!(f, "{s}")
     }
@@ -959,6 +961,7 @@ pub(crate) enum Inst {
         num_args: u32,
         #[deku(count = "num_args")]
         args: Vec<Operand>,
+        safepoint: DeoptSafepoint,
     },
     #[deku(id = "16")]
     Select {
@@ -1082,13 +1085,6 @@ impl Inst {
             Self::FNeg { val } => Some(val.type_(m)),
             Self::DebugStr { .. } => None,
             Self::IdempotentPromote { tyidx, .. } => Some(m.type_(*tyidx)),
-        }
-    }
-
-    pub(crate) fn is_mappable_call(&self, m: &Module) -> bool {
-        match self {
-            Self::Call { callee, .. } => !m.func(*callee).is_declaration(),
-            _ => false,
         }
     }
 
@@ -1330,13 +1326,20 @@ impl fmt::Display for DisplayableInst<'_> {
                 ftyidx: _,
                 callop,
                 args,
+                safepoint,
             } => {
                 let args_s = args
                     .iter()
                     .map(|a| a.display(self.m).to_string())
                     .collect::<Vec<_>>()
                     .join(", ");
-                write!(f, "icall {}({})", callop.display(self.m), args_s)
+                write!(
+                    f,
+                    "icall {}({}) {}",
+                    callop.display(self.m),
+                    args_s,
+                    safepoint.display(self.m)
+                )
             }
             Inst::Select {
                 cond,
@@ -1404,6 +1407,10 @@ impl BBlock {
             m,
             bbid,
         }
+    }
+
+    pub(crate) fn insts(&self) -> &TiSlice<InstIdx, Inst> {
+        self.insts.as_slice()
     }
 }
 
@@ -1498,6 +1505,20 @@ impl Func {
             m,
             funcidx,
         }
+    }
+
+    /// Determine if the function contains any calls to the named function.
+    pub(crate) fn contains_call_to(&self, m: &Module, func_name: &str) -> bool {
+        for bb in &self.bblocks {
+            for inst in bb.insts() {
+                if let Inst::Call { callee, .. } = inst
+                    && m.func(*callee).name() == func_name
+                {
+                    return true;
+                }
+            }
+        }
+        false
     }
 }
 
