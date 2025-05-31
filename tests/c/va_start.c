@@ -1,4 +1,3 @@
-// ignore-if: test $SWT_SKIP_FAILING_TEST=true
 // Run-time:
 //   env-var: YKD_LOG_IR=aot,jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
@@ -14,7 +13,7 @@
 //     --- End aot ---
 //     --- Begin jit-pre-opt ---
 //     ...
-//     %{{_}}: i32 = call @f(...
+//     %{{_}}: i32 = call @__yk_unopt_f(...
 //     ...
 //     --- End jit-pre-opt ---
 //     3: 36
