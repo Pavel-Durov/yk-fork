@@ -165,7 +165,6 @@ fn handle_register_to_register_additional_locations(
     reg_store_rbp_offset: i32,
     dst_add_locs: &Vec<i16>,
     src_val_size: &u16,
-    dst_reg_num: &u16,
     dest_reg_nums: &mut HashMap<u16, u16>,
 ) {
     for location in dst_add_locs {
@@ -211,7 +210,6 @@ fn handle_indirect_to_register_additional_locations(
     asm: &mut dynasmrt::Assembler<dynasmrt::x64::X64Relocation>,
     dst_add_locs: &Vec<i16>,
     src_val_size: &u16,
-    dst_reg_num: &u16,
     temp_buffer_offset: i32,
     live_vars_buffer: &LiveVarsBuffer,
     dest_reg_nums: &mut HashMap<u16, u16>,
@@ -278,7 +276,7 @@ pub(crate) fn set_destination_live_vars(
         let dst_location = &dst_var.get(0).unwrap();
 
         match src_location {
-            Register(src_reg_num, src_val_size, src_add_locs) => {
+            Register(src_reg_num, src_val_size, _src_add_locs) => {
                 let reg_store_offset = reg_num_to_ykrt_control_point_rsp_offset(*src_reg_num);
                 let reg_store_rbp_offset =
                     i32::try_from(rbp_offset_reg_store - reg_store_offset as i64).unwrap();
@@ -299,7 +297,6 @@ pub(crate) fn set_destination_live_vars(
                                 reg_store_rbp_offset,
                                 dst_add_locs,
                                 src_val_size,
-                                dst_reg_num,
                                 &mut dest_reg_nums,
                             );
 
@@ -386,7 +383,6 @@ pub(crate) fn set_destination_live_vars(
                                 asm,
                                 dst_add_locs,
                                 &size,
-                                dst_reg_num,
                                 temp_buffer_offset,
                                 &live_vars_buffer,
                                 &mut dest_reg_nums,
@@ -454,7 +450,6 @@ pub(crate) fn set_destination_live_vars(
                             reg_store_rbp_offset,
                             dst_add_locs,
                             src_val_size,
-                            dst_reg_num,
                             &mut dest_reg_nums,
                         );
                         assert!(
@@ -514,7 +509,6 @@ pub(crate) fn set_destination_live_vars(
                             asm,
                             dst_add_locs,
                             &size,
-                            dst_reg_num,
                             temp_buffer_offset,
                             &live_vars_buffer,
                             &mut dest_reg_nums,
@@ -1045,7 +1039,7 @@ mod live_vars_tests {
         };
 
         let rbp_offset_reg_store: i32 = 200;
-        let dest_reg_nums = set_destination_live_vars(
+        set_destination_live_vars(
             &mut asm,
             &src_rec,
             &dst_rec,

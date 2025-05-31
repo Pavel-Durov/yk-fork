@@ -20,7 +20,7 @@ use crate::trace::swt::cfg::{CPTransitionDirection, SWT_MULTI_MODULE};
 use crate::trace::swt::cp::{swt_module_cp_transition, CPTransition};
 
 use atomic_enum::atomic_enum;
-use parking_lot::{Condvar, Mutex, MutexGuard};
+use parking_lot::{Mutex};
 #[cfg(not(all(feature = "yk_testing", not(test))))]
 use parking_lot_core::SpinWait;
 
