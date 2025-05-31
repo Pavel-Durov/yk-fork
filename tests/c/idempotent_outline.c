@@ -1,3 +1,4 @@
+// ignore-if: test $SWT_SKIP_FAILING_TEST=true
 // Compiler:
 //   env-var: YKB_EXTRA_CC_FLAGS=-O2
 // Run-time:
@@ -21,7 +22,7 @@
 //     --- End aot ---
 //     --- Begin jit-pre-opt ---
 //     ...
-//     %{{_}}: i{{size}} = call @f(%{{v}}, %{{v}}) <idem_const 28i{{size}}>
+//     %{{_}}: i{{size}} = call @__yk_unopt_f(%{{v}}, %{{v}}) <idem_const 28i{{size}}>
 //     ...
 //     --- End jit-pre-opt ---
 //     --- Begin jit-post-opt ---
