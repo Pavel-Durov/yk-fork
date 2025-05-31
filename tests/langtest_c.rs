@@ -13,10 +13,17 @@ use ykbuild::{completion_wrapper::CompletionWrapper, ykllvm_bin};
 const COMMENT: &str = "//";
 const COMMENT_PREFIX: &str = "##";
 
+const USE_LOCAL_DIR: bool = false;
+
 fn main() {
     println!("Running C tests...");
 
-    let tempdir = TempDir::new().unwrap();
+    let tempdir = if USE_LOCAL_DIR {
+        PathBuf::from("./.c_tests")
+    } else {
+        TempDir::new().unwrap().into_path()
+    };
+    std::fs::create_dir_all(&tempdir).unwrap();
 
     // Generate a `compile_commands.json` database for clangd.
     let ccg = CompletionWrapper::new(ykllvm_bin("clang"), "c_tests");
@@ -64,7 +71,7 @@ fn main() {
                 .get(key)
                 .unwrap_or(&Vec::new())
                 .iter()
-                .map(|l| l.generate_obj(tempdir.path()))
+                .map(|l| l.generate_obj(&tempdir))
                 .collect::<Vec<PathBuf>>();
 
             let mut compiler =
