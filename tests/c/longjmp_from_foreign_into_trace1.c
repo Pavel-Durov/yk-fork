@@ -1,5 +1,4 @@
-// ## FIXME: Implement setjmp/longjmp detection for swt.
-// ignore-if: test "$YKB_TRACER" = "swt"
+// ignore-if: test $SWT_SKIP_FAILING_TEST=true
 // Run-time:
 //   env-var: YKD_LOG_IR=jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
@@ -8,10 +7,11 @@
 //     yk-tracing: start-tracing
 //     we jumped
 //     yk-tracing: stop-tracing
-//     yk-warning: trace-compilation-aborted: longjmp encountered
+//     yk-warning: trace-compilation-aborted: irregular control flow detected
 //     ...
 
-// Tests that we can deal with setjmp/longjmp.
+// Tests that we can deal with setjmp/longjmp when we jump from foreign code
+// into a different place in the function that started outlining.
 
 #include <assert.h>
 #include <setjmp.h>
@@ -23,12 +23,12 @@
 
 jmp_buf buf;
 
+// By annotating this `yk_outline` we don't serialise its IR and therefore
+// can't see the `longjmp` inside. The tracebuilder is expected to notice the
+// "odd" control flow that results.
+__attribute__((noinline, yk_outline))
 void ljmp() {
-  int r = 0;
-  for (int i = 0; i < 10; i++) {
-    r += 1;
-  }
-  longjmp(buf, r);
+  longjmp(buf, 1);
 }
 
 int main(int argc, char **argv) {
@@ -36,26 +36,19 @@ int main(int argc, char **argv) {
   yk_mt_hot_threshold_set(mt, 0);
   YkLocation loc = yk_location_new();
 
-  int res = 9998;
-  int i = 4;
+  int i = 2;
   NOOPT_VAL(loc);
-  NOOPT_VAL(res);
   NOOPT_VAL(i);
-  int r = setjmp(buf);
-  if (r == 10) {
+  if (setjmp(buf) != 0) {
     fprintf(stderr, "we jumped\n");
   }
   while (i > 0) {
-    yk_mt_control_point(mt, &loc);
-    if (r != 10) {
-      ljmp();
-    }
-    fprintf(stderr, "i=%d\n", i);
-    res += 2;
     i--;
+    yk_mt_control_point(mt, &loc);
+    ljmp();
+    fprintf(stderr, "i=%d\n", i);
   }
   printf("exit");
-  NOOPT_VAL(res);
   yk_location_drop(loc);
   yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
