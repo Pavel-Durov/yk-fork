@@ -34,7 +34,6 @@
 //     yk-execution: enter-jit-code
 //     yk-execution: deoptimise
 
-
 // Check that promotion works in traces.
 
 #include <inttypes.h>

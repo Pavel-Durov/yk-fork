@@ -36,8 +36,6 @@
 //     0
 //     exit
 
-// SWT Note: Signal 11 after exec trace
-
 // Test deoptimisation with multiple nested calls.
 
 #include <assert.h>

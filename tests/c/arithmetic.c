@@ -63,30 +63,3 @@ int main(int argc, char **argv) {
   yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }
-
-//     yk-jit-event: start-tracing
-//     add 5
-//     sub 3
-//     mul 12
-//     yk-jit-event: stop-tracing
-//     --- Begin jit-pre-opt ---
-//     ...
-//     %{{1}}: i32 = add %{{2}}, %{{argc}}
-//     ...
-//     %{{3}}: i32 = sub %{{4}}, %{{argc}}
-//     ...
-//     --- End jit-pre-opt ---
-
-//     ...
-//     add 4
-//     sub 2
-//     mul 9
-//     yk-jit-event: enter-jit-code
-//     add 3
-//     sub 1
-//     mul 6
-//     add 2
-//     sub 0
-//     mul 3
-//     yk-jit-event: deoptimise
-//     exit

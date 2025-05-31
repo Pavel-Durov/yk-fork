@@ -36,8 +36,6 @@
 
 // Test outlining of recursive calls.
 
-// SWT Note: Signal 11 after exec trace
-
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>

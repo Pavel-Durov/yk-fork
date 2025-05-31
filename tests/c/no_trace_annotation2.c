@@ -31,8 +31,6 @@
 // Check that the `yk_outline` annotation works when a `yk_outline` annotated
 // function calls another function.
 
-// SWT Note: Signal 11 after exec trace
-
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>

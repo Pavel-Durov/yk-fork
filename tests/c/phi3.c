@@ -32,8 +32,6 @@
 
 // Check that PHI nodes JIT properly.
 
-// SWT Note: Signal 11 after exec trace
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <yk.h>

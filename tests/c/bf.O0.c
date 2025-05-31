@@ -15,10 +15,6 @@
 // This is bf_base.c from https://github.com/ykjit/ykcbf modified to hard-code the input to the
 // interpreter (hello.bf from the same repo).
 
-// SWT Note: Looks like its failing on the deoptimise event.
-// yk-jit-event: deoptimise
-
-
 #include <err.h>
 #include <fcntl.h>
 #include <stdbool.h>
