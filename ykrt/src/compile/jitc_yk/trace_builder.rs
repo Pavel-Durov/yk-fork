@@ -1534,20 +1534,7 @@ impl<Register: Send + Sync + 'static> TraceBuilder<Register> {
                         // Print the block information
                         eprintln!("\n=== BLOCK: {:?} ===", bid);
                         let blk = self.aot_mod.bblock(&bid);
-                        // Print all instructions in the block
-                        for (inst_idx, inst) in blk.insts.iter().enumerate() {
-                            eprintln!("  [{}] {:?}", inst_idx, inst);
-                            // Special handling for promote instructions
-                            if let aot_ir::Inst::Promote { val, tyidx, .. } = inst {
-                                eprintln!(
-                                    "    PROMOTE: val={:?}, tyidx={:?}, promote_idx={}/{}",
-                                    val,
-                                    tyidx,
-                                    self.promote_idx,
-                                    self.promotions.len()
-                                );
-                            }
-                        }
+                        println!("{}", blk.display(self.aot_mod, None))
                     }
                     // MappedAOTBBlock block
                     if let Some(prev_mbid) = &prev_mappable_bid {

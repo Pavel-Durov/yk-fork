@@ -14,6 +14,7 @@ use std::{
     },
 };
 
+#[cfg(tracer_swt)]
 use crate::trace::swt::cfg::ControlPointStackMapId;
 #[cfg(tracer_swt)]
 use crate::trace::swt::cfg::{CPTransitionDirection, SWT_MULTI_MODULE};
