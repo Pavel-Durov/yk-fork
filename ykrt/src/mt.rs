@@ -14,13 +14,14 @@ use std::{
     },
 };
 
+use crate::trace::swt::cfg::ControlPointStackMapId;
 #[cfg(tracer_swt)]
 use crate::trace::swt::cfg::{CPTransitionDirection, SWT_MULTI_MODULE};
 #[cfg(tracer_swt)]
 use crate::trace::swt::cp::{swt_module_cp_transition, CPTransition};
 
 use atomic_enum::atomic_enum;
-use parking_lot::{Mutex};
+use parking_lot::Mutex;
 #[cfg(not(all(feature = "yk_testing", not(test))))]
 use parking_lot_core::SpinWait;
 
@@ -426,7 +427,24 @@ impl MT {
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
     pub fn control_point(self: &Arc<Self>, loc: &Location, frameaddr: *mut c_void, smid: u64) {
         match self.transition_control_point(loc, frameaddr) {
-            TransitionControlPoint::NoAction => (),
+            TransitionControlPoint::NoAction => {
+                #[cfg(tracer_swt)]
+                if smid == ControlPointStackMapId::UnOpt as u64 {
+                    if *SWT_MULTI_MODULE {
+                        unsafe {
+                            // Transition into opt interpreter when we stop tracing.
+                            swt_module_cp_transition(CPTransition {
+                                direction: CPTransitionDirection::UnoptToOpt,
+                                frameaddr,
+                                rsp: 0 as *const c_void,
+                                trace_addr: 0 as *const c_void,
+                                exec_trace: false,
+                                exec_trace_fn: __yk_multi_module_exec_trace,
+                            });
+                        }
+                    }
+                }
+            }
             TransitionControlPoint::AbortTracing(ak) => {
                 let thread_tracer = MTThread::with_borrow_mut(|mtt| match mtt.pop_tstate() {
                     MTThreadState::Tracing { thread_tracer, .. } => thread_tracer,
@@ -467,22 +485,23 @@ impl MT {
                     });
                 });
                 self.stats.timing_state(TimingState::JitExecuting);
-
                 #[cfg(tracer_swt)]
-                if *SWT_MULTI_MODULE {
-                    unsafe {
-                        // Transition to unopt before trace execution since``
-                        // the trace was collected un unopt version.
-                        // This function will call __yk_exec_trace when live variables are restored.
-                        #[cfg(tracer_swt)]
-                        swt_module_cp_transition(CPTransition {
-                            direction: CPTransitionDirection::OptToUnopt,
-                            frameaddr,
-                            rsp,
-                            trace_addr: trace_addr,
-                            exec_trace: true,
-                            exec_trace_fn: __yk_multi_module_exec_trace,
-                        });
+                if smid == ControlPointStackMapId::Opt as u64 {
+                    if *SWT_MULTI_MODULE {
+                        unsafe {
+                            // Transition to unopt before trace execution since``
+                            // the trace was collected un unopt version.
+                            // This function will call __yk_exec_trace when live variables are restored.
+                            #[cfg(tracer_swt)]
+                            swt_module_cp_transition(CPTransition {
+                                direction: CPTransitionDirection::OptToUnopt,
+                                frameaddr,
+                                rsp,
+                                trace_addr: trace_addr,
+                                exec_trace: true,
+                                exec_trace_fn: __yk_multi_module_exec_trace,
+                            });
+                        }
                     }
                 }
 

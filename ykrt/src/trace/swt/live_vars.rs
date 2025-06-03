@@ -154,7 +154,8 @@ fn get_size(src_val_size: &u16, dst_val_size: &u16) -> u16 {
     assert!(
         dst_val_size == src_val_size,
         "Register2Indirect - src and dst val size must match. got src: {} and dst: {}",
-        src_val_size, dst_val_size
+        src_val_size,
+        dst_val_size
     );
     *src_val_size
 }
@@ -407,7 +408,7 @@ pub(crate) fn set_destination_live_vars(
                                 src_location, dst_location
                             );
                         }
-                        
+
                         let size = get_size(src_val_size, dst_val_size);
 
                         emit_mem_to_mem(

@@ -7,7 +7,9 @@ set breakpoint pending on
 # break ykrt::trace::swt::cp::debug_return_into_unopt_cp
 # break ykrt::trace::swt::cp::debug_return_into_opt_cp
 # break __yk_clone_main
-break main
+# break ykrt::compile::jitc_yk::codegen::x64::deopt:327
+# break ykrt::compile::jitc_yk::codegen::x64::deopt::__yk_deopt
+break main::76
 
 # break ykrt/src/mt.rs:460 # exec trace
 
@@ -63,5 +65,4 @@ printf "RSP Offsets and Values:\n"
     printf "R15 (0x00): %016x\n", *((unsigned long *)($rsp + 0x00))
 end
 
-dashboard assembly -style height 50
-
+dashboard assembly -style height 15
