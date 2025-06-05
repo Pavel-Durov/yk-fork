@@ -97,9 +97,9 @@ mod parser;
 #[cfg(any(debug_assertions, test))]
 mod well_formed;
 
-use super::aot_ir;
+use super::{aot_ir, codegen::x64::Register, YkSideTraceInfo};
 use crate::{
-    compile::{jitc_yk::arbbitint::ArbBitInt, CompilationError, CompiledTrace, SideTraceInfo},
+    compile::{jitc_yk::arbbitint::ArbBitInt, CompilationError, CompiledTrace},
     mt::TraceId,
 };
 use indexmap::IndexSet;
@@ -128,7 +128,7 @@ pub(crate) enum TraceKind {
     Connector(Arc<dyn CompiledTrace>),
     /// A sidetrace: this will start at the point of a guard and will jump to
     /// [SideTraceInfo::target_ctr].
-    Sidetrace(Arc<dyn SideTraceInfo>),
+    Sidetrace(Arc<YkSideTraceInfo<Register>>),
 }
 
 impl std::fmt::Debug for TraceKind {
@@ -1475,6 +1475,10 @@ impl GuardInfo {
     /// Return the [InlinedFunc]s for this guard.
     pub(crate) fn inlined_frames(&self) -> &[InlinedFrame] {
         &self.inlined_frames
+    }
+
+    pub(crate) fn safepoint_id(&self) -> u64 {
+        self.safepoint_id
     }
 }
 

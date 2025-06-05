@@ -26,7 +26,7 @@ pub(crate) static TRACE_VERBOSE: LazyLock<bool> =
     LazyLock::new(|| env::var("TRACE_VERBOSE").map(|v| v == "1").unwrap_or(false));
 
 /// Given an execution trace and AOT IR, creates a JIT IR trace.
-pub(crate) struct TraceBuilder<Register: Send + Sync> {
+pub(crate) struct TraceBuilder {
     /// The AOT IR.
     aot_mod: &'static Module,
     /// The JIT IR this struct builds.
@@ -52,7 +52,6 @@ pub(crate) struct TraceBuilder<Register: Send + Sync> {
     promotions: Box<[u8]>,
     /// The trace's current position in the promotions array.
     promote_idx: usize,
-    phantom: PhantomData<Register>,
     /// The dynamically recorded debug strings, in the order that the corresponding
     /// `yk_debug_str()` calls were encountered in the trace.
     debug_strs: Vec<String>,
@@ -62,7 +61,7 @@ pub(crate) struct TraceBuilder<Register: Send + Sync> {
     inferred_consts: HashMap<jit_ir::InstIdx, jit_ir::ConstIdx>,
 }
 
-impl<Register: Send + Sync + 'static> TraceBuilder<Register> {
+impl TraceBuilder {
     /// Create a trace builder.
     ///
     /// Arguments:
@@ -95,7 +94,6 @@ impl<Register: Send + Sync + 'static> TraceBuilder<Register> {
             recursion_count: 0,
             promotions,
             promote_idx: 0,
-            phantom: PhantomData,
             debug_strs,
             debug_str_idx: 0,
             inferred_consts: HashMap::new(),
@@ -637,7 +635,7 @@ impl<Register: Send + Sync + 'static> TraceBuilder<Register> {
         }
 
         let gi = jit_ir::GuardInfo::new(bid.clone(), live_vars, callframes, safepoint.id);
-        let gi_idx = self.jit_mod.push_guardinfo(gi).unwrap();
+        let gi_idx = self.jit_mod.push_guardinfo(gi)?;
 
         // Can we infer a constant from this?
         //
@@ -1409,10 +1407,7 @@ impl<Register: Send + Sync + 'static> TraceBuilder<Register> {
         let mut prev_mappable_bid: Option<BBlockId> = None;
 
         if let TraceKind::Sidetrace(sti) = self.jit_mod.tracekind() {
-            let sti = Arc::clone(sti)
-                .as_any()
-                .downcast::<YkSideTraceInfo<Register>>()
-                .unwrap();
+            let sti = Arc::clone(sti);
             // Set the previous block to the last block in the parent trace. Required in order to
             // process phi nodes.
             prev_bid = Some(sti.bid.clone());
@@ -1679,12 +1674,12 @@ struct InlinedFrame {
 }
 
 /// Create JIT IR from the (`aot_mod`, `ta_iter`) tuple.
-pub(super) fn build<Register: Send + Sync + 'static>(
+pub(super) fn build(
     mt: &Arc<MT>,
     aot_mod: &'static Module,
     ctrid: TraceId,
     ta_iter: Box<dyn AOTTraceIterator>,
-    sti: Option<Arc<YkSideTraceInfo<Register>>>,
+    sti: Option<Arc<YkSideTraceInfo<super::codegen::x64::Register>>>,
     promotions: Box<[u8]>,
     debug_strs: Vec<String>,
     connector_tid: Option<Arc<dyn CompiledTrace>>,
@@ -1696,6 +1691,5 @@ pub(super) fn build<Register: Send + Sync + 'static>(
     } else {
         TraceKind::HeaderOnly
     };
-    TraceBuilder::<Register>::new(mt, tracekind, aot_mod, ctrid, promotions, debug_strs)?
-        .build(mt, ta_iter)
+    TraceBuilder::new(mt, tracekind, aot_mod, ctrid, promotions, debug_strs)?.build(mt, ta_iter)
 }

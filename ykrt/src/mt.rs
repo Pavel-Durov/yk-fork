@@ -66,11 +66,6 @@ type AtomicHotThreshold = AtomicU32;
 pub type TraceCompilationErrorThreshold = u16;
 pub type AtomicTraceCompilationErrorThreshold = AtomicU16;
 
-/// How many basic blocks long can a trace be before we give up trying to compile it? Note that the
-/// slower our compiler, the lower this will have to be in order to give the perception of
-/// reasonable performance.
-/// FIXME: needs to be configurable.
-pub(crate) const DEFAULT_TRACE_TOO_LONG: usize = 20000;
 const DEFAULT_HOT_THRESHOLD: HotThreshold = 131;
 const DEFAULT_SIDETRACE_THRESHOLD: HotThreshold = 5;
 /// How often can a [HotLocation] or [Guard] lead to an error in tracing or compilation before we
@@ -347,7 +342,7 @@ impl MT {
         hl_arc: Arc<Mutex<HotLocation>>,
         trid: TraceId,
         parent_ctr: Arc<dyn CompiledTrace>,
-        guardid: GuardIdx,
+        gidx: GuardIdx,
         connector_tid: TraceId,
     ) {
         self.stats.trace_recorded_ok();
@@ -360,7 +355,6 @@ impl MT {
             };
             mt.stats.timing_state(TimingState::Compiling);
             let target_ctr = Arc::clone(&mt.compiled_traces.lock()[&connector_tid]);
-            let sti = parent_ctr.sidetraceinfo(guardid, Arc::clone(&target_ctr));
             // FIXME: Can we pass in the root trace address, root trace entry variable locations,
             // and the base stack-size from here, rather than spreading them out via
             // DeoptInfo/SideTraceInfo, and CompiledTrace?
@@ -368,7 +362,9 @@ impl MT {
                 Arc::clone(&mt),
                 trace_iter.0,
                 trid,
-                sti,
+                Arc::clone(&parent_ctr),
+                gidx,
+                target_ctr,
                 Arc::clone(&hl_arc),
                 trace_iter.1,
                 trace_iter.2,
@@ -378,11 +374,11 @@ impl MT {
                     mt.compiled_traces
                         .lock()
                         .insert(ctr.ctrid(), Arc::clone(&ctr));
-                    parent_ctr.guard(guardid).set_ctr(ctr, &parent_ctr, guardid);
+                    parent_ctr.guard(gidx).set_ctr(ctr, &parent_ctr, gidx);
                     mt.stats.trace_compiled_ok();
                 }
                 Err(e) => {
-                    parent_ctr.guard(guardid).trace_or_compile_failed(&mt);
+                    parent_ctr.guard(gidx).trace_or_compile_failed(&mt);
                     mt.stats.trace_compiled_err();
                     match e {
                         CompilationError::General(e) | CompilationError::LimitExceeded(e) => {
@@ -417,7 +413,7 @@ impl MT {
 
         let mt = Arc::clone(self);
         let failure = move || {
-            parent_ctr_cl.guard(guardid).trace_or_compile_failed(&mt);
+            parent_ctr_cl.guard(gidx).trace_or_compile_failed(&mt);
         };
         self.job_queue.push(
             self,

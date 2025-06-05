@@ -41,7 +41,7 @@
 //     1 -> 0.813008
 //     1 -> 0.813008
 //     1 -> 0.813008
-//     yk-execution: deoptimise
+//     yk-execution: deoptimise ...
 
 // SWT Note: Signal 11 just before  yk-jit-event: stop-tracing
 // yk-jit-event: start-tracing

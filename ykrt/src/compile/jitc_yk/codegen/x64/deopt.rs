@@ -4,7 +4,7 @@ use super::{X64CompiledTrace, RBP_DWARF_NUM, REG64_BYTESIZE};
 use crate::trace::swt::cfg::CP_VERBOSE;
 use crate::{
     aotsmp::AOT_STACKMAPS,
-    compile::GuardIdx,
+    compile::{CompiledTrace, GuardIdx},
     log::Verbosity,
     mt::{MTThread, TraceId},
 };
@@ -37,8 +37,8 @@ const REGISTER_NUM: usize = RECOVER_REG.len() + 2;
 /// * `gidx` - the [GuardIdx] of the current failing guard
 /// * `gp_regs` - a pointer to the saved values of the 16 general purpose registers in the same
 ///   order as [crate::compile::jitc_yk::codegen::x64::lsregalloc::GP_REGS]
-/// * gptr - Pointer to a list of previous [GuardIdx]'s leading up to the current guard failure.
-/// * glen - Length for list in `gptr`.
+/// * `fp_regs` - a pointer to the saved values of the 16 floating point registers
+/// * `ctrid` - the ID of the compiled trace that is being deoptimized
 #[no_mangle]
 pub(crate) extern "C" fn __yk_deopt(
     frameaddr: *mut c_void,
@@ -59,7 +59,10 @@ pub(crate) extern "C" fn __yk_deopt(
     let cgd = &ctr.compiled_guard(gidx);
 
     mt.deopt();
-    mt.log.log(Verbosity::Execution, "deoptimise");
+    mt.log.log(
+        Verbosity::Execution,
+        &format!("deoptimise {:?} {gidx:?}", ctr.ctrid()),
+    );
 
     // Calculate space required for the new stack.
     // Add space for live register values which we'll be adding at the end.
