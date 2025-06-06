@@ -1,3 +1,4 @@
+// ignore-if: test $SWT_SKIP_FAILING_TEST=true
 // Run-time:
 //   env-var: YKD_LOG_IR=aot,jit-post-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
@@ -41,6 +42,15 @@
 //     1 -> 0.813008
 //     1 -> 0.813008
 //     yk-execution: deoptimise ...
+
+// SWT Note: Signal 11 just before  yk-jit-event: stop-tracing
+// yk-jit-event: start-tracing
+// 4 -> 3.252033
+// 4 -> 3.252033
+// 4 -> 3.252033
+// 4 -> 3.252033
+// 4 -> 3.252033
+
 
 // Check basic 32-bit float support.
 
