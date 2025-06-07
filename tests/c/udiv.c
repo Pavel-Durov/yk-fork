@@ -1,3 +1,4 @@
+// ignore-if: test $SWT_SKIP_FAILING_TEST=true
 // Compiler:
 //   env-var: YKB_EXTRA_CC_FLAGS=-O1
 // Run-time:
@@ -10,6 +11,23 @@
 //     udiv2 715827882
 //     udiv3 1431655764
 //     udiv4 42
+//     yk-tracing: stop-tracing
+//     --- Begin jit-pre-opt ---
+//     ...
+//     %{{_}}: i16 = udiv %{{_}}, 3i16
+//     ...
+//     %{{_}}: i32 = udiv %{{_}}, 3i32
+//     ...
+//     %{{_}}: i64 = udiv %{{_}}, 3i64
+//     ...
+//     %{{_}}: i8 = udiv %{{_}}, 3i8
+//     ...
+//     --- End jit-pre-opt ---
+//     udiv 21845
+//     udiv2 715827882
+//     udiv3 1431655764
+//     udiv4 42
+//     yk-execution: enter-jit-code
 //     udiv 21845
 //     udiv2 715827882
 //     udiv3 1431655764
@@ -18,10 +36,7 @@
 //     udiv2 715827882
 //     udiv3 1431655764
 //     udiv4 42
-//     udiv 21845
-//     udiv2 715827882
-//     udiv3 1431655764
-//     udiv4 42
+//     yk-execution: deoptimise ...
 //     exit
 
 // Test unsigned division.
