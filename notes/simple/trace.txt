@@ -1,0 +1,42 @@
+─── Registers ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+      rax 0x0000000000000001       rbx 0x00007fffffffe308      rcx 0x0000000000000000      rdx 0x0000000000000000      rsi 0x0000000000000000         rdi 0x0000000000000001
+      rbp 0x00007fffffffe1f0       rsp 0x00007fffffffe1c0       r8 0x00007ffff71f1cc0       r9 0x00000000000001b0      r10 0x00007ffff7201f58         r11 0x00007ffff7966140
+      r12 0x00007ffff6f0a024       r13 0x00007fffffffe318      r14 0x0000000000000001      r15 0x00007ffff6f0a020      rip 0x00000000002030b5      eflags [ IF ]            
+       cs 0x00000033                ss 0x0000002b               ds 0x00000000               es 0x00000000               fs 0x00000000                  gs 0x00000000        
+       k0 0x00000000c0c0e000        k1 0x000000000000001f       k2 0x00000000ff7fff7f       k3 0x0000000000000000       k4 0x0000000000000000          k5 0x0000000000000000
+       k6 0x0000000000000000        k7 0x0000000000000000
+
+Transition: OptToUnopt ExecTrace: false
+src_rbp: 0x7fffffffe1f0, reg_store: 0x7fffffffe150, src_frame_size: 0x30, dst_frame_size: 0x40, rbp_offset_reg_store: 0xa0
+[Thread 0x7ffff6f096c0 (LWP 1097216) exited]
+Register2Register - src: Register(15, 8, []) dst: Register(15, 8, [])
+Register2Register - src: Register(12, 8, []) dst: Register(12, 8, [])
+
+
+─── Registers ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+      rax 0x0000000000000001       rbx 0x00007fffffffe308      rcx 0x0000000000000000      rdx 0x00000000002073a7      rsi 0x00007fffffffe1c8         rdi 0x0000000000206680
+      rbp 0x00007fffffffe1f0       rsp 0x00007fffffffe1b0       r8 0x00007ffff71f1cc0       r9 0x00000000000001b0      r10 0x00007ffff7201ef8         r11 0x00007ffff79659c0
+      r12 0x00007ffff6f0a024       r13 0x00007fffffffe318      r14 0x0000000000000001      r15 0x00007ffff6f0a020      rip 0x000000000020329f      eflags [ PF IF ]         
+       cs 0x00000033                ss 0x0000002b               ds 0x00000000               es 0x00000000               fs 0x00000000                  gs 0x00000000        
+       k0 0x00000000ffffffff        k1 0x00000000c0ff9000       k2 0x0000000000000001       k3 0x0000000000000000       k4 0x0000000000000000          k5 0x0000000000000000
+       k6 0x0000000000000000        k7 0x0000000000000000
+
+Transition: UnoptToOpt ExecTrace: false
+src_rbp: 0x7fffffffe1f0, reg_store: 0x7fffffffe140, src_frame_size: 0x40, dst_frame_size: 0x30, rbp_offset_reg_store: 0xb0
+Register2Register - src: Register(15, 8, []) dst: Register(15, 8, [])
+Register2Register - src: Register(12, 8, []) dst: Register(12, 8, [])
+
+
+─── Registers ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+      rax 0x0000000000000000       rbx 0x00007fffffffe308      rcx 0x0000000000000000      rdx 0x00000000002076c7      rsi 0x00007fffffffe1c0         rdi 0x00000000002030cc
+      rbp 0x00007fffffffe1f0       rsp 0x00007fffffffe1b8       r8 0x0000000000000030       r9 0x0000000000000064      r10 0x00007fffffffbf27         r11 0x0000000000203410
+      r12 0x00007ffff6f0a024       r13 0x00007fffffffe318      r14 0x0000000000000001      r15 0x00007ffff6f0a020      rip 0x00007ffff7fba08f      eflags [ IF ]            
+       cs 0x00000033                ss 0x0000002b               ds 0x00000000               es 0x00000000               fs 0x00000000                  gs 0x00000000        
+       k0 0x00000000ffffffff        k1 0x00000000000000ff       k2 0x000000000000000f       k3 0x0000000000000000       k4 0x0000000000000000          k5 0x0000000000000000
+       k6 0x0000000000000000        k7 0x0000000000000000
+
+Transition: UnoptToOpt ExecTrace: false
+src_rbp: 0x7fffffffe1f0, reg_store: 0x7fffffffe140, src_frame_size: 0x40, dst_frame_size: 0x30, rbp_offset_reg_store: 0xb0
+Register2Register - src: Register(15, 8, []) dst: Register(15, 8, [])
+[Thread 0x7ffff6f096c0 (LWP 1097217) exited]
+Register2Register - src: Register(12, 8, []) dst: Register(12, 8, [])

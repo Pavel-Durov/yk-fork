@@ -1,0 +1,81 @@
+check:
+>>> x/gx $rbp-80
+0x7fffffffe190:	0x00007ffff6f0a028
+
+>>> x/gx $rbp-88
+0x7fffffffe188:	0x00007ffff6f0a030
+
+>>> x/gx $rbp-96
+0x7fffffffe180:	0x00007ffff6f0a048
+
+
+Just before cotnrol point Transition
+
+   rax 0x00007ffff6f0a001    rbx 0x00007ffff6f0a038    rcx 0x00007ffff6f0a040    rdx 0x0000000000000000    rsi 0x00007fffffffe1b0    rdi 0x0000000000208680    rbp 0x00007fffffffe1e0    rsp 0x00007fffffffe170       r8 0x00007ffff71f1cc0
+    r9 0x00000000000001b0    r10 0x00007ffff7201f58    r11 0x00000000002056e0    r12 0x00007ffff6f0a024    r13 0x00007ffff6f0a050    r14 0x00007ffff6f0a040    r15 0x00007ffff6f0a020    rip 0x0000000000205064   eflags [ PF ZF IF ]      
+    cs 0x00000033             ss 0x0000002b             ds 0x00000000             es 0x00000000             fs 0x00000000             gs 0x00000000             k0 0x00000000c0c0e000     k1 0x000000000000001f       k2 0x00000000ff7fff7f
+    k3 0x0000000000000000     k4 0x0000000000000000     k5 0x0000000000000000     k6 0x0000000000000000     k7 0x0000000000000000
+
+
+yk-tracing: start-tracing
+Using buffer at 0x208bd0 for direction OptToUnopt
+Transition: OptToUnopt ExecTrace: false
+src_rbp: 0x7fffffffe1e0, reg_store: 0x7fffffffe100, src_frame_size: 0x70, dst_frame_size: 0x70, rbp_offset_reg_store: 0xe0
+
+Register2Register - src: Register(15, 8, []) dst: Register(15, 8, [])
+    >>> x/gx $r15
+    0x7ffff6f0a020:	0x0000000000000004
+
+Register2Register - src: Register(12, 8, [-104]) dst: Register(12, 8, [])
+    >>> x/gx $r12
+    0x7ffff6f0a024:	0xf6f0a02400000000 <---------------------------------------------------- WTF?
+
+Indirect2Register - src: Indirect(6, -80, 8) dst: Register(3, 8, [-104])
+    >>> x/gx $rbx
+    0x7ffff6f0a028:	0x00007ffff6f0a024
+
+Indirect2Indirect - src: Indirect(6, -88, 8) dst: Indirect(6, -80, 8)
+    >>> x/gx $rbp-80
+    0x7fffffffe190:	0x00007ffff6f0a030
+
+Register2Indirect - src: Register(3, 8, [-72]) dst: Indirect(6, -56, 8)
+    >>> x/gx $rbp-56
+    0x7fffffffe1a8:	0x00007ffff6f0a038
+
+Register2Register - src: Register(14, 8, [-64]) dst: Register(14, 8, [-72])
+    >>> x/gx $r14
+    0x7ffff6f0a040:	0x00007ffff6f0a038
+
+Indirect2Indirect - src: Indirect(6, -96, 8) dst: Indirect(6, -88, 8)
+    >>> x/gx $rbp-88
+    0x7fffffffe188:	0x00007ffff6f0a048
+
+Register2Register - src: Register(13, 8, [-112]) dst: Register(13, 8, [-96])
+    >>> x/gx $r13
+    0x7ffff6f0a050:	0x0000000000000000
+
+next transition:
+>>> x/gx $r15
+0x7ffff6f0a020:	0x4050214d00000003 <----?
+>>> x/gx $r12
+0x7ffff6f0a024:	0xf6f0a0244050214d
+>>> x/gx $rbp-80
+0x7fffffffe190:	0x00007ffff6f0a030
+>>> x/gx $rbp-88
+0x7fffffffe188:	0x00007ffff6f0a048
+>>> x/gx $rbx
+0x7ffff6f0a028:	0x00007ffff6f0a024
+>>> x/gx $r14
+0x7ffff6f0a040:	0x00007ffff6f0a038
+>>> x/gx $rbp-96
+0x7fffffffe180:	0x00007ffff6f0a050
+>>> x/gx $r13
+0x7ffff6f0a050:	0x400a0429a0429a04
+
+
+>>> p loc
+$2 = {
+  state = 2139618
+}
+>>> p &loc
+$3 = (YkLocation *) 0x7fffffffe1b0

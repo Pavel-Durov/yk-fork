@@ -1,0 +1,841 @@
+[1m[32m   Compiling[0m tests v0.1.0 (/home/pd/yk-fork/tests)
+[0m[1m[33mwarning[0m[0m[1m: unused import: `marker::PhantomData`[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0mykrt/src/compile/jitc_yk/trace_builder.rs:21:47[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m21[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0muse std::{collections::HashMap, ffi::CString, marker::PhantomData, sync::Arc};[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m                                               [0m[0m[1m[33m^^^^^^^^^^^^^^^^^^^[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `#[warn(unused_imports)]` on by default[0m
+
+[0m[1m[33mwarning[0m[0m[1m: unused variable: `function_index`[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0mykrt/src/trace/swt/mod.rs:81:47[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m81[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub extern "C" fn __yk_trace_basicblock_dummy(function_index: usize, block_index: usize) {}[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m                                               [0m[0m[1m[33m^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[33mhelp: if this is intentional, prefix it with an underscore: `_function_index`[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `#[warn(unused_variables)]` on by default[0m
+
+[0m[1m[33mwarning[0m[0m[1m: unused variable: `block_index`[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0mykrt/src/trace/swt/mod.rs:81:70[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m81[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub extern "C" fn __yk_trace_basicblock_dummy(function_index: usize, block_index: usize) {}[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m                                                                      [0m[0m[1m[33m^^^^^^^^^^^[0m[0m [0m[0m[1m[33mhelp: if this is intentional, prefix it with an underscore: `_block_index`[0m
+
+[1m[33mwarning[0m[1m:[0m `ykrt` (lib) generated 3 warnings (run `cargo fix --lib -p ykrt` to apply 1 suggestion)
+[1m[33mwarning[0m[1m:[0m `ykrt` (lib test) generated 3 warnings (3 duplicates)
+[1m[36m    Building[0m [=======================> ] 276/286: tests(build)                                                                                                                     [1m[36m    Building[0m [=======================> ] 277/286: tests                                                                                                                            [1m[36m    Building[0m [=======================> ] 277/286: tests(test), tests                                                                                                               [1m[36m    Building[0m [=======================> ] 278/286: tests                                                                                                                            [1m[36m    Building[0m [=======================> ] 279/286: gdb_c_test(bin)                                                                                                                  [1m[36m    Building[0m [=======================> ] 279/286: dump_ir(bin), c_tests(test), ir_lowering_tests(test), gdb_c_test(bin), lua_tests(test), gdb_c_test(bin test), dump_ir(bin test)  [1m[36m    Building[0m [=======================> ] 280/286: dump_ir(bin), c_tests(test), ir_lowering_tests(test), gdb_c_test(bin), gdb_c_test(bin test), dump_ir(bin test)                   [1m[36m    Building[0m [=======================> ] 281/286: dump_ir(bin), c_tests(test), ir_lowering_tests(test), gdb_c_test(bin), dump_ir(bin test)                                         [1m[36m    Building[0m [=======================> ] 282/286: dump_ir(bin), c_tests(test), gdb_c_test(bin), dump_ir(bin test)                                                                  [1m[36m    Building[0m [=======================> ] 283/286: dump_ir(bin), c_tests(test), gdb_c_test(bin)                                                                                     [1m[36m    Building[0m [=======================> ] 284/286: dump_ir(bin), c_tests(test)                                                                                                      [1m[36m    Building[0m [=======================> ] 285/286: c_tests(test)                                                                                                                    [K[1m[32m    Finished[0m `test` profile [unoptimized + debuginfo] target(s) in 1.85s
+[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/hwtracer-04f9e02fc4e0b247)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+
+[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/tests-f6c279a553f5544f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[32m     Running[0m unittests src/bin/dump_ir.rs (target/debug/deps/dump_ir-d88f97051d985e0c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[32m     Running[0m unittests src/bin/gdb_c_test.rs (target/debug/deps/gdb_c_test-b32758f8f76f451a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[32m     Running[0m langtest_c.rs (target/debug/deps/c_tests-23f7068ab185bf3c)
+Running C tests...
+
+running 1 testsyk-tracing: start-tracing
+Transition: OptToUnopt ExecTrace: false
+src_rbp: 0x7ffee85e35d0, reg_store: 0x7ffee85e3530, src_frame_size: 0x30, dst_frame_size: 0x40, rbp_offset_reg_store: 0xa0
+Register2Register - src: Register(15, 8, []) dst: Register(15, 8, [])
+Register2Register - src: Register(12, 8, []) dst: Register(12, 8, [])
+4
+ASM DUMP:
+  0: movabs rbp, 0x7ffee85e35d0
+  a: movabs rsp, 0x7ffee85e35d0
+  14: sub rsp, 0x40
+  1b: mov r15, qword ptr [rbp - 0xa0]
+  22: mov r12, qword ptr [rbp - 0x88]
+  29: mov rax, qword ptr [rbp - 0x40]
+  30: mov rcx, qword ptr [rbp - 0x48]
+  37: mov rbx, qword ptr [rbp - 0x50]
+  3e: mov rdi, qword ptr [rbp - 0x58]
+  45: mov rsi, qword ptr [rbp - 0x60]
+  4c: mov r8, qword ptr [rbp - 0x68]
+  53: mov r9, qword ptr [rbp - 0x70]
+  5a: mov r10, qword ptr [rbp - 0x78]
+  61: mov r11, qword ptr [rbp - 0x80]
+  68: mov r13, qword ptr [rbp - 0x90]
+  6f: mov r14, qword ptr [rbp - 0x98]
+  76: sub rsp, 0x10
+  7a: mov qword ptr [rsp], rax
+  7e: movabs rax, 0x20329f
+  88: mov qword ptr [rsp + 8], rax
+  8d: pop rax
+  8e: ret 
+Transition: UnoptToOpt ExecTrace: false
+src_rbp: 0x7ffee85e35d0, reg_store: 0x7ffee85e3520, src_frame_size: 0x40, dst_frame_size: 0x30, rbp_offset_reg_store: 0xb0
+Register2Register - src: Register(15, 8, []) dst: Register(15, 8, [])
+Register2Register - src: Register(12, 8, []) dst: Register(12, 8, [])
+ASM DUMP:
+  0: movabs rbp, 0x7ffee85e35d0
+  a: movabs rsp, 0x7ffee85e35d0
+  14: sub rsp, 0x30
+  1b: mov r15, qword ptr [rbp - 0xb0]
+  22: mov r12, qword ptr [rbp - 0x98]
+  29: mov rax, qword ptr [rbp - 0x50]
+  30: mov rcx, qword ptr [rbp - 0x58]
+  37: mov rbx, qword ptr [rbp - 0x60]
+  3e: mov rdi, qword ptr [rbp - 0x68]
+  45: mov rsi, qword ptr [rbp - 0x70]
+  4c: mov r8, qword ptr [rbp - 0x78]
+  53: mov r9, qword ptr [rbp - 0x80]
+  5a: mov r10, qword ptr [rbp - 0x88]
+  61: mov r11, qword ptr [rbp - 0x90]
+  68: mov r13, qword ptr [rbp - 0xa0]
+  6f: mov r14, qword ptr [rbp - 0xa8]
+  76: sub rsp, 0x10
+  7a: mov qword ptr [rsp], rax
+  7e: movabs rax, 0x2030cc
+  88: mov qword ptr [rsp + 8], rax
+  8d: pop rax
+  8e: ret 
+3
+yk-tracing: stop-tracing
+--- Begin aot ---
+# IR format version: 0
+# Num funcs: 15
+# Num consts: 25
+# Num global decls: 5
+# Num types: 21
+global_decl tls @shadowstack_head
+global_decl tls @shadowstack_0
+global_decl @stderr
+global_decl @.str
+global_decl @.str.1
+
+#[yk_outline]
+func main(%arg0: i32, %arg1: ptr) -> i32 {
+  bb0:
+    %0_0: i32 = arg(0)
+    %0_1: ptr = arg(1)
+    %0_2: ptr = call malloc(1000000i64)
+    %0_3: ptr = ptr_add %0_2, 32
+    *@shadowstack_head = %0_2
+    *@shadowstack_0 = %0_3
+    %0_6: ptr = ptr_add %0_2, 0
+    %0_7: ptr = ptr_add %0_2, 4
+    %0_8: ptr = ptr_add %0_2, 8
+    %0_9: ptr = alloca ptr, 1, 8
+    %0_10: ptr = alloca {0: i64}, 1, 8
+    %0_11: ptr = ptr_add %0_2, 16
+    %0_12: ptr = ptr_add %0_2, 20
+    *%0_6 = 0i32
+    *%0_7 = %0_0
+    # simple.c:35: int main(int argc, char **argv) {
+    br bb1
+  bb1:
+    *%0_8 = %0_1
+    # simple.c:36: YkMT *mt = yk_mt_new(NULL);
+    %1_1: ptr = call yk_mt_new(0x0)
+    br bb2
+  bb2:
+    *%0_9 = %1_1
+    # simple.c:37: yk_mt_hot_threshold_set(mt, 0);
+    %2_1: ptr = load %0_9
+    call yk_mt_hot_threshold_set(%2_1, 0i32)
+    # simple.c:38: YkLocation loc = yk_location_new();
+    br bb3
+  bb3:
+    %3_0: i64 = call yk_location_new()
+    br bb4
+  bb4:
+    %4_0: ptr = ptr_add %0_10, 0
+    *%4_0 = %3_0
+    # simple.c:40: int res = 9998;
+    *%0_11 = 9998i32
+    # simple.c:41: int i = 4;
+    *%0_12 = 4i32
+    # simple.c:42: NOOPT_VAL(loc);
+    %4_4: i64 = load %0_10
+    # simple.c:43: NOOPT_VAL(res);
+    br bb5
+  bb5:
+    %5_0: i32 = load %0_11
+    # simple.c:44: NOOPT_VAL(i);
+    br bb6
+  bb6:
+    %6_0: i32 = load %0_12
+    # simple.c:45: while (i > 0) {
+    br bb7
+  bb7:
+    br bb8
+  bb8:
+    %8_0: i32 = load %0_12
+    %8_1: i1 = sgt %8_0, 0i32
+    condbr %8_1, bb9, bb12 [safepoint: 2i64, (%0_9, %0_10, %0_11, %0_12, %8_1)]
+  bb9:
+    # simple.c:46: yk_mt_control_point(mt, &loc);
+    %9_0: ptr = load %0_9
+    call llvm.experimental.patchpoint.void(0i64, 13i32, __ykrt_control_point, 3i32, %9_0, %0_10, 0i64, %0_9, %0_10, %0_11, %0_12) [safepoint: 0i64, (%0_9, %0_10, %0_11, %0_12)]
+    # simple.c:47: fprintf(stderr, "%d\n", i);
+    br bb10
+  bb10:
+    %10_0: ptr = load @stderr
+    %10_1: i32 = load %0_12
+    %10_2: i32 = call fprintf(%10_0, @.str, %10_1)
+    # simple.c:48: i--;
+    br bb11
+  bb11:
+    %11_0: i32 = load %0_12
+    %11_1: i32 = add %11_0, -1i32
+    *%0_12 = %11_1
+    # simple.c:45: while (i > 0) {
+    br bb8
+  bb12:
+    # simple.c:50: fprintf(stderr, "exit\n");
+    %12_0: ptr = load @stderr
+    %12_1: i32 = call fprintf(%12_0, @.str.1)
+    # simple.c:51: NOOPT_VAL(res);
+    br bb13
+  bb13:
+    %13_0: i32 = load %0_11
+    # simple.c:52: yk_location_drop(loc);
+    br bb14
+  bb14:
+    %14_0: ptr = ptr_add %0_10, 0
+    %14_1: i64 = load %14_0
+    call yk_location_drop(%14_1)
+    # simple.c:53: yk_mt_shutdown(mt);
+    br bb15
+  bb15:
+    %15_0: ptr = load %0_9
+    call yk_mt_shutdown(%15_0)
+    # simple.c:54: return (EXIT_SUCCESS);
+    br bb16
+  bb16:
+    br bb18
+  bb17:
+    ret 0i32
+  bb18:
+    br bb17
+}
+
+func llvm.dbg.declare(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func yk_mt_new(%arg0: ptr) -> ptr;
+
+func yk_mt_hot_threshold_set(%arg0: ptr, %arg1: i32);
+
+func yk_location_new() -> i64;
+
+func yk_mt_control_point(%arg0: ptr, %arg1: ptr);
+
+func fprintf(%arg0: ptr, %arg1: ptr, ...) -> i32;
+
+func yk_location_drop(%arg0: i64);
+
+func yk_mt_shutdown(%arg0: ptr);
+
+#[yk_outline]
+func __yk_unopt_main(%arg0: i32, %arg1: ptr) -> i32 {
+  bb0:
+    %0_0: i32 = arg(0)
+    %0_1: ptr = arg(1)
+    call __yk_trace_basicblock(9i32, 0i32)
+    %0_3: ptr = load @shadowstack_0
+    %0_4: ptr = ptr_add %0_3, 0
+    %0_5: ptr = ptr_add %0_3, 4
+    %0_6: ptr = ptr_add %0_3, 8
+    %0_7: ptr = alloca ptr, 1, 8
+    %0_8: ptr = alloca {0: i64}, 1, 8
+    %0_9: ptr = ptr_add %0_3, 16
+    %0_10: ptr = ptr_add %0_3, 20
+    *%0_4 = 0i32
+    *%0_5 = %0_0
+    # simple.c:35: int main(int argc, char **argv) {
+    br bb1
+  bb1:
+    call __yk_trace_basicblock(9i32, 1i32)
+    *%0_6 = %0_1
+    # simple.c:36: YkMT *mt = yk_mt_new(NULL);
+    %1_2: ptr = call yk_mt_new(0x0)
+    br bb2
+  bb2:
+    call __yk_trace_basicblock(9i32, 2i32)
+    *%0_7 = %1_2
+    # simple.c:37: yk_mt_hot_threshold_set(mt, 0);
+    %2_2: ptr = load %0_7
+    call yk_mt_hot_threshold_set(%2_2, 0i32)
+    # simple.c:38: YkLocation loc = yk_location_new();
+    br bb3
+  bb3:
+    call __yk_trace_basicblock(9i32, 3i32)
+    %3_1: i64 = call yk_location_new()
+    br bb4
+  bb4:
+    call __yk_trace_basicblock(9i32, 4i32)
+    %4_1: ptr = ptr_add %0_8, 0
+    *%4_1 = %3_1
+    # simple.c:40: int res = 9998;
+    *%0_9 = 9998i32
+    # simple.c:41: int i = 4;
+    *%0_10 = 4i32
+    # simple.c:42: NOOPT_VAL(loc);
+    %4_5: i64 = load %0_8
+    # simple.c:43: NOOPT_VAL(res);
+    br bb5
+  bb5:
+    call __yk_trace_basicblock(9i32, 5i32)
+    %5_1: i32 = load %0_9
+    # simple.c:44: NOOPT_VAL(i);
+    br bb6
+  bb6:
+    call __yk_trace_basicblock(9i32, 6i32)
+    %6_1: i32 = load %0_10
+    # simple.c:45: while (i > 0) {
+    br bb7
+  bb7:
+    call __yk_trace_basicblock(9i32, 7i32)
+    br bb8
+  bb8:
+    call __yk_trace_basicblock(9i32, 8i32)
+    %8_1: i32 = load %0_10
+    %8_2: i1 = sgt %8_1, 0i32
+    condbr %8_2, bb9, bb12 [safepoint: 3i64, (%0_7, %0_8, %0_9, %0_10, %8_2)]
+  bb9:
+    # simple.c:46: yk_mt_control_point(mt, &loc);
+    call __yk_trace_basicblock(9i32, 9i32)
+    %9_1: ptr = load %0_7
+    call llvm.experimental.patchpoint.void(1i64, 13i32, __ykrt_control_point, 3i32, %9_1, %0_8, 1i64, %0_7, %0_8, %0_9, %0_10) [safepoint: 1i64, (%0_7, %0_8, %0_9, %0_10)]
+    # simple.c:47: fprintf(stderr, "%d\n", i);
+    br bb10
+  bb10:
+    call __yk_trace_basicblock(9i32, 10i32)
+    %10_1: ptr = load @stderr
+    %10_2: i32 = load %0_10
+    %10_3: i32 = call fprintf(%10_1, @.str, %10_2)
+    # simple.c:48: i--;
+    br bb11
+  bb11:
+    call __yk_trace_basicblock(9i32, 11i32)
+    %11_1: i32 = load %0_10
+    %11_2: i32 = add %11_1, -1i32
+    *%0_10 = %11_2
+    # simple.c:45: while (i > 0) {
+    br bb8
+  bb12:
+    # simple.c:50: fprintf(stderr, "exit\n");
+    call __yk_trace_basicblock(9i32, 12i32)
+    %12_1: ptr = load @stderr
+    %12_2: i32 = call fprintf(%12_1, @.str.1)
+    # simple.c:51: NOOPT_VAL(res);
+    br bb13
+  bb13:
+    call __yk_trace_basicblock(9i32, 13i32)
+    %13_1: i32 = load %0_9
+    # simple.c:52: yk_location_drop(loc);
+    br bb14
+  bb14:
+    call __yk_trace_basicblock(9i32, 14i32)
+    %14_1: ptr = ptr_add %0_8, 0
+    %14_2: i64 = load %14_1
+    call yk_location_drop(%14_2)
+    # simple.c:53: yk_mt_shutdown(mt);
+    br bb15
+  bb15:
+    call __yk_trace_basicblock(9i32, 15i32)
+    %15_1: ptr = load %0_7
+    call yk_mt_shutdown(%15_1)
+    # simple.c:54: return (EXIT_SUCCESS);
+    br bb16
+  bb16:
+    call __yk_trace_basicblock(9i32, 16i32)
+    br bb18
+  bb17:
+    call __yk_trace_basicblock(9i32, 17i32)
+    ret 0i32
+  bb18:
+    call __yk_trace_basicblock(9i32, 18i32)
+    br bb17
+}
+
+func malloc(%arg0: i64) -> ptr;
+
+func __ykrt_control_point(%arg0: ptr, %arg1: ptr, %arg2: i64);
+
+func llvm.experimental.patchpoint.void(%arg0: i64, %arg1: i32, %arg2: ptr, %arg3: i32, ...);
+
+func llvm.experimental.stackmap(%arg0: i64, %arg1: i32, ...);
+
+func __yk_trace_basicblock(%arg0: i32, %arg1: i32);
+
+--- End aot ---
+--- Begin jit-pre-opt ---
+; compiled trace ID #0
+
+func_decl fprintf (ptr, ptr, ...) -> i32
+global_decl @stderr
+global_decl @.str
+
+entry:
+  %0: ptr = param Direct(6, -56, 8)
+  %1: ptr = param Direct(6, -48, 8)
+  %2: ptr = param Register(15, 8, [])
+  %3: ptr = param Register(12, 8, [])
+  header_start [%0, %1, %2, %3]
+  %5: ptr = lookup_global @stderr
+  %6: ptr = load %5
+  %7: i32 = load %3
+  %8: ptr = lookup_global @.str
+  %9: i32 = call @fprintf(%6, %8, %7)
+  %10: i32 = load %3
+  %11: i32 = add %10, 4294967295i32
+  *%3 = %11
+  %13: i32 = load %3
+  %14: i1 = sgt %13, 0i32
+  guard true, %14, [9:%0_7: %0, 9:%0_8: %1, 9:%0_9: %2, 9:%0_10: %3, 9:%8_2: 0i1] ; trace_gidx 0 safepoint_id 3
+  %16: ptr = load %0
+  header_end [%0, %1, %2, %3]
+--- End jit-pre-opt ---
+Transition: UnoptToOpt ExecTrace: false
+src_rbp: 0x7ffee85e35d0, reg_store: 0x7ffee85e3520, src_frame_size: 0x40, dst_frame_size: 0x30, rbp_offset_reg_store: 0xb0
+Register2Register - src: Register(15, 8, []) dst: Register(15, 8, [])
+Register2Register - src: Register(12, 8, []) dst: Register(12, 8, [])
+ASM DUMP:
+  0: movabs rbp, 0x7ffee85e35d0
+  a: movabs rsp, 0x7ffee85e35d0
+  14: sub rsp, 0x30
+  1b: mov r15, qword ptr [rbp - 0xb0]
+  22: mov r12, qword ptr [rbp - 0x98]
+  29: mov rax, qword ptr [rbp - 0x50]
+  30: mov rcx, qword ptr [rbp - 0x58]
+  37: mov rbx, qword ptr [rbp - 0x60]
+  3e: mov rdi, qword ptr [rbp - 0x68]
+  45: mov rsi, qword ptr [rbp - 0x70]
+  4c: mov r8, qword ptr [rbp - 0x78]
+  53: mov r9, qword ptr [rbp - 0x80]
+  5a: mov r10, qword ptr [rbp - 0x88]
+  61: mov r11, qword ptr [rbp - 0x90]
+  68: mov r13, qword ptr [rbp - 0xa0]
+  6f: mov r14, qword ptr [rbp - 0xa8]
+  76: sub rsp, 0x10
+  7a: mov qword ptr [rsp], rax
+  7e: movabs rax, 0x2030cc
+  88: mov qword ptr [rsp + 8], rax
+  8d: pop rax
+  8e: ret 
+
+test lang_tests::simple.c ... [0m[31mFAILED[0m
+
+failures:
+
+---- lang_tests::simple.c status ----
+Exited due to signal: 11
+
+---- lang_tests::simple.c stderr ----
+
+yk-tracing: start-tracing
+4
+3
+yk-tracing: stop-tracing
+--- Begin aot ---
+# IR format version: 0
+# Num funcs: 15
+# Num consts: 25
+# Num global decls: 5
+# Num types: 21
+global_decl tls @shadowstack_head
+global_decl tls @shadowstack_0
+global_decl @stderr
+global_decl @.str
+global_decl @.str.1
+
+#[yk_outline]
+func main(%arg0: i32, %arg1: ptr) -> i32 {
+  bb0:
+    %0_0: i32 = arg(0)
+    %0_1: ptr = arg(1)
+    %0_2: ptr = call malloc(1000000i64)
+    %0_3: ptr = ptr_add %0_2, 32
+    *@shadowstack_head = %0_2
+    *@shadowstack_0 = %0_3
+    %0_6: ptr = ptr_add %0_2, 0
+    %0_7: ptr = ptr_add %0_2, 4
+    %0_8: ptr = ptr_add %0_2, 8
+    %0_9: ptr = alloca ptr, 1, 8
+    %0_10: ptr = alloca {0: i64}, 1, 8
+    %0_11: ptr = ptr_add %0_2, 16
+    %0_12: ptr = ptr_add %0_2, 20
+    *%0_6 = 0i32
+    *%0_7 = %0_0
+    # simple.c:35: int main(int argc, char **argv) {
+    br bb1
+  bb1:
+    *%0_8 = %0_1
+    # simple.c:36: YkMT *mt = yk_mt_new(NULL);
+    %1_1: ptr = call yk_mt_new(0x0)
+    br bb2
+  bb2:
+    *%0_9 = %1_1
+    # simple.c:37: yk_mt_hot_threshold_set(mt, 0);
+    %2_1: ptr = load %0_9
+    call yk_mt_hot_threshold_set(%2_1, 0i32)
+    # simple.c:38: YkLocation loc = yk_location_new();
+    br bb3
+  bb3:
+    %3_0: i64 = call yk_location_new()
+    br bb4
+  bb4:
+    %4_0: ptr = ptr_add %0_10, 0
+    *%4_0 = %3_0
+    # simple.c:40: int res = 9998;
+    *%0_11 = 9998i32
+    # simple.c:41: int i = 4;
+    *%0_12 = 4i32
+    # simple.c:42: NOOPT_VAL(loc);
+    %4_4: i64 = load %0_10
+    # simple.c:43: NOOPT_VAL(res);
+    br bb5
+  bb5:
+    %5_0: i32 = load %0_11
+    # simple.c:44: NOOPT_VAL(i);
+    br bb6
+  bb6:
+    %6_0: i32 = load %0_12
+    # simple.c:45: while (i > 0) {
+    br bb7
+  bb7:
+    br bb8
+  bb8:
+    %8_0: i32 = load %0_12
+    %8_1: i1 = sgt %8_0, 0i32
+    condbr %8_1, bb9, bb12 [safepoint: 2i64, (%0_9, %0_10, %0_11, %0_12, %8_1)]
+  bb9:
+    # simple.c:46: yk_mt_control_point(mt, &loc);
+    %9_0: ptr = load %0_9
+    call llvm.experimental.patchpoint.void(0i64, 13i32, __ykrt_control_point, 3i32, %9_0, %0_10, 0i64, %0_9, %0_10, %0_11, %0_12) [safepoint: 0i64, (%0_9, %0_10, %0_11, %0_12)]
+    # simple.c:47: fprintf(stderr, "%d\n", i);
+    br bb10
+  bb10:
+    %10_0: ptr = load @stderr
+    %10_1: i32 = load %0_12
+    %10_2: i32 = call fprintf(%10_0, @.str, %10_1)
+    # simple.c:48: i--;
+    br bb11
+  bb11:
+    %11_0: i32 = load %0_12
+    %11_1: i32 = add %11_0, -1i32
+    *%0_12 = %11_1
+    # simple.c:45: while (i > 0) {
+    br bb8
+  bb12:
+    # simple.c:50: fprintf(stderr, "exit\n");
+    %12_0: ptr = load @stderr
+    %12_1: i32 = call fprintf(%12_0, @.str.1)
+    # simple.c:51: NOOPT_VAL(res);
+    br bb13
+  bb13:
+    %13_0: i32 = load %0_11
+    # simple.c:52: yk_location_drop(loc);
+    br bb14
+  bb14:
+    %14_0: ptr = ptr_add %0_10, 0
+    %14_1: i64 = load %14_0
+    call yk_location_drop(%14_1)
+    # simple.c:53: yk_mt_shutdown(mt);
+    br bb15
+  bb15:
+    %15_0: ptr = load %0_9
+    call yk_mt_shutdown(%15_0)
+    # simple.c:54: return (EXIT_SUCCESS);
+    br bb16
+  bb16:
+    br bb18
+  bb17:
+    ret 0i32
+  bb18:
+    br bb17
+}
+
+func llvm.dbg.declare(%arg0: ?ty<metadata>, %arg1: ?ty<metadata>, %arg2: ?ty<metadata>);
+
+func yk_mt_new(%arg0: ptr) -> ptr;
+
+func yk_mt_hot_threshold_set(%arg0: ptr, %arg1: i32);
+
+func yk_location_new() -> i64;
+
+func yk_mt_control_point(%arg0: ptr, %arg1: ptr);
+
+func fprintf(%arg0: ptr, %arg1: ptr, ...) -> i32;
+
+func yk_location_drop(%arg0: i64);
+
+func yk_mt_shutdown(%arg0: ptr);
+
+#[yk_outline]
+func __yk_unopt_main(%arg0: i32, %arg1: ptr) -> i32 {
+  bb0:
+    %0_0: i32 = arg(0)
+    %0_1: ptr = arg(1)
+    call __yk_trace_basicblock(9i32, 0i32)
+    %0_3: ptr = load @shadowstack_0
+    %0_4: ptr = ptr_add %0_3, 0
+    %0_5: ptr = ptr_add %0_3, 4
+    %0_6: ptr = ptr_add %0_3, 8
+    %0_7: ptr = alloca ptr, 1, 8
+    %0_8: ptr = alloca {0: i64}, 1, 8
+    %0_9: ptr = ptr_add %0_3, 16
+    %0_10: ptr = ptr_add %0_3, 20
+    *%0_4 = 0i32
+    *%0_5 = %0_0
+    # simple.c:35: int main(int argc, char **argv) {
+    br bb1
+  bb1:
+    call __yk_trace_basicblock(9i32, 1i32)
+    *%0_6 = %0_1
+    # simple.c:36: YkMT *mt = yk_mt_new(NULL);
+    %1_2: ptr = call yk_mt_new(0x0)
+    br bb2
+  bb2:
+    call __yk_trace_basicblock(9i32, 2i32)
+    *%0_7 = %1_2
+    # simple.c:37: yk_mt_hot_threshold_set(mt, 0);
+    %2_2: ptr = load %0_7
+    call yk_mt_hot_threshold_set(%2_2, 0i32)
+    # simple.c:38: YkLocation loc = yk_location_new();
+    br bb3
+  bb3:
+    call __yk_trace_basicblock(9i32, 3i32)
+    %3_1: i64 = call yk_location_new()
+    br bb4
+  bb4:
+    call __yk_trace_basicblock(9i32, 4i32)
+    %4_1: ptr = ptr_add %0_8, 0
+    *%4_1 = %3_1
+    # simple.c:40: int res = 9998;
+    *%0_9 = 9998i32
+    # simple.c:41: int i = 4;
+    *%0_10 = 4i32
+    # simple.c:42: NOOPT_VAL(loc);
+    %4_5: i64 = load %0_8
+    # simple.c:43: NOOPT_VAL(res);
+    br bb5
+  bb5:
+    call __yk_trace_basicblock(9i32, 5i32)
+    %5_1: i32 = load %0_9
+    # simple.c:44: NOOPT_VAL(i);
+    br bb6
+  bb6:
+    call __yk_trace_basicblock(9i32, 6i32)
+    %6_1: i32 = load %0_10
+    # simple.c:45: while (i > 0) {
+    br bb7
+  bb7:
+    call __yk_trace_basicblock(9i32, 7i32)
+    br bb8
+  bb8:
+    call __yk_trace_basicblock(9i32, 8i32)
+    %8_1: i32 = load %0_10
+    %8_2: i1 = sgt %8_1, 0i32
+    condbr %8_2, bb9, bb12 [safepoint: 3i64, (%0_7, %0_8, %0_9, %0_10, %8_2)]
+  bb9:
+    # simple.c:46: yk_mt_control_point(mt, &loc);
+    call __yk_trace_basicblock(9i32, 9i32)
+    %9_1: ptr = load %0_7
+    call llvm.experimental.patchpoint.void(1i64, 13i32, __ykrt_control_point, 3i32, %9_1, %0_8, 1i64, %0_7, %0_8, %0_9, %0_10) [safepoint: 1i64, (%0_7, %0_8, %0_9, %0_10)]
+    # simple.c:47: fprintf(stderr, "%d\n", i);
+    br bb10
+  bb10:
+    call __yk_trace_basicblock(9i32, 10i32)
+    %10_1: ptr = load @stderr
+    %10_2: i32 = load %0_10
+    %10_3: i32 = call fprintf(%10_1, @.str, %10_2)
+    # simple.c:48: i--;
+    br bb11
+  bb11:
+    call __yk_trace_basicblock(9i32, 11i32)
+    %11_1: i32 = load %0_10
+    %11_2: i32 = add %11_1, -1i32
+    *%0_10 = %11_2
+    # simple.c:45: while (i > 0) {
+    br bb8
+  bb12:
+    # simple.c:50: fprintf(stderr, "exit\n");
+    call __yk_trace_basicblock(9i32, 12i32)
+    %12_1: ptr = load @stderr
+    %12_2: i32 = call fprintf(%12_1, @.str.1)
+    # simple.c:51: NOOPT_VAL(res);
+    br bb13
+  bb13:
+    call __yk_trace_basicblock(9i32, 13i32)
+    %13_1: i32 = load %0_9
+    # simple.c:52: yk_location_drop(loc);
+    br bb14
+  bb14:
+    call __yk_trace_basicblock(9i32, 14i32)
+    %14_1: ptr = ptr_add %0_8, 0
+    %14_2: i64 = load %14_1
+    call yk_location_drop(%14_2)
+    # simple.c:53: yk_mt_shutdown(mt);
+    br bb15
+  bb15:
+    call __yk_trace_basicblock(9i32, 15i32)
+    %15_1: ptr = load %0_7
+    call yk_mt_shutdown(%15_1)
+    # simple.c:54: return (EXIT_SUCCESS);
+    br bb16
+  bb16:
+    call __yk_trace_basicblock(9i32, 16i32)
+    br bb18
+  bb17:
+    call __yk_trace_basicblock(9i32, 17i32)
+    ret 0i32
+  bb18:
+    call __yk_trace_basicblock(9i32, 18i32)
+    br bb17
+}
+
+func malloc(%arg0: i64) -> ptr;
+
+func __ykrt_control_point(%arg0: ptr, %arg1: ptr, %arg2: i64);
+
+func llvm.experimental.patchpoint.void(%arg0: i64, %arg1: i32, %arg2: ptr, %arg3: i32, ...);
+
+func llvm.experimental.stackmap(%arg0: i64, %arg1: i32, ...);
+
+func __yk_trace_basicblock(%arg0: i32, %arg1: i32);
+
+--- End aot ---
+--- Begin jit-pre-opt ---
+; compiled trace ID #0
+
+func_decl fprintf (ptr, ptr, ...) -> i32
+global_decl @stderr
+global_decl @.str
+
+entry:
+  %0: ptr = param Direct(6, -56, 8)
+  %1: ptr = param Direct(6, -48, 8)
+  %2: ptr = param Register(15, 8, [])
+  %3: ptr = param Register(12, 8, [])
+  header_start [%0, %1, %2, %3]
+  %5: ptr = lookup_global @stderr
+  %6: ptr = load %5
+  %7: i32 = load %3
+  %8: ptr = lookup_global @.str
+  %9: i32 = call @fprintf(%6, %8, %7)
+  %10: i32 = load %3
+  %11: i32 = add %10, 4294967295i32
+  *%3 = %11
+  %13: i32 = load %3
+  %14: i1 = sgt %13, 0i32
+  guard true, %14, [9:%0_7: %0, 9:%0_8: %1, 9:%0_9: %2, 9:%0_10: %3, 9:%8_2: 0i1] ; trace_gidx 0 safepoint_id 3
+  %16: ptr = load %0
+  header_end [%0, %1, %2, %3]
+--- End jit-pre-opt ---
+
+
+---- lang_tests::simple.c stdout ----
+
+Transition: OptToUnopt ExecTrace: false
+src_rbp: 0x7ffee85e35d0, reg_store: 0x7ffee85e3530, src_frame_size: 0x30, dst_frame_size: 0x40, rbp_offset_reg_store: 0xa0
+Register2Register - src: Register(15, 8, []) dst: Register(15, 8, [])
+Register2Register - src: Register(12, 8, []) dst: Register(12, 8, [])
+ASM DUMP:
+  0: movabs rbp, 0x7ffee85e35d0
+  a: movabs rsp, 0x7ffee85e35d0
+  14: sub rsp, 0x40
+  1b: mov r15, qword ptr [rbp - 0xa0]
+  22: mov r12, qword ptr [rbp - 0x88]
+  29: mov rax, qword ptr [rbp - 0x40]
+  30: mov rcx, qword ptr [rbp - 0x48]
+  37: mov rbx, qword ptr [rbp - 0x50]
+  3e: mov rdi, qword ptr [rbp - 0x58]
+  45: mov rsi, qword ptr [rbp - 0x60]
+  4c: mov r8, qword ptr [rbp - 0x68]
+  53: mov r9, qword ptr [rbp - 0x70]
+  5a: mov r10, qword ptr [rbp - 0x78]
+  61: mov r11, qword ptr [rbp - 0x80]
+  68: mov r13, qword ptr [rbp - 0x90]
+  6f: mov r14, qword ptr [rbp - 0x98]
+  76: sub rsp, 0x10
+  7a: mov qword ptr [rsp], rax
+  7e: movabs rax, 0x20329f
+  88: mov qword ptr [rsp + 8], rax
+  8d: pop rax
+  8e: ret 
+Transition: UnoptToOpt ExecTrace: false
+src_rbp: 0x7ffee85e35d0, reg_store: 0x7ffee85e3520, src_frame_size: 0x40, dst_frame_size: 0x30, rbp_offset_reg_store: 0xb0
+Register2Register - src: Register(15, 8, []) dst: Register(15, 8, [])
+Register2Register - src: Register(12, 8, []) dst: Register(12, 8, [])
+ASM DUMP:
+  0: movabs rbp, 0x7ffee85e35d0
+  a: movabs rsp, 0x7ffee85e35d0
+  14: sub rsp, 0x30
+  1b: mov r15, qword ptr [rbp - 0xb0]
+  22: mov r12, qword ptr [rbp - 0x98]
+  29: mov rax, qword ptr [rbp - 0x50]
+  30: mov rcx, qword ptr [rbp - 0x58]
+  37: mov rbx, qword ptr [rbp - 0x60]
+  3e: mov rdi, qword ptr [rbp - 0x68]
+  45: mov rsi, qword ptr [rbp - 0x70]
+  4c: mov r8, qword ptr [rbp - 0x78]
+  53: mov r9, qword ptr [rbp - 0x80]
+  5a: mov r10, qword ptr [rbp - 0x88]
+  61: mov r11, qword ptr [rbp - 0x90]
+  68: mov r13, qword ptr [rbp - 0xa0]
+  6f: mov r14, qword ptr [rbp - 0xa8]
+  76: sub rsp, 0x10
+  7a: mov qword ptr [rsp], rax
+  7e: movabs rax, 0x2030cc
+  88: mov qword ptr [rsp + 8], rax
+  8d: pop rax
+  8e: ret 
+Transition: UnoptToOpt ExecTrace: false
+src_rbp: 0x7ffee85e35d0, reg_store: 0x7ffee85e3520, src_frame_size: 0x40, dst_frame_size: 0x30, rbp_offset_reg_store: 0xb0
+Register2Register - src: Register(15, 8, []) dst: Register(15, 8, [])
+Register2Register - src: Register(12, 8, []) dst: Register(12, 8, [])
+ASM DUMP:
+  0: movabs rbp, 0x7ffee85e35d0
+  a: movabs rsp, 0x7ffee85e35d0
+  14: sub rsp, 0x30
+  1b: mov r15, qword ptr [rbp - 0xb0]
+  22: mov r12, qword ptr [rbp - 0x98]
+  29: mov rax, qword ptr [rbp - 0x50]
+  30: mov rcx, qword ptr [rbp - 0x58]
+  37: mov rbx, qword ptr [rbp - 0x60]
+  3e: mov rdi, qword ptr [rbp - 0x68]
+  45: mov rsi, qword ptr [rbp - 0x70]
+  4c: mov r8, qword ptr [rbp - 0x78]
+  53: mov r9, qword ptr [rbp - 0x80]
+  5a: mov r10, qword ptr [rbp - 0x88]
+  61: mov r11, qword ptr [rbp - 0x90]
+  68: mov r13, qword ptr [rbp - 0xa0]
+  6f: mov r14, qword ptr [rbp - 0xa8]
+  76: sub rsp, 0x10
+  7a: mov qword ptr [rsp], rax
+  7e: movabs rax, 0x2030cc
+  88: mov qword ptr [rsp + 8], rax
+  8d: pop rax
+  8e: ret 
+
+failures:
+    lang_tests::simple.c
+
+test result: [0m[31mFAILED[0m. 0 passed; 1 failed; 0 ignored; 0 measured; 155 filtered out
+
+[1m[31merror[0m[1m:[0m test failed, to rerun pass `-p tests --test c_tests`
+
+Caused by:
+  process didn't exit successfully: `/home/pd/yk-fork/target/debug/deps/c_tests-23f7068ab185bf3c '::simple.c' --nocapture` (exit status: 1)
+Shared connection to bencher16.soft-dev.org closed.
+CompletedProcess(args=['ssh', '-t', 'bencher16.soft-dev.org', 'cd', 'yk-fork', '&&', 'CP_PRINT_MACHINE_CODE=1', 'CP_VERBOSE=1', 'CP_VERBOSE_ASM=1', 'YKB_TRACER=swt', '/home/pd/.cargo/bin/cargo', 'test', '::simple.c', '--', '--nocapture'], returncode=1)

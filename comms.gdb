@@ -16,6 +16,8 @@ break main::76
 # break ykcapi::__ykrt_control_point_real
 # break ykrt::mt::MT::control_point
 # break ykrt::mt::MT::control_point
+# break ykrt::mt::MT::queue_root_compile_job
+
 
 break ykrt::mt::__yk_exec_trace
 
@@ -28,8 +30,7 @@ define print_live_vars
     p *&i
     p &res
     p *&res
-end
-
+endbreak ykrt::mt::MT::queue_root_compile_job
 
 define print_yk_registers
     printf "Register Values:\n"
@@ -66,3 +67,9 @@ printf "RSP Offsets and Values:\n"
 end
 
 dashboard assembly -style height 15
+
+
+
+
+>>> p &mt
+$4 = (YkMT **) 0x7fffffffe1a8
