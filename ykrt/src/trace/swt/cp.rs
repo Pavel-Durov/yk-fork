@@ -81,6 +81,7 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
         ; sub rsp, (dst_frame_size).try_into().unwrap() // adjust rsp
     );
     // Calculate the offset from the RBP to the RSP where __ykrt_control_point_real stored the registers.
+    // Example: r15 address = rbp - rbp_offset_reg_store
     let rbp_offset_reg_store = src_frame_size as i64 + (14 * REG64_BYTESIZE) as i64;
 
     let temp_live_vars_buffer =
@@ -511,9 +512,23 @@ fn calc_after_cp_offset(rec_offset: u64) -> Result<i64, Box<dyn Error>> {
     let instructions = cs.disasm_all(code_slice, rec_offset as u64).unwrap();
     // Initialize the offset accumulator
     let mut offset: i64 = 0;
+
+    // Skip dummy trace calls in optimized functions
+    // These are typically call instructions to __yk_trace_basicblock_dummy
+    let mut skip_next_call = false;
+
     for inst in instructions.iter() {
         offset += inst.bytes().len() as i64;
+
         if inst.mnemonic().unwrap_or("") == "call" {
+            // Check if this is a dummy trace call by examining the preceding instructions
+            // or by checking if the target is __yk_trace_basicblock_dummy
+            if let Some(op_str) = inst.op_str() {
+                if op_str.contains("__yk_trace_basicblock_dummy") {
+                    // Skip this dummy call - continue to find the actual control point call
+                    continue;
+                }
+            }
             return Ok(offset);
         }
     }
