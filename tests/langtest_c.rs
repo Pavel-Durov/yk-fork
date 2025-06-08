@@ -13,13 +13,13 @@ use ykbuild::{completion_wrapper::CompletionWrapper, ykllvm_bin};
 const COMMENT: &str = "//";
 const COMMENT_PREFIX: &str = "##";
 
-const USE_LOCAL_DIR: bool = false;
+const USE_LOCAL_DIR: bool = true;
 
 fn main() {
     println!("Running C tests...");
 
     let tempdir = if USE_LOCAL_DIR {
-        PathBuf::from("./.c_tests")
+        PathBuf::from("/home/pd/temp")
     } else {
         TempDir::new().unwrap().into_path()
     };

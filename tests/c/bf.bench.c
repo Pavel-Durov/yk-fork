@@ -95,6 +95,7 @@ int interp(char *prog, char *prog_end, char *cells, char *cells_end, YkMT *mt,
 }
 
 // https://github.com/cwfitzgerald/brainfuck-benchmark/tree/master/benches
+// https://github.com/baris-inandi/bfgo/blob/main/examples/primes.bf
 int main(int argc, char *argv[]) {  
   if (argc != 2) {
     fprintf(stderr, "Usage: %s <brainfuck_file>\n", argv[0]);
@@ -140,9 +141,6 @@ int main(int argc, char *argv[]) {
   
   prog[file_size] = '\0'; // Null terminate
   
-  // Print the file contents
-  // printf("File contents (%zu bytes): %s\n", (size_t)file_size, prog);
-  
   size_t prog_len = file_size;
   
   char *cells = calloc(1, CELLS_LEN);
@@ -153,7 +151,7 @@ int main(int argc, char *argv[]) {
   char *cells_end = cells + CELLS_LEN;
 
   YkMT *mt = yk_mt_new(NULL);
-  yk_mt_hot_threshold_set(mt, 5);
+  yk_mt_hot_threshold_set(mt, 0);
 
   YkLocation *yklocs = calloc(prog_len, sizeof(YkLocation));
   if (yklocs == NULL) {

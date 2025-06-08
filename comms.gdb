@@ -17,6 +17,7 @@ break main::76
 # break ykrt::mt::MT::control_point
 # break ykrt::mt::MT::control_point
 # break ykrt::mt::MT::queue_root_compile_job
+# break ykrt::trace::swt::cp::swt_module_cp_transition
 
 
 break ykrt::mt::__yk_exec_trace

@@ -29,8 +29,13 @@ passed_tests=0
 failed_tests=0
 timeout_tests=0
 
+# Sources
+#https://github.com/baris-inandi/bfgo/blob/main/examples/fizzbuzz.bf
+# https://github.com/cwfitzgerald/brainfuck-benchmark/tree/master/benches
+
 # Loop through all .bf files in current directory
-for bf_file in /home/pd/yk-fork/tests/bf_examples/*.bf; do
+# for bf_file in /home/pd/yk-fork/tests/bf_examples/*.bf; do
+for bf_file in /home/pd/git-repos/research/yk-fork/tests/bf_examples/*.bf; do
     # Check if file exists (in case no .bf files found)
     if [ ! -f "$bf_file" ]; then
         echo "No .bf files found in directory"
@@ -45,7 +50,7 @@ for bf_file in /home/pd/yk-fork/tests/bf_examples/*.bf; do
     start_time=$(date +%s.%N)
     
     # Use timeout to limit execution to 20 seconds
-    timeout 10s time "$BF_BENCH" "$bf_file" 2>&1 1>/dev/null
+    timeout 20s time "$BF_BENCH" "$bf_file" 2>&1 1>/dev/null
     exit_code=$?
     
     # Calculate duration in milliseconds using bash arithmetic
