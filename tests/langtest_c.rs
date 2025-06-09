@@ -13,7 +13,7 @@ use ykbuild::{completion_wrapper::CompletionWrapper, ykllvm_bin};
 const COMMENT: &str = "//";
 const COMMENT_PREFIX: &str = "##";
 
-const USE_LOCAL_DIR: bool = true;
+const USE_LOCAL_DIR: bool = false;
 
 fn main() {
     println!("Running C tests...");

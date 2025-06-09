@@ -78,7 +78,7 @@ pub extern "C" fn __yk_trace_basicblock(function_index: usize, block_index: usiz
 #[cfg(tracer_swt)]
 #[no_mangle]
 #[inline(never)]
-pub extern "C" fn __yk_trace_basicblock_dummy(function_index: usize, block_index: usize) {}
+pub extern "C" fn __yk_trace_basicblock_dummy(_function_index: usize, _block_index: usize) {}
 
 pub(crate) struct SWTracer {}
 
