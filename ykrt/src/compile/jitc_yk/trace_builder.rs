@@ -32,7 +32,7 @@ pub(crate) struct TraceBuilder {
     /// The JIT IR this struct builds.
     jit_mod: jit_ir::Module,
     /// Maps an AOT instruction to a jit instruction via their index-based IDs.
-    local_map: HashMap<aot_ir::InstID, jit_ir::Operand>,
+    local_map: HashMap<aot_ir::InstId, jit_ir::Operand>,
     /// BBlock containing the current control point (i.e. the control point that started this trace).
     cp_block: Option<aot_ir::BBlockId>,
     /// Inlined calls.
@@ -149,19 +149,19 @@ impl TraceBuilder {
             .unwrap()
             .get(usize::try_from(safepoint.id).unwrap());
 
-        debug_assert!(safepoint.lives.len() == rec.live_vars.len());
+        debug_assert!(safepoint.lives.len() == rec.live_vals.len());
         for idx in 0..safepoint.lives.len() {
             let aot_op = &safepoint.lives[idx];
             let input_tyidx = self.handle_type(aot_op.type_(self.aot_mod))?;
 
             // Get the location for this input variable.
-            let var = &rec.live_vars[idx];
+            let var = &rec.live_vals[idx];
             if var.len() > 1 {
                 todo!("Deal with multi register locations");
             }
             let param_inst = jit_ir::ParamInst::new(ParamIdx::try_from(idx)?, input_tyidx).into();
             self.jit_mod.push(param_inst)?;
-            self.jit_mod.push_param(var.get(0).unwrap().clone());
+            self.jit_mod.push_param(var[0].clone());
             self.local_map.insert(
                 aot_op.to_inst_id(),
                 jit_ir::Operand::Var(self.jit_mod.last_inst_idx()),
@@ -317,8 +317,11 @@ impl TraceBuilder {
                 aot_ir::Inst::LoadArg { arg_idx, .. } => {
                     // Map passed in arguments to their respective LoadArg instructions.
                     let jitop = &self.frames.last().unwrap().args[*arg_idx];
-                    let aot_iid =
-                        aot_ir::InstID::new(bid.funcidx(), bid.bbidx(), aot_ir::InstIdx::new(iidx));
+                    let aot_iid = aot_ir::InstId::new(
+                        bid.funcidx(),
+                        bid.bbidx(),
+                        aot_ir::BBlockInstIdx::new(iidx),
+                    );
                     self.local_map.insert(aot_iid, jitop.unpack(&self.jit_mod));
                     Ok(())
                 }
@@ -353,10 +356,10 @@ impl TraceBuilder {
     ///
     /// This must be called after adding a JIT IR instruction which has a return value.
     fn link_iid_to_last_inst(&mut self, bid: &aot_ir::BBlockId, aot_inst_idx: usize) {
-        let aot_iid = aot_ir::InstID::new(
+        let aot_iid = aot_ir::InstId::new(
             bid.funcidx(),
             bid.bbidx(),
-            aot_ir::InstIdx::new(aot_inst_idx),
+            aot_ir::BBlockInstIdx::new(aot_inst_idx),
         );
         // The unwrap is safe because we've already inserted an element at this index and proven
         // that the index is in bounds.
@@ -879,10 +882,10 @@ impl TraceBuilder {
             // Unwrap is safe as there's always at least one frame.
             self.frames.last_mut().unwrap().safepoint = safepoint;
             // Create a new frame for the inlined call and pass in the arguments of the caller.
-            let aot_iid = aot_ir::InstID::new(
+            let aot_iid = aot_ir::InstId::new(
                 bid.funcidx(),
                 bid.bbidx(),
-                aot_ir::InstIdx::new(aot_inst_idx),
+                aot_ir::BBlockInstIdx::new(aot_inst_idx),
             );
             self.frames.push(InlinedFrame {
                 funcidx: Some(*callee),
@@ -1144,10 +1147,10 @@ impl TraceBuilder {
     ) -> Result<(), CompilationError> {
         // If the IR is well-formed the indexing and unwrap() here will not fail.
         let chosen_val = &incoming_vals[incoming_bbs.iter().position(|bb| bb == prev_bb).unwrap()];
-        let aot_iit = aot_ir::InstID::new(
+        let aot_iit = aot_ir::InstId::new(
             bid.funcidx(),
             bid.bbidx(),
-            aot_ir::InstIdx::new(aot_inst_idx),
+            aot_ir::BBlockInstIdx::new(aot_inst_idx),
         );
         let op = match self.handle_operand(chosen_val)? {
             jit_ir::Operand::Const(c) => {
@@ -1499,7 +1502,7 @@ impl TraceBuilder {
                         debug_assert!(*bb > 0);
                         // It's `- 1` due to the way the ykllvm block splitting pass works.
                         TraceAction::MappedAOTBBlock {
-                            func_name: func_name.clone(),
+                            func_name,
                             bb: bb - 1,
                         }
                     }
@@ -1666,7 +1669,7 @@ impl TraceBuilder {
 #[derive(Debug, Clone)]
 struct InlinedFrame {
     funcidx: Option<aot_ir::FuncIdx>,
-    callinst: Option<aot_ir::InstID>,
+    callinst: Option<aot_ir::InstId>,
     safepoint: Option<&'static aot_ir::DeoptSafepoint>,
     args: Vec<PackedOperand>,
 }
