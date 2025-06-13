@@ -104,33 +104,6 @@ pub enum Location {
     LargeConstant(u64),
 }
 
-/// A live variable.
-#[derive(Debug)]
-pub struct LiveVar {
-    /// The location where this variable is stored (or needs to be written to during
-    /// deoptimsation). Typically, this vector only has a single entry, though it is possible for
-    /// variables to be stored across multiple locations (e.g. 128bit values).
-    locs: Vec<Location>,
-}
-
-impl LiveVar {
-    pub fn new(locs: Vec<Location>) -> LiveVar {
-        LiveVar { locs }
-    }
-
-    pub fn len(&self) -> usize {
-        self.locs.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.locs.is_empty()
-    }
-
-    pub fn get(&self, idx: usize) -> Option<&Location> {
-        self.locs.get(idx)
-    }
-}
-
 /// Information about a functions's prologue.
 pub struct PrologueInfo {
     /// Describes whether or not the function uses a base pointer.
