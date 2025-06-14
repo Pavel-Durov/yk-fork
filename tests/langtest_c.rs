@@ -13,17 +13,15 @@ use ykbuild::{completion_wrapper::CompletionWrapper, ykllvm_bin};
 const COMMENT: &str = "//";
 const COMMENT_PREFIX: &str = "##";
 
-const USE_LOCAL_DIR: bool = false;
-
 fn main() {
     println!("Running C tests...");
-
-    let tempdir = if USE_LOCAL_DIR {
-        PathBuf::from("/home/pd/temp")
+    let dest_dir = env::var("TEST_OUT_DIR").unwrap_or("/home/pd/temp/".to_string());
+    std::fs::create_dir_all(&dest_dir).unwrap();
+    let tempdir = if dest_dir != "" {
+        PathBuf::from(dest_dir)
     } else {
         TempDir::new().unwrap().into_path()
     };
-    std::fs::create_dir_all(&tempdir).unwrap();
 
     // Generate a `compile_commands.json` database for clangd.
     let ccg = CompletionWrapper::new(ykllvm_bin("clang"), "c_tests");
