@@ -1,0 +1,26 @@
+
+before controlpoint transition:
+
+>>> x/gx $rbp-80
+0x7fffffffe190:	0x00007ffff6f0a028
+
+x/gx $rbp-88
+
+0x7fffffffe188:	0x00007ffff6f0a030
+
+
+
+Control point transision logs:
+
+
+Indirect2Register - src: Indirect(6, -80, 8) dst: Register(3, 8, [-104])
+emit_mem_to_mem: src_ptr=0x208bd0, src_offset=0, dst_offset=-104, size=8
+emit_mem_to_reg: src_ptr=0x208bd0, src_offset=0, dst_reg=3, size=8
+Indirect2Indirect - src: Indirect(6, -88, 8) dst: Indirect(6, -80, 8)
+emit_mem_to_mem: src_ptr=0x208bd0, src_offset=8, dst_offset=-80, size=8
+Register2Indirect - src: Register(3, 8, [-72]) dst: Indirect(6, -56, 8)
+Register2Register - src: Register(14, 8, [-64]) dst: Register(14, 8, [-72])
+Indirect2Indirect - src: Indirect(6, -96, 8) dst: Indirect(6, -88, 8)
+emit_mem_to_mem: src_ptr=0x208bd0, src_offset=16, dst_offset=-88, size=8
+Register2Register - src: Register(13, 8, [-112]) dst: Register(13, 8, [-96])
+ASM DUMP:
