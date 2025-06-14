@@ -15,8 +15,13 @@ const COMMENT_PREFIX: &str = "##";
 
 fn main() {
     println!("Running C tests...");
-
-    let tempdir = TempDir::new().unwrap();
+    let dest_dir = env::var("TEST_OUT_DIR").unwrap_or("/home/pd/temp/".to_string());
+    std::fs::create_dir_all(&dest_dir).unwrap();
+    let tempdir = if dest_dir != "" {
+        PathBuf::from(dest_dir)
+    } else {
+        TempDir::new().unwrap().into_path()
+    };
 
     // Generate a `compile_commands.json` database for clangd.
     let ccg = CompletionWrapper::new(ykllvm_bin("clang"), "c_tests");
@@ -64,7 +69,7 @@ fn main() {
                 .get(key)
                 .unwrap_or(&Vec::new())
                 .iter()
-                .map(|l| l.generate_obj(tempdir.path()))
+                .map(|l| l.generate_obj(&tempdir))
                 .collect::<Vec<PathBuf>>();
 
             let mut compiler =

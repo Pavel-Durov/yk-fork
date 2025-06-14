@@ -1,4 +1,6 @@
 use super::{Register, VarLocation};
+#[cfg(tracer_swt)]
+use crate::trace::swt::cfg::CP_VERBOSE;
 use crate::{
     aotsmp::AOT_STACKMAPS,
     compile::{CompiledTrace, GuardIdx},
@@ -228,17 +230,20 @@ pub(crate) extern "C" fn __yk_deopt(
             } else {
                 todo!("Deal with multi register locations");
             };
+
             match aotloc {
                 SMLocation::Register(reg, size, extras) => {
                     #[cfg(debug_assertions)]
                     seen(isize::try_from(*reg).unwrap(), jitval);
                     registers[usize::from(*reg)] = jitval;
+
+                    #[cfg(tracer_swt)]
+                    if *CP_VERBOSE {
+                        println!("[DEOPT] {:?}, jitval: 0x{:x}", aotloc, jitval);
+                    }
                     for extra in extras {
                         #[cfg(debug_assertions)]
                         seen(isize::from(*extra), jitval);
-                        // Write any additional locations that were tracked for this variable.
-                        // Numbers greater or equal to zero are registers in Dwarf notation.
-                        // Negative numbers are offsets relative to RBP.
                         if *extra >= 0 {
                             registers[usize::try_from(*extra).unwrap()] = jitval;
                         } else if *extra < 0 {
@@ -280,6 +285,10 @@ pub(crate) extern "C" fn __yk_deopt(
                     continue;
                 }
                 SMLocation::Indirect(reg, off, size) => {
+                    #[cfg(tracer_swt)]
+                    if *CP_VERBOSE {
+                        println!("[DEOPT] {:?}, jitval: {}", aotloc, jitval);
+                    }
                     #[cfg(debug_assertions)]
                     seen(isize::try_from(*off).unwrap(), jitval);
                     debug_assert_eq!(*reg, RBP_DWARF_NUM);
