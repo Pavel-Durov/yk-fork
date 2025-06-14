@@ -14,13 +14,76 @@ Control point transision logs:
 
 
 Indirect2Register - src: Indirect(6, -80, 8) dst: Register(3, 8, [-104])
-emit_mem_to_mem: src_ptr=0x208bd0, src_offset=0, dst_offset=-104, size=8
-emit_mem_to_reg: src_ptr=0x208bd0, src_offset=0, dst_reg=3, size=8
+    emit_mem_to_mem: src_ptr=0x208bd0, src_offset=0, dst_offset=-104, size=8
+    emit_mem_to_reg: src_ptr=0x208bd0, src_offset=0, dst_reg=3, size=8
 Indirect2Indirect - src: Indirect(6, -88, 8) dst: Indirect(6, -80, 8)
-emit_mem_to_mem: src_ptr=0x208bd0, src_offset=8, dst_offset=-80, size=8
+    emit_mem_to_mem: src_ptr=0x208bd0, src_offset=8, dst_offset=-80, size=8
 Register2Indirect - src: Register(3, 8, [-72]) dst: Indirect(6, -56, 8)
 Register2Register - src: Register(14, 8, [-64]) dst: Register(14, 8, [-72])
 Indirect2Indirect - src: Indirect(6, -96, 8) dst: Indirect(6, -88, 8)
-emit_mem_to_mem: src_ptr=0x208bd0, src_offset=16, dst_offset=-88, size=8
+    emit_mem_to_mem: src_ptr=0x208bd0, src_offset=16, dst_offset=-88, size=8
 Register2Register - src: Register(13, 8, [-112]) dst: Register(13, 8, [-96])
+
 ASM DUMP:
+  0: int3 
+  1: movabs rbp, 0x7fffffffe1e0
+  b: movabs rsp, 0x7fffffffe1e0
+  15: sub rsp, 0x70
+  1c: movabs rax, 0x208bd0
+  26: mov rcx, qword ptr [rbp - 0x50]
+  2d: mov qword ptr [rax + riz], rcx
+  35: mov rcx, qword ptr [rbp - 0x58]
+  3c: mov qword ptr [rax + riz + 8], rcx
+  44: mov rcx, qword ptr [rbp - 0x60]
+  4b: mov qword ptr [rax + riz + 0x10], rcx
+  53: mov r15, qword ptr [rbp - 0xe0]
+  5a: mov r12, qword ptr [rbp - 0xc8]
+  61: movabs rax, 0x208bd0
+  6b: mov rcx, qword ptr [rax + riz]
+
+>>> x/gx $rcx
+0x7ffff6f0a028:	0x00007ffff6f0a024
+
+  73: mov qword ptr [rbp - 0x68], rcx
+
+>>> x/gx $rbp-0x68
+0x7fffffffe178:	0x00007ffff6f0a028
+
+  7a: movabs rax, 0x208bd0
+
+>>> x/gx $rax
+0x208bd0:	0x00007ffff6f0a028
+
+  84: mov rbx, qword ptr [rax + riz]
+
+>>> x/gx $rbx
+0x7ffff6f0a028:	0x00007ffff6f0a024
+
+  8c: movabs rax, 0x208bd0
+  96: mov rcx, qword ptr [rax + riz + 8]
+  9e: mov qword ptr [rbp - 0x50], rcx
+  a5: mov rax, qword ptr [rbp - 0x90]
+  ac: mov qword ptr [rbp - 0x38], rax
+  b3: mov rax, qword ptr [rbp - 0xd8]
+  ba: mov qword ptr [rbp - 0x48], rax
+  c1: mov r14, qword ptr [rbp - 0xd8]
+  c8: movabs rax, 0x208bd0
+  d2: mov rcx, qword ptr [rax + riz + 0x10]
+  da: mov qword ptr [rbp - 0x58], rcx
+  e1: mov rax, qword ptr [rbp - 0xd0]
+  e8: mov qword ptr [rbp - 0x60], rax
+  ef: mov r13, qword ptr [rbp - 0xd0]
+  f6: mov rax, qword ptr [rbp - 0x80]
+  fd: mov rcx, qword ptr [rbp - 0x88]
+  104: mov rdi, qword ptr [rbp - 0x98]
+  10b: mov rsi, qword ptr [rbp - 0xa0]
+  112: mov r8, qword ptr [rbp - 0xa8]
+  119: mov r9, qword ptr [rbp - 0xb0]
+  120: mov r10, qword ptr [rbp - 0xb8]
+  127: mov r11, qword ptr [rbp - 0xc0]
+  12e: sub rsp, 0x10
+  132: mov qword ptr [rsp], rax
+  136: movabs rax, 0x205467
+  140: mov qword ptr [rsp + 8], rax
+  145: pop rax
+  146: ret 
