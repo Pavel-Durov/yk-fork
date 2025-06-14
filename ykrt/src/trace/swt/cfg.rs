@@ -73,13 +73,13 @@ pub(crate) static CP_BREAK_TRACE: LazyLock<bool> = LazyLock::new(|| {
 pub(crate) fn dwarf_to_dynasm_reg(dwarf_reg_num: u8) -> u8 {
     match dwarf_reg_num {
         0 => 0,   // RAX
-        2 => 1,   // RCX
         1 => 2,   // RDX
+        2 => 1,   // RCX
         3 => 3,   // RBX
-        7 => 4,   // RSP
-        6 => 5,   // RBP
         4 => 6,   // RSI
         5 => 7,   // RDI
+        6 => 5,   // RBP
+        7 => 4,   // RSP
         8 => 8,   // R8
         9 => 9,   // R9
         10 => 10, // R10

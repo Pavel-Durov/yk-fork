@@ -1,10 +1,10 @@
 use dynasmrt::{dynasm, x64::Assembler, DynasmApi};
+use smallvec::SmallVec;
 use std::alloc::{alloc, handle_alloc_error, Layout};
 use std::collections::HashMap;
 use std::sync::OnceLock;
 use yksmp::Location::{Direct, Indirect, Register};
 use yksmp::Record;
-use smallvec::SmallVec;
 
 use crate::trace::swt::cfg::{
     dwarf_to_dynasm_reg, reg_num_to_ykrt_control_point_rsp_offset, CPTransitionDirection,
@@ -74,6 +74,13 @@ struct RegToRbpParams {
 
 // Helper function to generate assembly for memory-to-register operations
 fn emit_mem_to_reg(asm: &mut Assembler, params: MemToRegParams) {
+    if *CP_VERBOSE {
+        println!(
+            "emit_mem_to_reg: src_ptr=0x{:x}, src_offset={}, dst_reg={}, size={}",
+            params.src_ptr, params.src_offset, params.dst_reg, params.size
+        );
+    }
+
     match params.size {
         1 => dynasm!(asm
             ; mov Rq(TEMP_REG_PRIMARY), QWORD params.src_ptr
@@ -93,6 +100,13 @@ fn emit_mem_to_reg(asm: &mut Assembler, params: MemToRegParams) {
 
 // Helper function to generate assembly for memory-to-memory operations
 fn emit_mem_to_mem(asm: &mut Assembler, params: MemToMemParams) {
+    if *CP_VERBOSE {
+        println!(
+            "emit_mem_to_mem: src_ptr=0x{:x}, src_offset={}, dst_offset={}, size={}",
+            params.src_ptr, params.src_offset, params.dst_offset, params.size
+        );
+    }
+
     match params.size {
         1 => dynasm!(asm
             ; mov Rq(TEMP_REG_PRIMARY), QWORD params.src_ptr
@@ -586,12 +600,7 @@ fn allocate_buffer(
         if ptr.is_null() {
             handle_alloc_error(layout);
         }
-        // if *CP_VERBOSE {
-        //     println!(
-        //         "Allocated buffer of size {} at {:p} for direction {:?}",
-        //         src_val_buffer_size, ptr, cp_direction
-        //     );
-        // }
+        std::ptr::write_bytes(ptr, 0, src_val_buffer_size as usize);
         ThreadSafeBuffer::new(ptr, layout, src_val_buffer_size)
     });
 
@@ -624,6 +633,7 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
     let temp_live_vars_buffer = thread_safe_buffer.unwrap();
     let mut src_var_indirect_index = 0;
     let mut variables = HashMap::new();
+    let mut current_buffer_offset = 0i32; // Track actual buffer position
 
     // Set up the pointer to the temporary buffer
     dynasm!(asm
@@ -634,32 +644,30 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
         let src_location = src_var.get(0).unwrap();
         match src_location {
             Indirect(_, src_off, src_val_size) => {
-                // Calculate offset in buffer for this variable
-                let temp_buffer_offset = (src_var_indirect_index * (*src_val_size as i32)) as i32;
                 let src_rbp_offset = i32::try_from(*src_off).unwrap();
-
                 // Different handling based on size
                 match *src_val_size {
                     1 => dynasm!(asm
                         ; mov Rb(TEMP_REG_SECONDARY), BYTE [rbp + src_rbp_offset]
-                        ; mov BYTE [Rq(TEMP_REG_PRIMARY) + temp_buffer_offset], Rb(TEMP_REG_SECONDARY)
+                        ; mov BYTE [Rq(TEMP_REG_PRIMARY) + current_buffer_offset], Rb(TEMP_REG_SECONDARY)
                     ),
                     2 => dynasm!(asm
                         ; mov Rw(TEMP_REG_SECONDARY), WORD [rbp + src_rbp_offset]
-                        ; mov WORD [Rq(TEMP_REG_PRIMARY) + temp_buffer_offset], Rw(TEMP_REG_SECONDARY)
+                        ; mov WORD [Rq(TEMP_REG_PRIMARY) + current_buffer_offset], Rw(TEMP_REG_SECONDARY)
                     ),
                     4 => dynasm!(asm
                         ; mov Rd(TEMP_REG_SECONDARY), DWORD [rbp + src_rbp_offset]
-                        ; mov DWORD [Rq(TEMP_REG_PRIMARY) + temp_buffer_offset], Rd(TEMP_REG_SECONDARY)
+                        ; mov DWORD [Rq(TEMP_REG_PRIMARY) + current_buffer_offset], Rd(TEMP_REG_SECONDARY)
                     ),
                     8 => dynasm!(asm
                         ; mov Rq(TEMP_REG_SECONDARY), QWORD [rbp + src_rbp_offset]
-                        ; mov QWORD [Rq(TEMP_REG_PRIMARY) + temp_buffer_offset], Rq(TEMP_REG_SECONDARY)
+                        ; mov QWORD [Rq(TEMP_REG_PRIMARY) + current_buffer_offset], Rq(TEMP_REG_SECONDARY)
                     ),
                     _ => panic!("Unsupported value size in temporary copy: {}", src_val_size),
                 }
 
-                variables.insert(src_var_indirect_index, temp_buffer_offset);
+                variables.insert(src_var_indirect_index, current_buffer_offset);
+                current_buffer_offset += *src_val_size as i32; // Move to next position
                 src_var_indirect_index += 1;
             }
             Direct(_, _, _) => {
@@ -673,6 +681,16 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
                 src_location
             ),
         }
+    }
+
+    // Add memory barrier to ensure all stores complete before buffer is used
+    std::sync::atomic::fence(std::sync::atomic::Ordering::Release);
+
+    if *CP_VERBOSE {
+        eprintln!(
+            "Buffer population complete. Variables mapping: {:?}",
+            variables
+        );
     }
 
     LiveVarsBuffer {
