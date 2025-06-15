@@ -1,0 +1,107 @@
+# With dummy calls
+
+>>> info locals
+mt = 0x207660
+loc = {
+  state = 1
+}
+res = 9998
+i = 4
+>>> 
+
+NOTE: the frame of desticiton and source ARE THE SAME!
+
+src_rbp: 0x7fffffffe1f0, reg_store: 0x7fffffffe140, src_frame_size: 0x40, dst_frame_size: 0x40, rbp_offset_reg_store: 0xb0
+Register2Register - src: Register(15, 8, []) dst: Register(15, 8, [])
+Register2Register - src: Register(12, 8, []) dst: Register(12, 8, [])
+
+after jump:
+>>> info locals
+mt = 0x207660
+loc = {
+  state = 2135522
+}
+res = 9998
+i = 4
+
+------------------------------------------------------------------------------
+# Without dummy calls
+
+0x7fffffffe190:	0x00007fffffffe2f8	0x00007fffffffe1e0
+0x7fffffffe1a0:	0x0000000000000000	0x000000000020359f
+0x7fffffffe1b0:	0x0000000000000000	0x0000000000000000
+0x7fffffffe1c0:	0x00007fffffffe2f8	0x0000000000000000
+0x7fffffffe1d0:	0x0000000000204b20	0x00007ffff7ffd020
+
+
+mt = 0x206660
+loc = {
+  state = 1
+}
+res = 9998
+i = 4
+
+NOTE: the frame of desticiton and source ARE DIFFERENT IN SIZE!
+
+src_rbp: 0x7fffffffe1e0, reg_store: 0x7fffffffe140, src_frame_size: 0x30, dst_frame_size: 0x40, rbp_offset_reg_store: 0xa0
+Register2Register - src: Register(15, 8, []) dst: Register(15, 8, [])
+Register2Register - src: Register(12, 8, []) dst: Register(12, 8, [])
+
+// return ASM
+
+>>> p $rsp
+$1 = (void *) 0x7fffffffe1a0
+>>> p $rbp
+$2 = (void *) 0x7fffffffe1e0
+>>> p $rbp - $rsp
+$3 = 64
+
+ 0x00007ffff7fba077> ? sub    rsp,0x10
+ 0x00007ffff7fba07b  ? mov    QWORD PTR [rsp],rax
+ 0x00007ffff7fba07f  ? movabs rax,0x2038c4
+
+>>> x/gx $rsp+0x8
+0x7fffffffe198:	0x0000000000000000
+
+ 0x00007ffff7fba089  ? mov    QWORD PTR [rsp+0x8],rax
+
+>>> x/gx $rsp+0x8
+0x7fffffffe198:	0x00000000002038c4
+
+ 0x00007ffff7fba08e  ? pop    rax
+ 0x00007ffff7fba08f  ? ret
+
+>>> info locals
+// why mt is set to 0x20366f
+mt = 0x20366f <main+239>
+loc = {
+  state = 2123360
+}
+res = 9998
+i = 4
+
+>>> p &mt
+$4 = (YkMT **) 0x7fffffffe1a8
+>>> p $rbp - 0x7fffffffe1a8
+$5 = (void *) 0x38
+>>> p 0x38
+$6 = 56
+
+>>> x/10gx $rbp
+0x7fffffffe1e0:	0x0000000000000001	0x00007ffff704624a
+0x7fffffffe1f0:	0x0000000000000000	0x0000000000203580
+0x7fffffffe200:	0x0000000100000000	0x00007fffffffe2f8
+0x7fffffffe210:	0x00007fffffffe2f8	0x49265ccd9a21ca2f
+0x7fffffffe220:	0x0000000000000000	0x00007fffffffe308
+
+>>> x/-10gx $rbp
+0x7fffffffe190:	0x0000000000000031	0x00000000002038c4
+0x7fffffffe1a0:	0x0000000000000031	0x000000000020366f
+0x7fffffffe1b0:	0x0000000000206660	0x00000000002085e2
+0x7fffffffe1c0:	0x00007fffffffe2f8	0x0000000000000000
+0x7fffffffe1d0:	0x0000000000204b20	0x00007ffff7ffd020
+
+>>> x/gx &loc
+0x7fffffffe1b0:	0x0000000000206660
+>>> x/gx &mt
+0x7fffffffe1a8:	0x000000000020366f

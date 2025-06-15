@@ -61,10 +61,7 @@ next transition:
 0x7ffff6f0a024:	0xf6f0a0244050214d
 >>> x/gx $rbp-80
 0x7fffffffe190:	0x00007ffff6f0a030
->>> x/gx $rbp-88
-0x7fffffffe188:	0x00007ffff6f0a048
->>> x/gx $rbx
-0x7ffff6f0a028:	0x00007ffff6f0a024
+>>> x/gx $rbp-880x7fffffffe1b8
 >>> x/gx $r14
 0x7ffff6f0a040:	0x00007ffff6f0a038
 >>> x/gx $rbp-96

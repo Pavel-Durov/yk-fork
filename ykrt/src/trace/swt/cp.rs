@@ -80,6 +80,7 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
         ; mov rsp, QWORD frameaddr as i64
         ; sub rsp, (dst_frame_size).try_into().unwrap() // adjust rsp
     );
+
     // Calculate the offset from the RBP to the RSP where __ykrt_control_point_real stored the registers.
     // Example: r15 address = rbp - rbp_offset_reg_store
     let rbp_offset_reg_store = src_frame_size as i64 + (14 * REG64_BYTESIZE) as i64;
@@ -146,17 +147,16 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
         let dst_target_addr = i64::try_from(dst_rec.offset).unwrap() + call_offset;
         dynasm!(asm
             ; .arch x64
-            // start of ebug print of hardcoded registers
-            // ; mov rcx, QWORD print_regs as i64
-            // ; call rcx
-            // end of ebug print of hardcoded registers
-            // Reserve 16 bytes on the stack
+            // rsp is set to rbp - dst_frame_size
+            // Allocate 16 bytes on the stack - 
+            // 0x0 - rax store 
+            // 0x8 - return address
             ; sub rsp, 0x10
-            // Save the original rsp
+            // Save the original rsp at 0x0
             ; mov [rsp], rax
-            // Load the target address into rax
+            // Load the target address into rax at 0x8
             ; mov rax, QWORD dst_target_addr
-            // Store the target address into rsp+8
+            // Store the target address into 0x8
             ; mov [rsp + 0x8], rax
             // Restore the original rax
             ; pop rax
