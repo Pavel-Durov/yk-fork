@@ -1,3 +1,63 @@
+
+# Unopt mt:
+   0x00000000002031cd <+125>:	mov    QWORD PTR [rbp-0x38],rbx
+   0x00000000002031d1 <+129>:	mov    rdi,QWORD PTR [rbp-0x38]
+
+CALL64pcrel32 @yk_mt_new, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $rdi, implicit-def $rax, debug-location !91; c/simple.c:37:14
+  $rbx = MOV64rr $rax, debug-location !91; c/simple.c:37:14
+  JMP_1 %bb.2, debug-location !90; c/simple.c:37:9
+
+bb.2 (%ir-block.13, bb_id 2):
+; predecessors: %bb.1
+  successors: %bb.3
+  liveins: $rbx, $r12, $r15
+  $edi = MOV32ri 9, debug-location !90; c/simple.c:37:9
+  $esi = MOV32ri 2, debug-location !90; c/simple.c:37:9
+  CALL64pcrel32 target-flags(x86-plt) @__yk_trace_basicblock, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $edi, implicit $esi, debug-location !90; c/simple.c:37:9
+  MOV64mr $rbp, 1, $noreg, -56, $noreg, killed renamable $rbx, debug-location !90 :: (store (s64) into %ir.7); c/simple.c:37:9
+  renamable $rdi = MOV64rm $rbp, 1, $noreg, -56, $noreg, debug-location !92 :: (load (s64) from %ir.7); c/simple.c:38:27
+  $esi = XOR32rr undef $esi(tied-def 0), undef $esi, implicit-def dead $eflags, debug-location !93; c/simple.c:38:3
+  CALL64pcrel32 @yk_mt_hot_threshold_set, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $rdi, implicit $esi, debug-location !93; c/simple.c:38:3
+  JMP_1 %bb.3, debug-location !94; c/simple.c:39:14
+
+
+
+# Opt mt:
+   0x000000000020306d <+109>:	mov    rdi,QWORD PTR [rbp-0x30]
+
+ CALL64pcrel32 @yk_mt_new, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $rdi, implicit-def $rax, debug-location !40; c/simple.c:37:14
+  JMP_1 %bb.2, debug-location !39; c/simple.c:37:9
+
+bb.2 (%ir-block.14, bb_id 2):
+; predecessors: %bb.1
+  successors: %bb.3
+  liveins: $rax, $r12, $r15
+  MOV64mr $rbp, 1, $noreg, -48, $noreg, killed renamable $rax, debug-location !39 :: (store (s64) into %ir.8); c/simple.c:37:9
+  renamable $rdi = MOV64rm $rbp, 1, $noreg, -48, $noreg, debug-location !41 :: (load (s64) from %ir.8); c/simple.c:38:27
+  $esi = XOR32rr undef $esi(tied-def 0), undef $esi, implicit-def dead $eflags, debug-location !42; c/simple.c:38:3
+  CALL64pcrel32 @yk_mt_hot_threshold_set, <regmask $bh $bl $bp $bph $bpl $bx $ebp $ebx $hbp $hbx $rbp $rbx $r12 $r13 $r14 $r15 $r12b $r13b $r14b $r15b $r12bh $r13bh $r14bh $r15bh $r12d $r13d $r14d $r15d $r12w $r13w $r14w $r15w $r12wh and 3 more...>, implicit $rsp, implicit $ssp, implicit $rdi, implicit $esi, debug-location !42; c/simple.c:38:3
+  JMP_1 %bb.3, debug-location !43; c/simple.c:39:14
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Drafts
 # With dummy calls
 
 >>> info locals
@@ -32,6 +92,30 @@ i = 4
 0x7fffffffe1b0:	0x0000000000000000	0x0000000000000000
 0x7fffffffe1c0:	0x00007fffffffe2f8	0x0000000000000000
 0x7fffffffe1d0:	0x0000000000204b20	0x00007ffff7ffd020
+
+>>> p&mt
+$7 = (YkMT **) 0x7fffffffe1c0
+>>> x/gx 0x7fffffffe1c0
+0x7fffffffe1c0:	0x0000000000206660
+
+
+>>> p &mt
+$1 = (YkMT **) 0x7fffffffe1c0
+>>> p &loc
+$2 = (YkLocation *) 0x7fffffffe1c8
+>>> p &res
+$3 = (int *) 0x7ffff6f0a020
+>>> p &i
+$4 = (int *) 0x7ffff6f0a024
+
+─ Registers ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+     rax 0x0000000000000001     rbx 0x00007fffffffe308        rcx 0x0000000000000000     rdx 0x0000000000000000     rsi 0x00007fffffffe1c8
+     rdi 0x0000000000206660     rbp 0x00007fffffffe1f0        rsp 0x00007fffffffe1c0      r8 0x00007ffff71f1cc0      r9 0x00000000000001b0
+     r10 0x00007ffff7201f58     r11 0x0000000000203410        r12 0x00007ffff6f0a024     r13 0x00007fffffffe318     r14 0x0000000000000001
+     r15 0x00007ffff6f0a020     rip 0x00000000002030c9     eflags [ PF ZF IF ]            cs 0x00000033              ss 0x0000002b        
+      ds 0x00000000              es 0x00000000                 fs 0x00000000              gs 0x00000000              k0 0x00000000c0c0e000
+      k1 0x000000000000001f      k2 0x00000000ff7fff7f         k3 0x0000000000000000      k4 0x0000000000000000      k5 0x0000000000000000
+      k6 0x0000000000000000      k7 0x0000000000000000
 
 
 mt = 0x206660
