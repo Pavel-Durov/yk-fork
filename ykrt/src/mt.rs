@@ -14,6 +14,13 @@ use std::{
     },
 };
 
+#[cfg(tracer_swt)]
+use crate::trace::swt::cfg::ControlPointStackMapId;
+#[cfg(tracer_swt)]
+use crate::trace::swt::cfg::{CPTransitionDirection, SWT_MULTI_MODULE};
+#[cfg(tracer_swt)]
+use crate::trace::swt::cp::{swt_module_cp_transition, CPTransition};
+
 use atomic_enum::atomic_enum;
 use parking_lot::Mutex;
 #[cfg(not(all(feature = "yk_testing", not(test))))]
@@ -417,7 +424,24 @@ impl MT {
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
     pub fn control_point(self: &Arc<Self>, loc: &Location, frameaddr: *mut c_void, smid: u64) {
         match self.transition_control_point(loc, frameaddr) {
-            TransitionControlPoint::NoAction => (),
+            TransitionControlPoint::NoAction => {
+                #[cfg(tracer_swt)]
+                if smid == ControlPointStackMapId::UnOpt as u64 {
+                    if *SWT_MULTI_MODULE {
+                        unsafe {
+                            // Transition into opt interpreter when we stop tracing.
+                            swt_module_cp_transition(CPTransition {
+                                direction: CPTransitionDirection::UnoptToOpt,
+                                frameaddr,
+                                rsp: 0 as *const c_void,
+                                trace_addr: 0 as *const c_void,
+                                exec_trace: false,
+                                exec_trace_fn: __yk_multi_module_exec_trace,
+                            });
+                        }
+                    }
+                }
+            }
             TransitionControlPoint::AbortTracing(ak) => {
                 let thread_tracer = MTThread::with_borrow_mut(|mtt| match mtt.pop_tstate() {
                     MTThreadState::Tracing { thread_tracer, .. } => thread_tracer,
@@ -458,16 +482,35 @@ impl MT {
                     });
                 });
                 self.stats.timing_state(TimingState::JitExecuting);
+                #[cfg(tracer_swt)]
+                if smid == ControlPointStackMapId::Opt as u64 {
+                    if *SWT_MULTI_MODULE {
+                        unsafe {
+                            // Transition to unopt before trace execution since``
+                            // the trace was collected un unopt version.
+                            // This function will call __yk_exec_trace when live variables are restored.
+                            #[cfg(tracer_swt)]
+                            swt_module_cp_transition(CPTransition {
+                                direction: CPTransitionDirection::OptToUnopt,
+                                frameaddr,
+                                rsp,
+                                trace_addr: trace_addr,
+                                exec_trace: true,
+                                exec_trace_fn: __yk_multi_module_exec_trace,
+                            });
+                        }
+                    }
+                }
 
                 // FIXME: Calling this function overwrites the current (Rust) function frame,
                 // rather than unwinding it. https://github.com/ykjit/yk/issues/778.
                 unsafe { __yk_exec_trace(frameaddr, rsp, trace_addr) };
             }
             TransitionControlPoint::StartTracing(hl, trid) => {
-                self.start_tracing(frameaddr, loc, hl, trid);
+                self.start_tracing(frameaddr, loc, hl, trid, smid);
             }
             TransitionControlPoint::StopTracing(trid, connector_tid) => {
-                self.stop_tracing(frameaddr, loc, trid, connector_tid);
+                self.stop_tracing(frameaddr, loc, trid, connector_tid, smid);
             }
             TransitionControlPoint::StopSideTracing {
                 trid,
@@ -520,6 +563,7 @@ impl MT {
                                 loc,
                                 loc.hot_location_arc_clone().unwrap(),
                                 connector_tid,
+                                smid,
                             );
                         }
                     }
@@ -550,6 +594,7 @@ impl MT {
         _loc: &Location,
         hl: Arc<Mutex<HotLocation>>,
         trid: TraceId,
+        smid: u64,
     ) {
         self.stats
             .timing_state(crate::log::stats::TimingState::Tracing);
@@ -609,6 +654,23 @@ impl MT {
                 }
             }
         });
+        #[cfg(tracer_swt)]
+        if *SWT_MULTI_MODULE {
+            if smid == ControlPointStackMapId::Opt as u64 {
+                unsafe {
+                    // Transition to unopt before start tracing cause
+                    // we need the intepreter version with tracing calls..
+                    swt_module_cp_transition(CPTransition {
+                        direction: CPTransitionDirection::OptToUnopt,
+                        frameaddr,
+                        rsp: 0 as *const c_void,
+                        trace_addr: 0 as *const c_void,
+                        exec_trace: false,
+                        exec_trace_fn: __yk_multi_module_exec_trace,
+                    });
+                }
+            }
+        }
     }
 
     /// Stop tracing of the trace with id `trid` at `loc`. If `connector_tid` is `Some`, the
@@ -619,6 +681,7 @@ impl MT {
         _loc: &Location,
         trid: TraceId,
         connector_tid: Option<TraceId>,
+        smid: u64,
     ) {
         // Assuming no bugs elsewhere, the `unwrap`s cannot fail, because `StartTracing`
         // will have put a `Some` in the `Rc`.
@@ -672,6 +735,22 @@ impl MT {
             }
         }
         self.stats.timing_state(TimingState::OutsideYk);
+        #[cfg(tracer_swt)]
+        if *SWT_MULTI_MODULE {
+            if smid == ControlPointStackMapId::UnOpt as u64 {
+                unsafe {
+                    // Transition into opt interpreter when we stop tracing.
+                    swt_module_cp_transition(CPTransition {
+                        direction: CPTransitionDirection::UnoptToOpt,
+                        frameaddr,
+                        rsp: 0 as *const c_void,
+                        trace_addr: 0 as *const c_void,
+                        exec_trace: false,
+                        exec_trace_fn: __yk_multi_module_exec_trace,
+                    });
+                }
+            }
+        }
     }
 
     /// Perform the next step to `loc` in the `Location` state-machine for a control point. If
@@ -1155,6 +1234,29 @@ impl MT {
             }
         }
     }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[unsafe(naked)]
+#[no_mangle]
+pub(crate) unsafe extern "C" fn __yk_multi_module_exec_trace(
+    frameaddr: *const c_void,
+    rsp: *const c_void,
+    trace: *const c_void,
+) -> ! {
+    std::arch::naked_asm!(
+        // Reset RBP
+        "mov rbp, rdi",
+        // Reset RSP to the end of the control point frame (this includes the registers we pushed
+        // just before the control point)
+        "mov rsp, rsi",
+        "sub rsp, 8", // Return address of control point call
+        // Remove register store cause it will be executed by the cp transition
+        "add rsp, 8", // Remove return pointer
+        // Call the trace function.
+        "jmp rdx",
+        "ret",
+    )
 }
 
 #[cfg(target_arch = "x86_64")]

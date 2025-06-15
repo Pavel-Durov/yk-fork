@@ -1,0 +1,8 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+Stackmaps are defined in [Stack.h](mdc:ykllvm/clang/include/clang/Basic/Stack.h) LLVM pass.
+Stackmaps hold the information about the live varibles and their additional location that are later on used in control point transiti.
+When there is a deoptemisation occurs (when there's a transition from JITed code back to the interpreter) a [deopt.rs](mdc:ykrt/src/compile/jitc_yk/codegen/x64/deopt.rs) sis executed.
