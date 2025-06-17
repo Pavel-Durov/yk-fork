@@ -74,13 +74,6 @@ struct RegToRbpParams {
 
 // Helper function to generate assembly for memory-to-register operations
 fn emit_mem_to_reg(asm: &mut Assembler, params: MemToRegParams) {
-    if *CP_VERBOSE {
-        println!(
-            "emit_mem_to_reg: src_ptr=0x{:x}, src_offset={}, dst_reg={}, size={}",
-            params.src_ptr, params.src_offset, params.dst_reg, params.size
-        );
-    }
-
     match params.size {
         1 => dynasm!(asm
             ; mov Rq(TEMP_REG_PRIMARY), QWORD params.src_ptr
@@ -100,12 +93,6 @@ fn emit_mem_to_reg(asm: &mut Assembler, params: MemToRegParams) {
 
 // Helper function to generate assembly for memory-to-memory operations
 fn emit_mem_to_mem(asm: &mut Assembler, params: MemToMemParams) {
-    if *CP_VERBOSE {
-        println!(
-            "emit_mem_to_mem: src_ptr=0x{:x}, src_offset={}, dst_offset={}, size={}",
-            params.src_ptr, params.src_offset, params.dst_offset, params.size
-        );
-    }
 
     match params.size {
         1 => dynasm!(asm
@@ -290,7 +277,9 @@ pub(crate) fn set_destination_live_vars(
 
         let src_location = &src_var.get(0).unwrap();
         let dst_location = &dst_var.get(0).unwrap();
-
+        if *CP_VERBOSE {
+            println!("src_location: {:?}, dst_location: {:?}", src_location, dst_location);
+        }
         match src_location {
             Register(src_reg_num, src_val_size, _src_add_locs) => {
                 let reg_store_offset = reg_num_to_ykrt_control_point_rsp_offset(*src_reg_num);
@@ -373,7 +362,8 @@ pub(crate) fn set_destination_live_vars(
                     ),
                 }
             }
-            Indirect(src_reg_num, _src_off, src_val_size) => {
+            Indirect(src_reg_num, _src_off, src_val_size) | Direct(src_reg_num, _src_off, src_val_size) => {
+            // Indirect(src_reg_num, _src_off, src_val_size) => {
                 assert!(!live_vars_buffer.ptr.is_null(), "Live vars buffer is null");
                 let temp_buffer_offset = live_vars_buffer.variables[&src_var_indirect_index];
                 match dst_location {
@@ -416,7 +406,8 @@ pub(crate) fn set_destination_live_vars(
                             );
                         }
                     }
-                    Indirect(_dst_reg_num, dst_off, dst_val_size) => {
+                    Indirect(_, dst_off, dst_val_size) | Direct(_, dst_off, dst_val_size) => {
+                    // Indirect(_dst_reg_num, dst_off, dst_val_size) => {
                         if *CP_VERBOSE {
                             println!(
                                 "Indirect2Indirect - src: {:?} dst: {:?}",
@@ -443,7 +434,7 @@ pub(crate) fn set_destination_live_vars(
                 }
                 src_var_indirect_index += 1;
             }
-            Direct(_, _, _) => { /* Do nothing */ }
+            // Direct(_, _, _) => { /* Do nothing */ }
             _ => panic!("Unexpected source location: {:?}", src_location),
         }
     }
@@ -560,7 +551,7 @@ fn calculate_live_vars_buffer_size(src_rec: &Record) -> i32 {
     let mut src_val_buffer_size: i32 = 0;
     for (_, src_var) in src_rec.live_vals.iter().enumerate() {
         match src_var.get(0).unwrap() {
-            Indirect(_, _, src_val_size) => {
+            Indirect(_, _, src_val_size) | Direct(_, _, src_val_size) => {
                 src_val_buffer_size += *src_val_size as i32;
             }
             _ => { /* DO NOTHING */ }
@@ -643,7 +634,7 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
     for (_, src_var) in src_rec.live_vals.iter().enumerate() {
         let src_location = src_var.get(0).unwrap();
         match src_location {
-            Indirect(_, src_off, src_val_size) => {
+            Indirect(_, src_off, src_val_size) | Direct(_, src_off, src_val_size) => {
                 let src_rbp_offset = i32::try_from(*src_off).unwrap();
                 // Different handling based on size
                 match *src_val_size {
@@ -669,9 +660,6 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
                 variables.insert(src_var_indirect_index, current_buffer_offset);
                 current_buffer_offset += *src_val_size as i32; // Move to next position
                 src_var_indirect_index += 1;
-            }
-            Direct(_, _, _) => {
-                // DO NOTHING - Direct variables don't need buffer storage
             }
             Register(_, _, _) => {
                 // DO NOTHING - Register variables don't need buffer storage
