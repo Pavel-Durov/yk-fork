@@ -512,11 +512,6 @@ fn calc_after_cp_offset(rec_offset: u64) -> Result<i64, Box<dyn Error>> {
     let instructions = cs.disasm_all(code_slice, rec_offset as u64).unwrap();
     // Initialize the offset accumulator
     let mut offset: i64 = 0;
-
-    // Skip dummy trace calls in optimized functions
-    // These are typically call instructions to __yk_trace_basicblock_dummy
-    let mut skip_next_call = false;
-
     for inst in instructions.iter() {
         offset += inst.bytes().len() as i64;
 

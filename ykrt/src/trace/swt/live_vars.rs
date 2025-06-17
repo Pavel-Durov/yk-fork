@@ -143,23 +143,18 @@ fn emit_reg_to_rbp(asm: &mut Assembler, params: RegToRbpParams) {
 
 fn get_size(src_val_size: &u16, dst_val_size: &u16) -> u16 {
     // NOTE: Sometimes especially when running yklua, the source and destination sizes are different.
-    // if src_val_size != dst_val_size {
-    //     if *CP_VERBOSE {
-    //         println!(
-    //             "WARNING: size mismatch - src: {}, dst: {}.",src_val_size, dst_val_size
-    //         );
-    //     }
-    //     std::cmp::min(*src_val_size, *dst_val_size)
-    // } else {
-    //     *src_val_size
-    // }
-    assert!(
-        dst_val_size == src_val_size,
-        "Register2Indirect - src and dst val size must match. got src: {} and dst: {}",
-        src_val_size,
-        dst_val_size
-    );
-    *src_val_size
+    // Its normal if we have Register2Indirect - cause registers are 8 bytes and indirects can be anything.
+    // The important thing here is that we write the destination value size.
+    if src_val_size != dst_val_size {
+        if *CP_VERBOSE {
+            println!(
+                "WARNING: size mismatch - src: {}, dst: {}.",src_val_size, dst_val_size
+            );
+        }
+        std::cmp::min(*src_val_size, *dst_val_size)
+    } else {
+        *src_val_size
+    }
 }
 
 // Handles additional locations for register-to-register.
@@ -269,6 +264,9 @@ pub(crate) fn set_destination_live_vars(
         dst_rec.live_vals.len()
     );
 
+    if *CP_VERBOSE {
+        eprintln!("copying live vars");
+    }
     for (index, src_var) in src_rec.live_vals.iter().enumerate() {
         let dst_var = &dst_rec.live_vals[index];
         if src_var.len() > 1 || dst_var.len() > 1 {
@@ -278,7 +276,7 @@ pub(crate) fn set_destination_live_vars(
         let src_location = &src_var.get(0).unwrap();
         let dst_location = &dst_var.get(0).unwrap();
         if *CP_VERBOSE {
-            println!("src_location: {:?}, dst_location: {:?}", src_location, dst_location);
+            println!("src: {:?}, dst: {:?}", src_location, dst_location);
         }
         match src_location {
             Register(src_reg_num, src_val_size, _src_add_locs) => {
@@ -311,12 +309,6 @@ pub(crate) fn set_destination_live_vars(
                                 src_val_size,
                                 dst_val_size
                             );
-                            if *CP_VERBOSE {
-                                println!(
-                                    "Register2Register - src: {:?} dst: {:?}",
-                                    src_location, dst_location
-                                );
-                            }
                             dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
                             let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
                             emit_rbp_to_reg(
@@ -331,12 +323,6 @@ pub(crate) fn set_destination_live_vars(
                     }
                     Indirect(_dst_reg_num, dst_off, dst_val_size) => {
                         let size = get_size(src_val_size, dst_val_size);
-                        if *CP_VERBOSE {
-                            println!(
-                                "Register2Indirect - src: {:?} dst: {:?}",
-                                src_location, dst_location
-                            );
-                        }
                         // First load register value to temp register
                         emit_rbp_to_reg(
                             asm,
@@ -377,12 +363,6 @@ pub(crate) fn set_destination_live_vars(
                                 src_var_indirect_index: src_var_indirect_index,
                             });
                         } else {
-                            if *CP_VERBOSE {
-                                println!(
-                                    "Indirect2Register - src: {:?} dst: {:?}",
-                                    src_location, dst_location
-                                );
-                            }
                             assert!(*src_reg_num == 6, "Indirect register is expected to be rbp");
                             let size = get_size(src_val_size, dst_val_size);
                             handle_indirect_to_register_additional_locations(
@@ -407,14 +387,6 @@ pub(crate) fn set_destination_live_vars(
                         }
                     }
                     Indirect(_, dst_off, dst_val_size) | Direct(_, dst_off, dst_val_size) => {
-                    // Indirect(_dst_reg_num, dst_off, dst_val_size) => {
-                        if *CP_VERBOSE {
-                            println!(
-                                "Indirect2Indirect - src: {:?} dst: {:?}",
-                                src_location, dst_location
-                            );
-                        }
-
                         let size = get_size(src_val_size, dst_val_size);
 
                         emit_mem_to_mem(
@@ -465,12 +437,6 @@ pub(crate) fn set_destination_live_vars(
                             src_val_size,
                             dst_val_size
                         );
-                        if *CP_VERBOSE {
-                            println!(
-                                "Register2Register - src: {:?} dst: {:?}",
-                                src_location, dst_location
-                            );
-                        }
                         dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
                         let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
                         assert!(
@@ -504,12 +470,6 @@ pub(crate) fn set_destination_live_vars(
                 let temp_buffer_offset = live_vars_buffer.variables[&src_var_indirect_index];
                 match dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
-                        if *CP_VERBOSE {
-                            println!(
-                                "Indirect2Register - src: {:?} dst: {:?}",
-                                src_location, dst_location
-                            );
-                        }
                         assert!(*src_reg_num == 6, "Indirect register is expected to be rbp");
                         let size = get_size(src_val_size, dst_val_size);
                         handle_indirect_to_register_additional_locations(
