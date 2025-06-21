@@ -1,0 +1,37 @@
+rr replay
+
+>>> p $rip
+$1 = (void (*)()) 0xbcc03d <__yk_unopt_luaV_execute+1165>
+
+
+>>> x/gx $rax+0x588
+0x8348f48948fd8ed0:	Cannot access memory at address 0x8348f48948fd8ed0
+
+>>> watch $rax
+Watchpoint 1: $rax
+>>> rc
+
+>>> p $rip
+$2 = (void (*)()) 0xbcc03a <__yk_unopt_luaV_execute+1162>
+0x0000000000bcc03a> ? mov    rax,QWORD PTR [rcx]
+>>> x/gx $rcx
+0x7f2342e03310 <__yk_multi_module_exec_trace>:	0x8348f48948fd8948
+
+>>> watch $rcx
+Watchpoint 1: $rax
+>>> rc
+
+>>> p $rip
+$3 = (void (*)()) 0xbcc033 <__yk_unopt_luaV_execute+1155>
+
+0x0000000000bcc033> ? mov    rcx,QWORD PTR [rbp-0x148]
+
+>>> x/gx $rbp-0x148
+0x7ffc75c19598:	0x00007f2342e03310
+>>> x/gx 0x00007f2342e03310
+0x7f2342e03310 <__yk_multi_module_exec_trace>:	0x8348f48948fd8948
+
+>>> watch *0x00007f2342e03310
+Hardware watchpoint 3: *0x00007f2342e03310
+>>> rc
+

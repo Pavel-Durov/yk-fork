@@ -1,0 +1,351 @@
+Using buffer at 0x18d028c0 for direction OptToUnopt
+Buffer population complete. Variables mapping: {34: 272, 18: 144, 17: 136, 1: 8, 10: 80, 16: 128, 27: 216, 31: 248, 33: 264, 37: 296, 32: 256, 22: 176, 23: 184, 2: 16, 9: 72, 13: 104, 21: 168, 3: 24, 8: 64, 0: 0, 20: 160, 11: 88, 12: 96, 6: 48, 24: 192, 28: 224, 15: 120, 30: 240, 5: 40, 26: 208, 7: 56, 19: 152, 4: 32, 14: 112, 35: 280, 36: 288, 25: 200, 29: 232}
+Transition: OptToUnopt ExecTrace: false
+src_rbp: 0x7ffd82408160, reg_store: 0x7ffd82407730, src_frame_size: 0x9c0, dst_frame_size: 0x9c0, rbp_offset_reg_store: 0xa30
+@@@ Source live vars values:
+Indirect(6, -88, 8), value=0x0000000018cfb2a8
+Indirect(6, -56, 8), value=0x00007fb575feb340
+Indirect(6, -56, 8), value=0x00007fb575feb340
+Indirect(6, -400, 8), value=0x00007fb575feb350
+Indirect(6, -296, 8), value=0x00007fb575feb360
+Indirect(6, -360, 8), value=0x00007fb575feb370
+Indirect(6, -352, 8), value=0x00007fb575feb380
+Indirect(6, -392, 8), value=0x00007fb575feb390
+Indirect(6, -312, 8), value=0x00007fb575feb3a0
+Indirect(6, -304, 8), value=0x00007fb575feb3b0
+Indirect(6, -216, 8), value=0x00007fb575feb3c0
+Indirect(6, -288, 8), value=0x00007fb575feb3d0
+Indirect(6, -264, 8), value=0x00007fb575feb3e0
+Indirect(6, -200, 8), value=0x00007fb575feb3f0
+Indirect(6, -168, 8), value=0x00007fb575feb400
+Indirect(6, -160, 8), value=0x0000000018cfb368
+Indirect(6, -192, 8), value=0x0000000018cfb35c
+Indirect(6, -80, 8), value=0x0000000018cfb2b8
+Indirect(6, -184, 8), value=0x00007fb575feb3c8
+Indirect(6, -240, 8), value=0x00007fb575feb3b8
+Indirect(6, -272, 8), value=0x00007fb575feb3a8
+Indirect(6, -232, 8), value=0x00007fb575feb3e8
+Indirect(6, -224, 8), value=0x00007fb575feb3d8
+Indirect(6, -176, 8), value=0x0000000018cfb2c8
+Indirect(6, -136, 8), value=0x00007fb575feb408
+Indirect(6, -120, 8), value=0x00007fb575feb3f8
+Indirect(6, -128, 8), value=0x00007fb575feb348
+Indirect(6, -152, 8), value=0x00007fb575feb358
+Indirect(6, -96, 8), value=0x00007fb575feb368
+Indirect(6, -248, 8), value=0x00007fb575feb378
+Indirect(6, -112, 8), value=0x00007fb575feb388
+Indirect(6, -144, 8), value=0x00007fb575feb398
+Indirect(6, -256, 8), value=0x0000000018cfcfb0
+Indirect(6, -384, 8), value=0x0000000000000000
+Indirect(6, -208, 8), value=0x0000000018cfcfd0
+Indirect(6, -280, 8), value=0x0000000018cfcfd8
+Indirect(6, -320, 8), value=0x0000000018cfcfee
+Indirect(6, -44, 4), value=0x0000000000000000
+Register(2, 8, [-328]), value=0x0000000018cfb2c0
+Register(14, 8, [-376]), value=0x0000000018cfde00
+Register(0, 8, [-72]), value=0x0000000018cfde18
+Register(13, 8, [-344]), value=0x0000000018d03800
+Register(15, 8, [-368]), value=0x0000000018cfde20
+Register(3, 8, [-336]), value=0x0000000018cfcfb8
+Register(8, 8, [-776]), value=0x0000000018d03928
+Register(12, 8, [-104]), value=0x0000000018cfb980
+WARNING: size mismatch - src: 4, dst: 8.
+WARNING: size mismatch - src: 8, dst: 4.
+@@@ Used temp registers: [
+    RestoreTempRegisters { src_location: Register(2, 8, [-328]), dst_location: Register(2, 8, [-328]), src_var_indirect_index: 16 }, 
+    RestoreTempRegisters { src_location: Register(0, 8, [-72]), dst_location: Register(0, 8, [-72]), src_var_indirect_index: 33 }
+]
+ASM DUMP:
+  0: movabs rbp, 0x7ffd82408160
+  a: movabs rsp, 0x7ffd82408160
+  14: sub rsp, 0x9c0
+  1b: movabs rax, 0x18d028c0
+  25: mov rcx, qword ptr [rbp - 0x58]
+  2c: mov qword ptr [rax + riz], rcx
+  34: mov rcx, qword ptr [rbp - 0x38]
+  3b: mov qword ptr [rax + riz + 8], rcx
+  43: mov rcx, qword ptr [rbp - 0x38]
+  4a: mov qword ptr [rax + riz + 0x10], rcx
+  52: mov rcx, qword ptr [rbp - 0x190]
+  59: mov qword ptr [rax + riz + 0x18], rcx
+  61: mov rcx, qword ptr [rbp - 0x128]
+  68: mov qword ptr [rax + riz + 0x20], rcx
+  70: mov rcx, qword ptr [rbp - 0x168]
+  77: mov qword ptr [rax + riz + 0x28], rcx
+  7f: mov rcx, qword ptr [rbp - 0x160]
+  86: mov qword ptr [rax + riz + 0x30], rcx
+  8e: mov rcx, qword ptr [rbp - 0x188]
+  95: mov qword ptr [rax + riz + 0x38], rcx
+  9d: mov rcx, qword ptr [rbp - 0x138]
+  a4: mov qword ptr [rax + riz + 0x40], rcx
+  ac: mov rcx, qword ptr [rbp - 0x130]
+  b3: mov qword ptr [rax + riz + 0x48], rcx
+  bb: mov rcx, qword ptr [rbp - 0xd8]
+  c2: mov qword ptr [rax + riz + 0x50], rcx
+  ca: mov rcx, qword ptr [rbp - 0x120]
+  d1: mov qword ptr [rax + riz + 0x58], rcx
+  d9: mov rcx, qword ptr [rbp - 0x108]
+  e0: mov qword ptr [rax + riz + 0x60], rcx
+  e8: mov rcx, qword ptr [rbp - 0xc8]
+  ef: mov qword ptr [rax + riz + 0x68], rcx
+  f7: mov rcx, qword ptr [rbp - 0xa8]
+  fe: mov qword ptr [rax + riz + 0x70], rcx
+  106: mov rcx, qword ptr [rbp - 0xa0]
+  10d: mov qword ptr [rax + riz + 0x78], rcx
+  115: mov rcx, qword ptr [rbp - 0xc0]
+  11c: mov qword ptr [rax + riz + 0x80], rcx
+  124: mov rcx, qword ptr [rbp - 0x50]
+  12b: mov qword ptr [rax + riz + 0x88], rcx
+  133: mov rcx, qword ptr [rbp - 0xb8]
+  13a: mov qword ptr [rax + riz + 0x90], rcx
+  142: mov rcx, qword ptr [rbp - 0xf0]
+  149: mov qword ptr [rax + riz + 0x98], rcx
+  151: mov rcx, qword ptr [rbp - 0x110]
+  158: mov qword ptr [rax + riz + 0xa0], rcx
+  160: mov rcx, qword ptr [rbp - 0xe8]
+  167: mov qword ptr [rax + riz + 0xa8], rcx
+  16f: mov rcx, qword ptr [rbp - 0xe0]
+  176: mov qword ptr [rax + riz + 0xb0], rcx
+  17e: mov rcx, qword ptr [rbp - 0xb0]
+  185: mov qword ptr [rax + riz + 0xb8], rcx
+  18d: mov rcx, qword ptr [rbp - 0x88]
+  194: mov qword ptr [rax + riz + 0xc0], rcx
+  19c: mov rcx, qword ptr [rbp - 0x78]
+  1a3: mov qword ptr [rax + riz + 0xc8], rcx
+  1ab: mov rcx, qword ptr [rbp - 0x80]
+  1b2: mov qword ptr [rax + riz + 0xd0], rcx
+  1ba: mov rcx, qword ptr [rbp - 0x98]
+  1c1: mov qword ptr [rax + riz + 0xd8], rcx
+  1c9: mov rcx, qword ptr [rbp - 0x60]
+  1d0: mov qword ptr [rax + riz + 0xe0], rcx
+  1d8: mov rcx, qword ptr [rbp - 0xf8]
+  1df: mov qword ptr [rax + riz + 0xe8], rcx
+  1e7: mov rcx, qword ptr [rbp - 0x70]
+  1ee: mov qword ptr [rax + riz + 0xf0], rcx
+  1f6: mov rcx, qword ptr [rbp - 0x90]
+  1fd: mov qword ptr [rax + riz + 0xf8], rcx
+  205: mov rcx, qword ptr [rbp - 0x100]
+  20c: mov qword ptr [rax + riz + 0x100], rcx
+  214: mov rcx, qword ptr [rbp - 0x180]
+  21b: mov qword ptr [rax + riz + 0x108], rcx
+  223: mov rcx, qword ptr [rbp - 0xd0]
+  22a: mov qword ptr [rax + riz + 0x110], rcx
+  232: mov rcx, qword ptr [rbp - 0x118]
+  239: mov qword ptr [rax + riz + 0x118], rcx
+  241: mov rcx, qword ptr [rbp - 0x140]
+  248: mov qword ptr [rax + riz + 0x120], rcx
+  250: mov ecx, dword ptr [rbp - 0x2c]
+  257: mov dword ptr [rax + riz + 0x128], ecx
+  25f: movabs rax, 0x18d028c0
+  269: mov rcx, qword ptr [rax + riz]
+  271: mov qword ptr [rbp - 0x58], rcx
+  278: movabs rax, 0x18d028c0
+  282: mov rcx, qword ptr [rax + riz + 8]
+  28a: mov qword ptr [rbp - 0x38], rcx
+  291: movabs rax, 0x18d028c0
+  29b: mov rcx, qword ptr [rax + riz + 0x10]
+  2a3: mov qword ptr [rbp - 0x38], rcx
+  2aa: movabs rax, 0x18d028c0
+  2b4: mov rcx, qword ptr [rax + riz + 0x18]
+  2bc: mov qword ptr [rbp - 0x190], rcx
+  2c3: movabs rax, 0x18d028c0
+  2cd: mov rcx, qword ptr [rax + riz + 0x20]
+  2d5: mov qword ptr [rbp - 0x128], rcx
+  2dc: movabs rax, 0x18d028c0
+  2e6: mov rcx, qword ptr [rax + riz + 0x28]
+  2ee: mov qword ptr [rbp - 0x168], rcx
+  2f5: movabs rax, 0x18d028c0
+  2ff: mov rcx, qword ptr [rax + riz + 0x30]
+  307: mov qword ptr [rbp - 0x160], rcx
+  30e: movabs rax, 0x18d028c0
+  318: mov rcx, qword ptr [rax + riz + 0x38]
+  320: mov qword ptr [rbp - 0x188], rcx
+  327: movabs rax, 0x18d028c0
+  331: mov rcx, qword ptr [rax + riz + 0x40]
+  339: mov qword ptr [rbp - 0x138], rcx
+  340: movabs rax, 0x18d028c0
+  34a: mov rcx, qword ptr [rax + riz + 0x48]
+  352: mov qword ptr [rbp - 0x130], rcx
+  359: movabs rax, 0x18d028c0
+  363: mov rcx, qword ptr [rax + riz + 0x50]
+  36b: mov qword ptr [rbp - 0xd8], rcx
+  372: movabs rax, 0x18d028c0
+  37c: mov rcx, qword ptr [rax + riz + 0x58]
+  384: mov qword ptr [rbp - 0x120], rcx
+  38b: movabs rax, 0x18d028c0
+  395: mov rcx, qword ptr [rax + riz + 0x60]
+  39d: mov qword ptr [rbp - 0x108], rcx
+  3a4: movabs rax, 0x18d028c0
+  3ae: mov rcx, qword ptr [rax + riz + 0x68]
+  3b6: mov qword ptr [rbp - 0xc8], rcx
+  3bd: movabs rax, 0x18d028c0
+  3c7: mov rcx, qword ptr [rax + riz + 0x70]
+  3cf: mov qword ptr [rbp - 0xa8], rcx
+  3d6: movabs rax, 0x18d028c0
+  3e0: mov rcx, qword ptr [rax + riz + 0x78]
+  3e8: mov qword ptr [rbp - 0xa0], rcx
+  3ef: movabs rax, 0x18d028c0
+  3f9: mov rcx, qword ptr [rax + riz + 0x80]
+  401: mov qword ptr [rbp - 0xc0], rcx
+  408: movabs rax, 0x18d028c0
+  412: mov rcx, qword ptr [rax + riz + 0x88]
+  41a: mov qword ptr [rbp - 0x50], rcx
+  421: movabs rax, 0x18d028c0
+  42b: mov rcx, qword ptr [rax + riz + 0x90]
+  433: mov qword ptr [rbp - 0xb8], rcx
+  43a: movabs rax, 0x18d028c0
+  444: mov rcx, qword ptr [rax + riz + 0x98]
+  44c: mov qword ptr [rbp - 0xf0], rcx
+  453: movabs rax, 0x18d028c0
+  45d: mov rcx, qword ptr [rax + riz + 0xa0]
+  465: mov qword ptr [rbp - 0x110], rcx
+  46c: movabs rax, 0x18d028c0
+  476: mov rcx, qword ptr [rax + riz + 0xa8]
+  47e: mov qword ptr [rbp - 0xe8], rcx
+  485: movabs rax, 0x18d028c0
+  48f: mov rcx, qword ptr [rax + riz + 0xb0]
+  497: mov qword ptr [rbp - 0xe0], rcx
+  49e: movabs rax, 0x18d028c0
+  4a8: mov rcx, qword ptr [rax + riz + 0xb8]
+  4b0: mov qword ptr [rbp - 0xb0], rcx
+  4b7: movabs rax, 0x18d028c0
+  4c1: mov rcx, qword ptr [rax + riz + 0xc0]
+  4c9: mov qword ptr [rbp - 0x88], rcx
+  4d0: movabs rax, 0x18d028c0
+  4da: mov rcx, qword ptr [rax + riz + 0xc8]
+  4e2: mov qword ptr [rbp - 0x78], rcx
+  4e9: movabs rax, 0x18d028c0
+  4f3: mov rcx, qword ptr [rax + riz + 0xd0]
+  4fb: mov qword ptr [rbp - 0x80], rcx
+  502: movabs rax, 0x18d028c0
+  50c: mov rcx, qword ptr [rax + riz + 0xd8]
+  514: mov qword ptr [rbp - 0x98], rcx
+  51b: movabs rax, 0x18d028c0
+  525: mov rcx, qword ptr [rax + riz + 0xe0]
+  52d: mov qword ptr [rbp - 0x60], rcx
+  534: movabs rax, 0x18d028c0
+  53e: mov rcx, qword ptr [rax + riz + 0xe8]
+  546: mov qword ptr [rbp - 0xf8], rcx
+  54d: movabs rax, 0x18d028c0
+  557: mov rcx, qword ptr [rax + riz + 0xf0]
+  55f: mov qword ptr [rbp - 0x70], rcx
+  566: movabs rax, 0x18d028c0
+  570: mov rcx, qword ptr [rax + riz + 0xf8]
+  578: mov qword ptr [rbp - 0x90], rcx
+  57f: movabs rax, 0x18d028c0
+  589: mov rcx, qword ptr [rax + riz + 0x100]
+  591: mov qword ptr [rbp - 0x100], rcx
+  598: mov rax, qword ptr [rbp - 0xa28]
+  59f: mov qword ptr [rbp - 0x178], rax
+  5a6: mov r14, qword ptr [rbp - 0xa28]
+  5ad: movabs rax, 0x18d028c0
+  5b7: mov rcx, qword ptr [rax + riz + 0x108]
+  5bf: mov qword ptr [rbp - 0x180], rcx
+  5c6: mov rax, qword ptr [rbp - 0xa20]
+  5cd: mov qword ptr [rbp - 0x158], rax
+  5d4: mov r13, qword ptr [rbp - 0xa20]
+  5db: movabs rax, 0x18d028c0
+  5e5: mov rcx, qword ptr [rax + riz + 0x110]
+  5ed: mov qword ptr [rbp - 0xd0], rcx
+  5f4: mov rax, qword ptr [rbp - 0xa30]
+  5fb: mov qword ptr [rbp - 0x170], rax
+  602: mov r15, qword ptr [rbp - 0xa30]
+  609: movabs rax, 0x18d028c0
+  613: mov rcx, qword ptr [rax + riz + 0x118]
+  61b: mov qword ptr [rbp - 0x118], rcx
+  622: mov rax, qword ptr [rbp - 0x9e0]
+  629: mov qword ptr [rbp - 0x150], rax
+  630: mov rbx, qword ptr [rbp - 0x9e0]
+  637: movabs rax, 0x18d028c0
+  641: mov rcx, qword ptr [rax + riz + 0x120]
+  649: mov qword ptr [rbp - 0x140], rcx
+  650: movabs rax, 0x18d028c0
+  65a: mov ecx, dword ptr [rax + riz + 0x128]
+  662: mov dword ptr [rbp - 0x308], ecx
+  669: movabs rax, 0x18d028c0
+  673: mov r8d, dword ptr [rax + riz + 0x128]
+  67b: mov rax, qword ptr [rbp - 0x9f8]
+  682: mov dword ptr [rbp - 0x2c], eax
+  689: mov rax, qword ptr [rbp - 0xa18]
+  690: mov qword ptr [rbp - 0x68], rax
+  697: mov r12, qword ptr [rbp - 0xa18]
+  69e: mov rax, qword ptr [rbp - 0x9d8]
+  6a5: mov qword ptr [rbp - 0x148], rax
+  6ac: mov rcx, qword ptr [rbp - 0x9d8]
+  6b3: mov rax, qword ptr [rbp - 0x9d0]
+  6ba: mov qword ptr [rbp - 0x48], rax
+  
+  6c1: mov rax, qword ptr [rbp - 0x9d0]
+  6c8: mov rdi, qword ptr [rbp - 0x9e8]
+  6cf: mov rsi, qword ptr [rbp - 0x9f0]
+  6d6: mov r9, qword ptr [rbp - 0xa00]
+  6dd: mov r10, qword ptr [rbp - 0xa08]
+  6e4: mov r11, qword ptr [rbp - 0xa10]
+  6eb: push rax
+  6ec: push rcx
+  6ed: push rdx
+  6ee: push rsi
+  6ef: push rdi
+  6f0: push r8
+  6f2: push r9
+  6f4: push r10
+  6f6: push r11
+  6f8: movabs rdi, 0x7fb574170048
+  702: movabs rsi, 0xa30
+  70c: movabs rax, 0x7fb5759d7e80
+  716: call rax
+  718: pop r11
+  71a: pop r10
+  71c: pop r9
+  71e: pop r8
+  720: pop rdi
+  721: pop rsi
+  722: pop rdx
+  723: pop rcx
+  724: pop rax
+  725: sub rsp, 0x10
+  729: mov qword ptr [rsp], rax
+  72d: movabs rax, 0xbcc083
+  737: mov qword ptr [rsp + 8], rax
+  73c: pop rax
+  73d: ret 
+@@@ Destination live vars values:
+Indirect(6, -88, 8), value=0x0000000018cfb2a8
+Indirect(6, -56, 8), value=0x00007fb575feb340
+Indirect(6, -56, 8), value=0x00007fb575feb340
+Indirect(6, -400, 8), value=0x00007fb575feb350
+Indirect(6, -296, 8), value=0x00007fb575feb360
+Indirect(6, -360, 8), value=0x00007fb575feb370
+Indirect(6, -352, 8), value=0x00007fb575feb380
+Indirect(6, -392, 8), value=0x00007fb575feb390
+Indirect(6, -312, 8), value=0x00007fb575feb3a0
+Indirect(6, -304, 8), value=0x00007fb575feb3b0
+Indirect(6, -216, 8), value=0x00007fb575feb3c0
+Indirect(6, -288, 8), value=0x00007fb575feb3d0
+Indirect(6, -264, 8), value=0x00007fb575feb3e0
+Indirect(6, -200, 8), value=0x00007fb575feb3f0
+Indirect(6, -168, 8), value=0x00007fb575feb400
+Indirect(6, -160, 8), value=0x0000000018cfb368
+Indirect(6, -192, 8), value=0x0000000018cfb35c
+Indirect(6, -80, 8), value=0x0000000018cfb2b8
+Indirect(6, -184, 8), value=0x00007fb575feb3c8
+Indirect(6, -240, 8), value=0x00007fb575feb3b8
+Indirect(6, -272, 8), value=0x00007fb575feb3a8
+Indirect(6, -232, 8), value=0x00007fb575feb3e8
+Indirect(6, -224, 8), value=0x00007fb575feb3d8
+Indirect(6, -176, 8), value=0x0000000018cfb2c8
+Indirect(6, -136, 8), value=0x00007fb575feb408
+Indirect(6, -120, 8), value=0x00007fb575feb3f8
+Indirect(6, -128, 8), value=0x00007fb575feb348
+Indirect(6, -152, 8), value=0x00007fb575feb358
+Indirect(6, -96, 8), value=0x00007fb575feb368
+Indirect(6, -248, 8), value=0x00007fb575feb378
+Indirect(6, -112, 8), value=0x00007fb575feb388
+Indirect(6, -144, 8), value=0x00007fb575feb398
+Indirect(6, -256, 8), value=0x0000000018cfcfb0
+Indirect(6, -384, 8), value=0x0000000000000000
+Indirect(6, -208, 8), value=0x0000000018cfcfd0
+Indirect(6, -280, 8), value=0x0000000018cfcfd8
+Indirect(6, -320, 8), value=0x0000000018cfcfee
+Indirect(6, -44, 4), value=0x0000000018d03928
+Segmentation fault
