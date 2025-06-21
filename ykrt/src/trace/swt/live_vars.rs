@@ -152,13 +152,11 @@ fn handle_register_to_register_additional_locations(
     src_val_size: &u16,
     dest_reg_nums: &mut HashMap<u16, u16>,
 ) {
-    for location in dst_add_locs {
-        // Write any additional locations that were tracked for this variable.
-        // Numbers greater or equal to zero are registers in Dwarf notation.
-        // Negative numbers are offsets relative to RBP.
-        if *location >= 0 {
-            dest_reg_nums.insert(*location as u16, *src_val_size);
-            let dst_reg = dwarf_to_dynasm_reg((*location).try_into().unwrap());
+    // Handle additional locations for the destination register
+    for add_loc in dst_add_locs {
+        if *add_loc >= 0 {
+            // Additional location is a register
+            let dst_reg = dwarf_to_dynasm_reg((*add_loc).try_into().unwrap());
             emit_rbp_to_reg(
                 asm,
                 RbpToRegParams {
@@ -167,9 +165,10 @@ fn handle_register_to_register_additional_locations(
                     size: *src_val_size,
                 },
             );
+            dest_reg_nums.insert((*add_loc).try_into().unwrap(), *src_val_size);
         } else {
-            let rbp_offset = i32::try_from(*location).unwrap();
-            // Load from source register and store to destination rbp offset
+            // Additional location is a stack offset - CRITICAL FIX: write value to stack location
+            // First load the register value to a temporary register
             emit_rbp_to_reg(
                 asm,
                 RbpToRegParams {
@@ -178,11 +177,12 @@ fn handle_register_to_register_additional_locations(
                     size: *src_val_size,
                 },
             );
+            // Then store the value to the additional stack location
             emit_reg_to_rbp(
                 asm,
                 RegToRbpParams {
                     src_reg: TEMP_REG_PRIMARY,
-                    rbp_offset,
+                    rbp_offset: i32::from(*add_loc),
                     size: *src_val_size,
                 },
             );
@@ -354,13 +354,13 @@ pub(crate) fn set_destination_live_vars(
                             assert!(*src_reg_num == 6, "Indirect register is expected to be rbp");
                             // Critical fix: Handle size mismatch properly for zero-extension
                             let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
-
+                            
                             // If destination is larger than source, we need proper zero-extension
                             if *dst_val_size > *src_val_size {
                                 // Zero out the destination register first for proper zero-extension
                                 dynasm!(asm; xor Rq(dst_reg), Rq(dst_reg));
                             }
-
+                            
                             handle_indirect_to_register_additional_locations(
                                 asm,
                                 dst_add_locs,
@@ -370,7 +370,7 @@ pub(crate) fn set_destination_live_vars(
                                 &mut dest_reg_nums,
                             );
                             dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
-
+                            
                             emit_mem_to_reg(
                                 asm,
                                 MemToRegParams {

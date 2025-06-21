@@ -231,16 +231,15 @@ pub(crate) extern "C" fn __yk_deopt(
                 todo!("Deal with multi register locations");
             };
 
+            #[cfg(tracer_swt)]
+            if *CP_VERBOSE {
+                println!("[DEOPT] {:?}\tvalue=0x{:016x}", aotloc, jitval);
+            }
             match aotloc {
                 SMLocation::Register(reg, size, extras) => {
                     #[cfg(debug_assertions)]
                     seen(isize::try_from(*reg).unwrap(), jitval);
                     registers[usize::from(*reg)] = jitval;
-
-                    #[cfg(tracer_swt)]
-                    if *CP_VERBOSE {
-                        println!("[DEOPT] {:?}, jitval: 0x{:x}", aotloc, jitval);
-                    }
                     for extra in extras {
                         #[cfg(debug_assertions)]
                         seen(isize::from(*extra), jitval);
@@ -285,10 +284,6 @@ pub(crate) extern "C" fn __yk_deopt(
                     continue;
                 }
                 SMLocation::Indirect(reg, off, size) => {
-                    #[cfg(tracer_swt)]
-                    if *CP_VERBOSE {
-                        println!("[DEOPT] {:?}, jitval: {}", aotloc, jitval);
-                    }
                     #[cfg(debug_assertions)]
                     seen(isize::try_from(*off).unwrap(), jitval);
                     debug_assert_eq!(*reg, RBP_DWARF_NUM);
