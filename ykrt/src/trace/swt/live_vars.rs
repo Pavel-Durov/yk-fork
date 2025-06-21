@@ -8,7 +8,7 @@ use yksmp::Record;
 
 use crate::trace::swt::cfg::{
     dwarf_to_dynasm_reg, reg_num_to_ykrt_control_point_rsp_offset, CPTransitionDirection,
-    LiveVarsBuffer, CP_VERBOSE,
+    LiveVarsBuffer, CP_VERBOSE, CP_BREAK,
 };
 
 // Create a thread-safe wrapper for the buffer pointer
@@ -35,8 +35,12 @@ static OPT_BUFFER: OnceLock<ThreadSafeBuffer> = OnceLock::new();
 static UNOPT_BUFFER: OnceLock<ThreadSafeBuffer> = OnceLock::new();
 // Primary temporary register - used in buffer copy and destination live vars copy.
 static TEMP_REG_PRIMARY: u8 = 0; // RAX
-                                 // Secondary temporary register - used in buffer copy.
-static TEMP_REG_SECONDARY: u8 = 1; // RDX
+
+// Dwarf register number for RCX
+static TEMP_REG_SECONDARY_DYNASM: u8 = 1;
+
+// Dwarf register number for RCX
+static TEMP_REG_SECONDARY_DWARF: u8 = 2;
 
 #[derive(Debug, Clone)]
 struct RestoreTempRegisters<'a> {
@@ -96,23 +100,23 @@ fn emit_mem_to_mem(asm: &mut Assembler, params: MemToMemParams) {
     match params.size {
         1 => dynasm!(asm
             ; mov Rq(TEMP_REG_PRIMARY), QWORD params.src_ptr
-            ; mov Rb(TEMP_REG_SECONDARY), BYTE [Rq(TEMP_REG_PRIMARY) + params.src_offset]
-            ; mov BYTE [rbp + params.dst_offset], Rb(TEMP_REG_SECONDARY)
+            ; mov Rb(TEMP_REG_SECONDARY_DYNASM), BYTE [Rq(TEMP_REG_PRIMARY) + params.src_offset]
+            ; mov BYTE [rbp + params.dst_offset], Rb(TEMP_REG_SECONDARY_DYNASM)
         ),
         2 => dynasm!(asm
             ; mov Rq(TEMP_REG_PRIMARY), QWORD params.src_ptr
-            ; mov Rw(TEMP_REG_SECONDARY), WORD [Rq(TEMP_REG_PRIMARY) + params.src_offset]
-            ; mov WORD [rbp + params.dst_offset], Rw(TEMP_REG_SECONDARY)
+            ; mov Rw(TEMP_REG_SECONDARY_DYNASM), WORD [Rq(TEMP_REG_PRIMARY) + params.src_offset]
+            ; mov WORD [rbp + params.dst_offset], Rw(TEMP_REG_SECONDARY_DYNASM)
         ),
         4 => dynasm!(asm
             ; mov Rq(TEMP_REG_PRIMARY), QWORD params.src_ptr
-            ; mov Rd(TEMP_REG_SECONDARY), DWORD [Rq(TEMP_REG_PRIMARY) + params.src_offset]
-            ; mov DWORD [rbp + params.dst_offset], Rd(TEMP_REG_SECONDARY)
+            ; mov Rd(TEMP_REG_SECONDARY_DYNASM), DWORD [Rq(TEMP_REG_PRIMARY) + params.src_offset]
+            ; mov DWORD [rbp + params.dst_offset], Rd(TEMP_REG_SECONDARY_DYNASM)
         ),
         8 => dynasm!(asm
             ; mov Rq(TEMP_REG_PRIMARY), QWORD params.src_ptr
-            ; mov Rq(TEMP_REG_SECONDARY), QWORD [Rq(TEMP_REG_PRIMARY) + params.src_offset]
-            ; mov QWORD [rbp + params.dst_offset], Rq(TEMP_REG_SECONDARY)
+            ; mov Rq(TEMP_REG_SECONDARY_DYNASM), QWORD [Rq(TEMP_REG_PRIMARY) + params.src_offset]
+            ; mov QWORD [rbp + params.dst_offset], Rq(TEMP_REG_SECONDARY_DYNASM)
         ),
         _ => panic!("Unsupported value size: {}", params.size),
     }
@@ -137,23 +141,6 @@ fn emit_reg_to_rbp(asm: &mut Assembler, params: RegToRbpParams) {
         4 => dynasm!(asm; mov DWORD [rbp + params.rbp_offset], Rd(params.src_reg)),
         8 => dynasm!(asm; mov QWORD [rbp + params.rbp_offset], Rq(params.src_reg)),
         _ => panic!("Unsupported value size: {}", params.size),
-    }
-}
-
-fn get_size(src_val_size: &u16, dst_val_size: &u16) -> u16 {
-    // NOTE: Sometimes especially when running yklua, the source and destination sizes are different.
-    // Its normal if we have Register2Indirect - cause registers are 8 bytes and indirects can be anything.
-    // The important thing here is that we write the destination value size.
-    if src_val_size != dst_val_size {
-        if *CP_VERBOSE {
-            println!(
-                "WARNING: size mismatch - src: {}, dst: {}.",
-                src_val_size, dst_val_size
-            );
-        }
-        std::cmp::min(*src_val_size, *dst_val_size)
-    } else {
-        *src_val_size
     }
 }
 
@@ -252,7 +239,7 @@ pub(crate) fn set_destination_live_vars(
     // Map of destination register numbers to their value sizes.
     let mut dest_reg_nums = HashMap::new();
     // List of temporary registers to restore.
-    let mut used_temp_registers = Vec::new();
+    let mut used_temp_reg_dist = Vec::new();
     // Index of the source live variable in the temporary buffer.
     let mut src_var_indirect_index = 0;
 
@@ -272,7 +259,9 @@ pub(crate) fn set_destination_live_vars(
 
         let src_location = &src_var.get(0).unwrap();
         let dst_location = &dst_var.get(0).unwrap();
-
+        if *CP_VERBOSE {
+            eprintln!("Copying live src: {:?}, dst: {:?}", src_location, dst_location);
+        }
         match src_location {
             Register(src_reg_num, src_val_size, _src_add_locs) => {
                 let reg_store_offset = reg_num_to_ykrt_control_point_rsp_offset(*src_reg_num);
@@ -281,9 +270,9 @@ pub(crate) fn set_destination_live_vars(
                 match dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
                         if *dst_reg_num == TEMP_REG_PRIMARY.into()
-                            || *dst_reg_num == TEMP_REG_SECONDARY.into()
+                            || *dst_reg_num == TEMP_REG_SECONDARY_DWARF.into()
                         {
-                            used_temp_registers.push(RestoreTempRegisters {
+                            used_temp_reg_dist.push(RestoreTempRegisters {
                                 src_location: src_location,
                                 dst_location: dst_location,
                                 src_var_indirect_index: src_var_indirect_index,
@@ -317,23 +306,23 @@ pub(crate) fn set_destination_live_vars(
                         }
                     }
                     Indirect(_dst_reg_num, dst_off, dst_val_size) => {
-                        let size = get_size(src_val_size, dst_val_size);
-                        // First load register value to temp register
+                        // Handle size mismatch correctly: read full register value, write dst size
+                        // First load register value to temp register (use full source size)
                         emit_rbp_to_reg(
                             asm,
                             RbpToRegParams {
                                 rbp_offset: reg_store_rbp_offset,
                                 dst_reg: TEMP_REG_PRIMARY,
-                                size: *src_val_size,
+                                size: *src_val_size,  // Read full register value
                             },
                         );
-                        // Then store to rbp-relative destination
+                        // Then store to rbp-relative destination (use destination size)
                         emit_reg_to_rbp(
                             asm,
                             RegToRbpParams {
                                 src_reg: TEMP_REG_PRIMARY,
                                 rbp_offset: i32::try_from(*dst_off).unwrap(),
-                                size,
+                                size: *dst_val_size,  // Write only what fits in destination
                             },
                         );
                     }
@@ -351,20 +340,25 @@ pub(crate) fn set_destination_live_vars(
                 match dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
                         if *dst_reg_num == TEMP_REG_PRIMARY.into()
-                            || *dst_reg_num == TEMP_REG_SECONDARY.into()
+                            || *dst_reg_num == TEMP_REG_SECONDARY_DWARF.into()
                         {
-                            used_temp_registers.push(RestoreTempRegisters {
+                            used_temp_reg_dist.push(RestoreTempRegisters {
                                 src_location: src_location,
                                 dst_location: dst_location,
                                 src_var_indirect_index: src_var_indirect_index,
                             });
                         } else {
                             assert!(*src_reg_num == 6, "Indirect register is expected to be rbp");
-                            let size = get_size(src_val_size, dst_val_size);
+                            // Handle size mismatch: clear register first if dst > src for zero-extension
+                            if *dst_val_size > *src_val_size {
+                                // Zero out the destination register first for proper zero-extension
+                                let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
+                                dynasm!(asm; xor Rq(dst_reg), Rq(dst_reg));
+                            }
                             handle_indirect_to_register_additional_locations(
                                 asm,
                                 dst_add_locs,
-                                &size,
+                                src_val_size,  // Use source size for reading from buffer
                                 temp_buffer_offset,
                                 &live_vars_buffer,
                                 &mut dest_reg_nums,
@@ -377,21 +371,19 @@ pub(crate) fn set_destination_live_vars(
                                     src_ptr: live_vars_buffer.ptr as i64,
                                     src_offset: temp_buffer_offset,
                                     dst_reg,
-                                    size,
+                                    size: *src_val_size,  // Read the actual source size
                                 },
                             );
                         }
                     }
                     Indirect(_, dst_off, dst_val_size) | Direct(_, dst_off, dst_val_size) => {
-                        let size = get_size(src_val_size, dst_val_size);
-
                         emit_mem_to_mem(
                             asm,
                             MemToMemParams {
                                 src_ptr: live_vars_buffer.ptr as i64,
                                 src_offset: temp_buffer_offset,
                                 dst_offset: i32::try_from(*dst_off).unwrap(),
-                                size,
+                                size: *dst_val_size,
                             },
                         );
                     }
@@ -402,24 +394,30 @@ pub(crate) fn set_destination_live_vars(
                 }
                 src_var_indirect_index += 1;
             }
-            // Direct(_, _, _) => { /* Do nothing */ }
             _ => panic!("Unexpected source location: {:?}", src_location),
         }
     }
-    // Restore the temporary registers if any were used.
-    for temp_register in used_temp_registers {
-        let src_location = temp_register.src_location;
-        let dst_location = temp_register.dst_location;
-        let src_var_indirect_index = temp_register.src_var_indirect_index;
 
-        match src_location {
+    if *CP_BREAK {
+        dynasm!(asm
+            ; .arch x64
+            ; int3
+        );
+    }
+    if *CP_VERBOSE {
+        eprintln!("@@@ Used temp registers: {:?}", used_temp_reg_dist);
+    }
+    // Handle restoration of temporary registers at the end
+    for temp_reg in used_temp_reg_dist {
+        match temp_reg.src_location {
             Register(src_reg_num, src_val_size, _src_add_locs) => {
                 let reg_store_offset = reg_num_to_ykrt_control_point_rsp_offset(*src_reg_num);
                 let reg_store_rbp_offset =
                     i32::try_from(rbp_offset_reg_store - reg_store_offset as i64).unwrap();
-                match dst_location {
+                
+                match temp_reg.dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
-                        // Handle additional locations
+                        // Handle additional locations for both source and destination
                         handle_register_to_register_additional_locations(
                             asm,
                             reg_store_rbp_offset,
@@ -427,51 +425,43 @@ pub(crate) fn set_destination_live_vars(
                             src_val_size,
                             &mut dest_reg_nums,
                         );
+
                         assert!(
-                            *dst_val_size == *src_val_size,
+                            dst_val_size == src_val_size,
                             "Register2Register - src and dst val size must match. Got src: {} and dst: {}",
                             src_val_size,
                             dst_val_size
                         );
                         dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
                         let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
-                        assert!(
-                            *dst_val_size == *src_val_size,
-                            "Indirect2Register value size mismatch. Got src: {} and dst: {}",
-                            src_val_size,
-                            dst_val_size
+                        emit_rbp_to_reg(
+                            asm,
+                            RbpToRegParams {
+                                rbp_offset: reg_store_rbp_offset,
+                                dst_reg,
+                                size: *src_val_size,
+                            },
                         );
-                        match *src_val_size {
-                            1 => dynasm!(asm; mov Rb(dst_reg), BYTE [rbp - reg_store_rbp_offset]),
-                            2 => dynasm!(asm; mov Rw(dst_reg), WORD [rbp - reg_store_rbp_offset]),
-                            4 => {
-                                dynasm!(asm; mov Rd(dst_reg), DWORD [rbp - reg_store_rbp_offset])
-                            }
-                            8 => {
-                                dynasm!(asm; mov Rq(dst_reg), QWORD [rbp - reg_store_rbp_offset])
-                            }
-                            _ => {
-                                panic!("unexpect Register to Register value size {}", src_val_size)
-                            }
-                        }
                     }
-                    _ => panic!(
-                        "Unexpected target for Register source location - src: {:?}, dst: {:?}",
-                        src_location, dst_location
-                    ),
+                    _ => panic!("Unexpected destination for temporary register restoration: {:?}", temp_reg.dst_location),
                 }
             }
-            Indirect(src_reg_num, _src_off, src_val_size) => {
+            Indirect(_, _, src_val_size) | Direct(_, _, src_val_size) => {
                 assert!(!live_vars_buffer.ptr.is_null(), "Live vars buffer is null");
-                let temp_buffer_offset = live_vars_buffer.variables[&src_var_indirect_index];
-                match dst_location {
+                let temp_buffer_offset = live_vars_buffer.variables[&temp_reg.src_var_indirect_index];
+                
+                match temp_reg.dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
-                        assert!(*src_reg_num == 6, "Indirect register is expected to be rbp");
-                        let size = get_size(src_val_size, dst_val_size);
+                        // Handle size mismatch: clear register first if dst > src for zero-extension
+                        if *dst_val_size > *src_val_size {
+                            // Zero out the destination register first for proper zero-extension
+                            let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
+                            dynasm!(asm; xor Rq(dst_reg), Rq(dst_reg));
+                        }
                         handle_indirect_to_register_additional_locations(
                             asm,
                             dst_add_locs,
-                            &size,
+                            src_val_size,  // Use source size for reading from buffer
                             temp_buffer_offset,
                             &live_vars_buffer,
                             &mut dest_reg_nums,
@@ -484,17 +474,14 @@ pub(crate) fn set_destination_live_vars(
                                 src_ptr: live_vars_buffer.ptr as i64,
                                 src_offset: temp_buffer_offset,
                                 dst_reg,
-                                size,
+                                size: *src_val_size,  // Read the actual source size
                             },
                         );
                     }
-                    _ => panic!(
-                        "Unexpected target for Indirect source location - src: {:?}, dst: {:?}",
-                        src_location, dst_location
-                    ),
+                    _ => panic!("Unexpected destination for temporary register restoration: {:?}", temp_reg.dst_location),
                 }
             }
-            _ => panic!("Unexpected source location: {:?}", src_location),
+            _ => panic!("Unexpected source for temporary register restoration: {:?}", temp_reg.src_location),
         }
     }
 
@@ -595,20 +582,20 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
                 // Different handling based on size
                 match *src_val_size {
                     1 => dynasm!(asm
-                        ; mov Rb(TEMP_REG_SECONDARY), BYTE [rbp + src_rbp_offset]
-                        ; mov BYTE [Rq(TEMP_REG_PRIMARY) + current_buffer_offset], Rb(TEMP_REG_SECONDARY)
+                        ; mov Rb(TEMP_REG_SECONDARY_DYNASM), BYTE [rbp + src_rbp_offset]
+                        ; mov BYTE [Rq(TEMP_REG_PRIMARY) + current_buffer_offset], Rb(TEMP_REG_SECONDARY_DYNASM)
                     ),
                     2 => dynasm!(asm
-                        ; mov Rw(TEMP_REG_SECONDARY), WORD [rbp + src_rbp_offset]
-                        ; mov WORD [Rq(TEMP_REG_PRIMARY) + current_buffer_offset], Rw(TEMP_REG_SECONDARY)
+                        ; mov Rw(TEMP_REG_SECONDARY_DYNASM), WORD [rbp + src_rbp_offset]
+                        ; mov WORD [Rq(TEMP_REG_PRIMARY) + current_buffer_offset], Rw(TEMP_REG_SECONDARY_DYNASM)
                     ),
                     4 => dynasm!(asm
-                        ; mov Rd(TEMP_REG_SECONDARY), DWORD [rbp + src_rbp_offset]
-                        ; mov DWORD [Rq(TEMP_REG_PRIMARY) + current_buffer_offset], Rd(TEMP_REG_SECONDARY)
+                        ; mov Rd(TEMP_REG_SECONDARY_DYNASM), DWORD [rbp + src_rbp_offset]
+                        ; mov DWORD [Rq(TEMP_REG_PRIMARY) + current_buffer_offset], Rd(TEMP_REG_SECONDARY_DYNASM)
                     ),
                     8 => dynasm!(asm
-                        ; mov Rq(TEMP_REG_SECONDARY), QWORD [rbp + src_rbp_offset]
-                        ; mov QWORD [Rq(TEMP_REG_PRIMARY) + current_buffer_offset], Rq(TEMP_REG_SECONDARY)
+                        ; mov Rq(TEMP_REG_SECONDARY_DYNASM), QWORD [rbp + src_rbp_offset]
+                        ; mov QWORD [Rq(TEMP_REG_PRIMARY) + current_buffer_offset], Rq(TEMP_REG_SECONDARY_DYNASM)
                     ),
                     _ => panic!("Unsupported value size in temporary copy: {}", src_val_size),
                 }

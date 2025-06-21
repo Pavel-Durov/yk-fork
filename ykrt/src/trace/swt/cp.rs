@@ -3,7 +3,7 @@ use crate::trace::swt::cfg::{
     dwarf_to_dynasm_reg, reg_num_to_ykrt_control_point_rsp_offset, CP_BREAK, CP_BREAK_TRACE,
     CP_VERBOSE, CP_VERBOSE_ASM, REG64_BYTESIZE, REG_OFFSETS,
 };
-use crate::trace::swt::cfg::{CPTransitionDirection, ControlPointStackMapId};
+use crate::trace::swt::cfg::{CPTransitionDirection, ControlPointStackMapId, dwarf_reg_to_str};
 use crate::trace::swt::debug::{debug_print_source_live_vars, debug_print_destination_live_vars};
 use crate::trace::swt::live_vars::{copy_live_vars_to_temp_buffer, set_destination_live_vars};
 use capstone::prelude::*;
@@ -119,7 +119,6 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
         0,
         "RSP is not aligned to 16 bytes"
     );
-
     // Restore only unused registers.
     restore_registers(&mut asm, used_registers, rbp_offset_reg_store as i32);
 
@@ -255,9 +254,12 @@ fn restore_registers(
     let mut sorted_offsets: Vec<(&u16, &i32)> = REG_OFFSETS.iter().collect();
     sorted_offsets.sort_by(|a, b| b.1.cmp(a.1)); // Sort descending by value
 
-    for (reg_num, _) in sorted_offsets.iter() {
-        if !exclude_registers.contains_key(reg_num) {
-            restore_register(asm, (**reg_num).try_into().unwrap(), rbp_offset_reg_store);
+    for (dwarf_reg_num, _) in sorted_offsets.iter() {
+        if !exclude_registers.contains_key(dwarf_reg_num) {
+            if *CP_VERBOSE {
+                eprintln!("Restoring unused register to __ykrt_control_point save point: {:?}", dwarf_reg_to_str(**dwarf_reg_num as u8));
+            }
+            restore_register(asm, (**dwarf_reg_num).try_into().unwrap(), rbp_offset_reg_store);
         }
     }
 }

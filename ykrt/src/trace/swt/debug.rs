@@ -41,38 +41,59 @@ pub(crate) fn get_rb_value_at_offset(rbp_offset: i32, src_val_size: &u16) -> u64
 
 pub(crate) fn debug_print_source_live_vars(src_rec: &Record, rbp_offset_reg_store: i64) {
     eprintln!("@@@ Source live vars values:");
+    // Print Indirect and Direct locations first.
     for (_, src_var) in src_rec.live_vals.iter().enumerate() {
         let location = src_var.get(0).unwrap();
-        let value = match location {
-            Indirect(_, src_off, src_val_size) => get_rb_value_at_offset(*src_off, src_val_size),
+        match location {
+            Indirect(_, src_off, src_val_size) => {
+                let value = get_rb_value_at_offset(*src_off, src_val_size);
+                println!("{:?}\tvalue=0x{:016x}", location, value);
+            },
             Register(src_reg_num, src_val_size, _src_add_locs) => {
                 let reg_store_offset = reg_num_to_ykrt_control_point_rsp_offset(*src_reg_num);
                 let reg_store_rbp_offset =
                     i32::try_from(rbp_offset_reg_store - reg_store_offset as i64).unwrap();
-                get_rb_value_at_offset(-reg_store_rbp_offset, src_val_size)
+                let value = get_rb_value_at_offset(-reg_store_rbp_offset, src_val_size);
+                println!("{:?}\tvalue=0x{:016x}", location, value);
             }
-            Direct(_, src_off, src_val_size) => get_rb_value_at_offset(*src_off, src_val_size),
+            Direct(_, src_off, src_val_size) => {
+                let value = get_rb_value_at_offset(*src_off, src_val_size);
+                println!("{:?}\tvalue=0x{:016x}", location, value);
+            },
             _ => panic!("Unexpected source location: {:?}", location),
-        };
-        eprintln!("{:?}, value=0x{:016x}", location, value);
+        };   
     }
 }
 
 pub(crate) fn debug_print_destination_live_vars(dst_rec: &Record, rbp_offset_reg_store: i64) {
-    eprintln!("@@@ Destination live vars values:");
+    println!("@@@ Destination live vars values:");
     for (_, dst_var) in dst_rec.live_vals.iter().enumerate() {
         let location = dst_var.get(0).unwrap();
-        let value = match location {
-            Indirect(_, dst_off, dst_val_size) => get_rb_value_at_offset(*dst_off, dst_val_size),
-            Register(dst_reg_num, _dst_val_size, _dst_add_locs) => {
-                unsafe {
-                    get_reg_value(*dst_reg_num as u16)
+        match location {
+            Indirect(_, dst_off, dst_val_size) => {
+                let value = get_rb_value_at_offset(*dst_off, dst_val_size);
+                println!("{:?}\tvalue=0x{:016x}", location, value);
+            }
+            Register(dst_reg_num, dst_val_size, dst_add_locs) => {
+                // Do not print register values cause its not correct, by the time this funciton is called they might be already clobbered.
+                for add_loc in dst_add_locs {
+                    if *add_loc >= 0 {
+                       // Do not print register values cause its not correct, by the time this funciton is called they might be already clobbered.
+                        println!("{:?}\tvalue=(cannot get register value)", add_loc);
+                    } else {
+                        let rbp_offset = i32::try_from(*add_loc).unwrap();
+                        let value = get_rb_value_at_offset(rbp_offset, dst_val_size);
+                        println!("{:?}\tvalue=0x{:016x} (based on additional location)", location, value);
+                    }
                 }
             }
-            Direct(_, src_off, src_val_size) => get_rb_value_at_offset(*src_off, src_val_size),
+            Direct(_, src_off, src_val_size) => {
+                let value = get_rb_value_at_offset(*src_off, src_val_size);
+                println!("{:?}\tvalue=0x{:016x}", location, value);
+            }
             _ => panic!("Unexpected source location: {:?}", location),
         };
-        eprintln!("{:?}, value=0x{:016x}", location, value);
+        
     }
 }
 
