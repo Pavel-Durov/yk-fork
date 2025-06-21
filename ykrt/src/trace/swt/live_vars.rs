@@ -93,7 +93,6 @@ fn emit_mem_to_reg(asm: &mut Assembler, params: MemToRegParams) {
 
 // Helper function to generate assembly for memory-to-memory operations
 fn emit_mem_to_mem(asm: &mut Assembler, params: MemToMemParams) {
-
     match params.size {
         1 => dynasm!(asm
             ; mov Rq(TEMP_REG_PRIMARY), QWORD params.src_ptr
@@ -148,7 +147,8 @@ fn get_size(src_val_size: &u16, dst_val_size: &u16) -> u16 {
     if src_val_size != dst_val_size {
         if *CP_VERBOSE {
             println!(
-                "WARNING: size mismatch - src: {}, dst: {}.",src_val_size, dst_val_size
+                "WARNING: size mismatch - src: {}, dst: {}.",
+                src_val_size, dst_val_size
             );
         }
         std::cmp::min(*src_val_size, *dst_val_size)
@@ -264,9 +264,6 @@ pub(crate) fn set_destination_live_vars(
         dst_rec.live_vals.len()
     );
 
-    if *CP_VERBOSE {
-        eprintln!("copying live vars");
-    }
     for (index, src_var) in src_rec.live_vals.iter().enumerate() {
         let dst_var = &dst_rec.live_vals[index];
         if src_var.len() > 1 || dst_var.len() > 1 {
@@ -275,9 +272,7 @@ pub(crate) fn set_destination_live_vars(
 
         let src_location = &src_var.get(0).unwrap();
         let dst_location = &dst_var.get(0).unwrap();
-        if *CP_VERBOSE {
-            println!("src: {:?}, dst: {:?}", src_location, dst_location);
-        }
+
         match src_location {
             Register(src_reg_num, src_val_size, _src_add_locs) => {
                 let reg_store_offset = reg_num_to_ykrt_control_point_rsp_offset(*src_reg_num);
@@ -348,8 +343,9 @@ pub(crate) fn set_destination_live_vars(
                     ),
                 }
             }
-            Indirect(src_reg_num, _src_off, src_val_size) | Direct(src_reg_num, _src_off, src_val_size) => {
-            // Indirect(src_reg_num, _src_off, src_val_size) => {
+            Indirect(src_reg_num, _src_off, src_val_size)
+            | Direct(src_reg_num, _src_off, src_val_size) => {
+                // Indirect(src_reg_num, _src_off, src_val_size) => {
                 assert!(!live_vars_buffer.ptr.is_null(), "Live vars buffer is null");
                 let temp_buffer_offset = live_vars_buffer.variables[&src_var_indirect_index];
                 match dst_location {

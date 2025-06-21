@@ -4,11 +4,11 @@ use crate::trace::swt::cfg::{
     CP_VERBOSE, CP_VERBOSE_ASM, REG64_BYTESIZE, REG_OFFSETS,
 };
 use crate::trace::swt::cfg::{CPTransitionDirection, ControlPointStackMapId};
+use crate::trace::swt::debug::{debug_print_source_live_vars, debug_print_destination_live_vars};
 use crate::trace::swt::live_vars::{copy_live_vars_to_temp_buffer, set_destination_live_vars};
 use capstone::prelude::*;
-use dynasmrt::{dynasm, x64::Assembler, DynasmApi};
+use dynasmrt::{dynasm, x64::Assembler, DynasmApi, ExecutableBuffer};
 use std::alloc::{dealloc, Layout};
-use std::arch::asm;
 use std::collections::HashMap;
 use std::error::Error;
 use std::ffi::c_void;
@@ -102,6 +102,9 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
         );
     }
 
+    if *CP_VERBOSE {
+        debug_print_source_live_vars(src_rec, rbp_offset_reg_store);
+    }
     // Set destination live vars
     let used_registers = set_destination_live_vars(
         &mut asm,
@@ -116,8 +119,45 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
         0,
         "RSP is not aligned to 16 bytes"
     );
+
     // Restore only unused registers.
     restore_registers(&mut asm, used_registers, rbp_offset_reg_store as i32);
+
+    if *CP_VERBOSE {
+        // Call debug_print_live_var_values from assembly
+        dynasm!(asm
+            ; .arch x64
+            // Save caller-saved registers that might be used
+            ; push rax
+            ; push rcx
+            ; push rdx
+            ; push rsi
+            ; push rdi
+            ; push r8
+            ; push r9
+            ; push r10
+            ; push r11
+            
+            // Set up arguments for debug_print_live_var_values(dst_rec, rbp_offset_reg_store)
+            ; mov rdi, QWORD dst_rec as *const _ as i64  // First argument: dst_rec
+            ; mov rsi, QWORD rbp_offset_reg_store        // Second argument: rbp_offset_reg_store
+            
+            // Call the function
+            ; mov rax, QWORD debug_print_destination_live_vars as usize as i64
+            ; call rax
+            
+            // Restore caller-saved registers
+            ; pop r11
+            ; pop r10
+            ; pop r9
+            ; pop r8
+            ; pop rdi
+            ; pop rsi
+            ; pop rdx
+            ; pop rcx
+            ; pop rax
+        );
+    }
     if transition.exec_trace {
         if *CP_BREAK_TRACE {
             dynasm!(asm
@@ -148,8 +188,8 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
         dynasm!(asm
             ; .arch x64
             // rsp is set to rbp - dst_frame_size
-            // Allocate 16 bytes on the stack - 
-            // 0x0 - rax store 
+            // Allocate 16 bytes on the stack -
+            // 0x0 - rax store
             // 0x8 - return address
             ; sub rsp, 0x10
             // Save the original rsp at 0x0
@@ -164,11 +204,17 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
             ; ret
         );
     }
-    // debug_print_register(15, 0, true);
-    // debug_print_register(13, 0, true);
     // Execute the generated ASM code.
     let buffer = asm.finalize().unwrap();
+    unsafe {    
+        execute_asm_buffer(buffer);
+    }
+}
+
+/// Execute an assembled buffer with optional verbose assembly dumping
+unsafe fn execute_asm_buffer(buffer: ExecutableBuffer) {
     let func: unsafe fn() = std::mem::transmute(buffer.as_ptr());
+    
     if *CP_VERBOSE_ASM {
         let cs = Capstone::new()
             .x86()
@@ -178,12 +224,10 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
 
         let instructions = cs
             .disasm_all(
-                unsafe {
-                    std::slice::from_raw_parts(
-                        buffer.ptr(dynasmrt::AssemblyOffset(0)) as *const u8,
-                        buffer.len(),
-                    )
-                },
+                std::slice::from_raw_parts(
+                    buffer.ptr(dynasmrt::AssemblyOffset(0)) as *const u8,
+                    buffer.len(),
+                ),
                 0,
             )
             .unwrap();
@@ -198,272 +242,8 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
             );
         }
     }
+    
     func();
-}
-
-// Register2Register - src: Register(14, 8, [-152]) dst: Register(14, 8, [-104])
-// Register2Register - src: Register(3, 8, []) dst: Register(13, 8, [-72])
-// Register2Register - src: Register(15, 8, [-96]) dst: Register(15, 8, [-64])
-// Register2Register - src: Register(12, 8, [-64]) dst: Register(12, 8, [-112])
-// Register2Register - src: Register(13, 8, [-72, 5]) dst: Register(3, 8, [-80, 5])
-pub unsafe extern "C" fn print_regs() {
-    if *CP_VERBOSE {
-        println!("@@@ Start Register values @@@");
-        for i in [15, 14, 13, 12, 3, 5] {
-            let value = get_reg_value(i);
-            print!("register:{}, value: 0x{:x}", i, value);
-            if value != 0 && value % 8 == 0 {
-                let ptr_value = unsafe { *(value as *const u64) };
-                print!(", *value: 0x{:x}", ptr_value);
-            } else {
-                print!(", *value: NULL");
-            }
-            println!("");
-        }
-        // Read values at various offsets from RBP to find the correct location
-        //0xb0
-        {
-            let value_at_0xb0: u64;
-            asm!(
-                "lea {0}, [rbp - 0xb0]",  // Read the value at address rbp-0xb0
-                out(reg) value_at_0xb0,
-                options(nostack, preserves_flags)
-            );
-            // TODO:print value at rbp offset
-            print!("rbp - 0xb0 - value: 0x{:x}", value_at_0xb0);
-            if value_at_0xb0 != 0 && value_at_0xb0 % 8 == 0 {
-                let ptr_value = unsafe { *(value_at_0xb0 as *const u64) };
-                print!(", *value: 0x{:x}", ptr_value);
-            } else {
-                print!(", *value: NULL");
-            }
-            println!("");
-        }
-        {
-            let value_at_0xc0: u64;
-            asm!(
-                "lea {0}, [rbp - 0xc0]",  // Read the value at address rbp-0xc0
-                out(reg) value_at_0xc0,
-                options(nostack, preserves_flags)
-            );
-            // TODO:print value at rbp offset
-            print!("rbp - 0xc0 - value: 0x{:x}", value_at_0xc0);
-            if value_at_0xc0 != 0 && value_at_0xc0 % 8 == 0 {
-                let ptr_value = unsafe { *(value_at_0xc0 as *const u64) };
-                print!(", *value: 0x{:x}", ptr_value);
-            } else {
-                print!(", *value: NULL");
-            }
-            println!("");
-        }
-        {
-            let value_at_0x100: u64;
-            asm!(
-                "lea {0}, [rbp - 0x100]",  // Read the value at address rbp-0x100
-                out(reg) value_at_0x100,
-                options(nostack, preserves_flags)
-            );
-            // TODO:print value at rbp offset
-            print!("rbp - 0x100 - value: 0x{:x}", value_at_0x100);
-            if value_at_0x100 != 0 && value_at_0x100 % 8 == 0 {
-                let ptr_value = unsafe { *(value_at_0x100 as *const u64) };
-                print!(", *value: 0x{:x}", ptr_value);
-            } else {
-                print!(", *value: NULL");
-            }
-            println!("");
-        }
-        println!("@@@ End Register values @@@");
-    }
-}
-
-// Utility function to print the value of a register.
-// Used for debugging.
-pub unsafe extern "C" fn debug_print_register(reg_num: u16, offset: i32, print_value: bool) {
-    let rbx_addr_u64: u64;
-    match reg_num {
-        0 => asm!(
-            "mov {0}, rax",
-            out(reg) rbx_addr_u64,
-            options(nostack, nomem, preserves_flags)
-        ),
-        1 => asm!(
-            "mov {0}, rcx",
-            out(reg) rbx_addr_u64,
-            options(nostack, nomem, preserves_flags)
-        ),
-        2 => asm!(
-            "mov {0}, rdx",
-            out(reg) rbx_addr_u64,
-            options(nostack, nomem, preserves_flags)
-        ),
-        3 => asm!(
-            "mov {0}, rbx",
-            out(reg) rbx_addr_u64,
-            options(nostack, nomem, preserves_flags)
-        ),
-        6 => {
-            if offset == -88 {
-                asm!(
-                    "mov {0}, QWORD PTR [rbp - 88]",
-                    out(reg) rbx_addr_u64,
-                    options(nostack, nomem, preserves_flags)
-                )
-            } else {
-                panic!("Unsupported offset: {}", offset);
-            }
-        }
-        7 => asm!(
-            "mov {0}, rdi",
-            out(reg) rbx_addr_u64,
-            options(nostack, nomem, preserves_flags)
-        ),
-        8 => asm!(
-            "mov {0}, r8",
-            out(reg) rbx_addr_u64,
-            options(nostack, nomem, preserves_flags)
-        ),
-        9 => asm!(
-            "mov {0}, r9",
-            out(reg) rbx_addr_u64,
-            options(nostack, nomem, preserves_flags)
-        ),
-        10 => asm!(
-            "mov {0}, r10",
-            out(reg) rbx_addr_u64,
-            options(nostack, nomem, preserves_flags)
-        ),
-        11 => asm!(
-            "mov {0}, r11",
-            out(reg) rbx_addr_u64,
-            options(nostack, nomem, preserves_flags)
-        ),
-        12 => asm!(
-            "mov {0}, r12",
-            out(reg) rbx_addr_u64,
-            options(nostack, nomem, preserves_flags)
-        ),
-        13 => asm!(
-            "mov {0}, r13",
-            out(reg) rbx_addr_u64,
-            options(nostack, nomem, preserves_flags)
-        ),
-        14 => asm!(
-            "mov {0}, r14",
-            out(reg) rbx_addr_u64,
-            options(nostack, nomem, preserves_flags)
-        ),
-        15 => asm!(
-            "mov {0}, r15",
-            out(reg) rbx_addr_u64,
-            options(nostack, nomem, preserves_flags)
-        ),
-        _ => {
-            panic!("Unsupported register number: {}", reg_num);
-        }
-    }
-    if rbx_addr_u64 == 0 {
-        println!("{} contains a null pointer, cannot dereference.", reg_num);
-    } else {
-        if !print_value {
-            println!("register:{}, value: 0x{:x}", reg_num, rbx_addr_u64);
-        } else {
-            let ptr = rbx_addr_u64 as *const u64;
-
-            unsafe {
-                let value_at_addr: u64 = ptr.read_volatile();
-                println!(
-                    "register:{}, value: 0x{:x}, value_at_addr: 0x{:x}",
-                    reg_num, rbx_addr_u64, value_at_addr
-                );
-            }
-        }
-    }
-}
-
-// Utility function to print the value of a register.
-// Used for debugging.
-pub unsafe extern "C" fn get_reg_value(reg_num: u16) -> u64 {
-    let reg_val: u64;
-    match reg_num {
-        0 => asm!(
-            "mov {0}, rax",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        1 => asm!(
-            "mov {0}, rcx",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        2 => asm!(
-            "mov {0}, rdx",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        3 => asm!(
-            "mov {0}, rbx",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        6 => asm!(
-            "mov {0}, rbp",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        5 => asm!(
-            "mov {0}, rdi",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        7 => asm!(
-            "mov {0}, rdi",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        8 => asm!(
-            "mov {0}, r8",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        9 => asm!(
-            "mov {0}, r9",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        10 => asm!(
-            "mov {0}, r10",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        11 => asm!(
-            "mov {0}, r11",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        12 => asm!(
-            "mov {0}, r12",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        13 => asm!(
-            "mov {0}, r13",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        14 => asm!(
-            "mov {0}, r14",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        15 => asm!(
-            "mov {0}, r15",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        _ => panic!("Unsupported register number: {}", reg_num),
-    }
-    return reg_val;
 }
 
 // Restores the registers from the rbp offset.

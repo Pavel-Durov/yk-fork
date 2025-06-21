@@ -18,7 +18,7 @@ use crate::{
 };
 use std::env;
 use std::sync::LazyLock;
-use std::{collections::HashMap, ffi::CString, marker::PhantomData, sync::Arc};
+use std::{collections::HashMap, ffi::CString, sync::Arc};
 use ykaddr::addr::symbol_to_ptr;
 
 // Flag for verbose logging of trace actions

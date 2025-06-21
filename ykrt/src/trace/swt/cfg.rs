@@ -129,11 +129,38 @@ pub(crate) static REG_OFFSETS: LazyLock<HashMap<u16, i32>> = LazyLock::new(|| {
     m
 });
 
+// We use the registers saved by the control point.
+// __ykrt_control_point:
+// "push rax",
+// "push rcx",
+// "push rbx",
+// "push rdi",
+// "push rsi",
+// "push r8",
+// "push r9",
+// "push r10",
+// "push r11",
+// "push r12",
+// "push r13",
+// "push r14",
+// "push r15",
 pub(crate) fn reg_num_to_ykrt_control_point_rsp_offset(dwarf_reg_num: u16) -> i32 {
-    REG_OFFSETS
-        .get(&dwarf_reg_num)
-        .copied()
-        .unwrap_or_else(|| panic!("Unsupported register {}", dwarf_reg_num))
+    match dwarf_reg_num {
+        0 => 0x60, // rax
+        2 => 0x58, // rcx
+        3 => 0x50, // rbx
+        5 => 0x48, // rdi
+        4 => 0x40, // rsi
+        8 => 0x38, // r8
+        9 => 0x30, // r9
+        10 => 0x28, // r10
+        11 => 0x20, // r11
+        12 => 0x18, // r12
+        13 => 0x10, // r13
+        14 => 0x8, // r14
+        15 => 0x0, // r15
+        _ => panic!("Unsupported register {}", dwarf_reg_num),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
