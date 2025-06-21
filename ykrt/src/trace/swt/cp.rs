@@ -1,10 +1,10 @@
 use crate::aotsmp::AOT_STACKMAPS;
+use crate::trace::swt::cfg::{dwarf_reg_to_str, CPTransitionDirection, ControlPointStackMapId};
 use crate::trace::swt::cfg::{
     dwarf_to_dynasm_reg, reg_num_to_ykrt_control_point_rsp_offset, CP_BREAK, CP_BREAK_TRACE,
     CP_VERBOSE, CP_VERBOSE_ASM, REG64_BYTESIZE, REG_OFFSETS,
 };
-use crate::trace::swt::cfg::{CPTransitionDirection, ControlPointStackMapId, dwarf_reg_to_str};
-use crate::trace::swt::debug::{debug_print_source_live_vars, debug_print_destination_live_vars};
+use crate::trace::swt::debug::{debug_print_destination_live_vars, debug_print_source_live_vars};
 use crate::trace::swt::live_vars::{copy_live_vars_to_temp_buffer, set_destination_live_vars};
 use capstone::prelude::*;
 use dynasmrt::{dynasm, x64::Assembler, DynasmApi, ExecutableBuffer};
@@ -136,15 +136,15 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
             ; push r9
             ; push r10
             ; push r11
-            
+
             // Set up arguments for debug_print_live_var_values(dst_rec, rbp_offset_reg_store)
             ; mov rdi, QWORD dst_rec as *const _ as i64  // First argument: dst_rec
             ; mov rsi, QWORD rbp_offset_reg_store        // Second argument: rbp_offset_reg_store
-            
+
             // Call the function
             ; mov rax, QWORD debug_print_destination_live_vars as usize as i64
             ; call rax
-            
+
             // Restore caller-saved registers
             ; pop r11
             ; pop r10
@@ -205,7 +205,7 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
     }
     // Execute the generated ASM code.
     let buffer = asm.finalize().unwrap();
-    unsafe {    
+    unsafe {
         execute_asm_buffer(buffer);
     }
 }
@@ -213,7 +213,7 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
 /// Execute an assembled buffer with optional verbose assembly dumping
 unsafe fn execute_asm_buffer(buffer: ExecutableBuffer) {
     let func: unsafe fn() = std::mem::transmute(buffer.as_ptr());
-    
+
     if *CP_VERBOSE_ASM {
         let cs = Capstone::new()
             .x86()
@@ -241,7 +241,7 @@ unsafe fn execute_asm_buffer(buffer: ExecutableBuffer) {
             );
         }
     }
-    
+
     func();
 }
 
@@ -257,9 +257,16 @@ fn restore_registers(
     for (dwarf_reg_num, _) in sorted_offsets.iter() {
         if !exclude_registers.contains_key(dwarf_reg_num) {
             if *CP_VERBOSE {
-                eprintln!("Restoring unused register to __ykrt_control_point save point: {:?}", dwarf_reg_to_str(**dwarf_reg_num as u8));
+                eprintln!(
+                    "Restoring unused register to __ykrt_control_point save point: {:?}",
+                    dwarf_reg_to_str(**dwarf_reg_num as u8)
+                );
             }
-            restore_register(asm, (**dwarf_reg_num).try_into().unwrap(), rbp_offset_reg_store);
+            restore_register(
+                asm,
+                (**dwarf_reg_num).try_into().unwrap(),
+                rbp_offset_reg_store,
+            );
         }
     }
 }

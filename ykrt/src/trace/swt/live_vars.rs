@@ -8,7 +8,7 @@ use yksmp::Record;
 
 use crate::trace::swt::cfg::{
     dwarf_to_dynasm_reg, reg_num_to_ykrt_control_point_rsp_offset, CPTransitionDirection,
-    LiveVarsBuffer, CP_VERBOSE, CP_BREAK,
+    LiveVarsBuffer, CP_BREAK, CP_VERBOSE,
 };
 
 // Create a thread-safe wrapper for the buffer pointer
@@ -260,7 +260,10 @@ pub(crate) fn set_destination_live_vars(
         let src_location = &src_var.get(0).unwrap();
         let dst_location = &dst_var.get(0).unwrap();
         if *CP_VERBOSE {
-            eprintln!("Copying live src: {:?}, dst: {:?}", src_location, dst_location);
+            eprintln!(
+                "Copying live src: {:?}, dst: {:?}",
+                src_location, dst_location
+            );
         }
         match src_location {
             Register(src_reg_num, src_val_size, _src_add_locs) => {
@@ -313,7 +316,7 @@ pub(crate) fn set_destination_live_vars(
                             RbpToRegParams {
                                 rbp_offset: reg_store_rbp_offset,
                                 dst_reg: TEMP_REG_PRIMARY,
-                                size: *src_val_size,  // Read full register value
+                                size: *src_val_size, // Read full register value
                             },
                         );
                         // Then store to rbp-relative destination (use destination size)
@@ -322,7 +325,7 @@ pub(crate) fn set_destination_live_vars(
                             RegToRbpParams {
                                 src_reg: TEMP_REG_PRIMARY,
                                 rbp_offset: i32::try_from(*dst_off).unwrap(),
-                                size: *dst_val_size,  // Write only what fits in destination
+                                size: *dst_val_size, // Write only what fits in destination
                             },
                         );
                     }
@@ -349,29 +352,32 @@ pub(crate) fn set_destination_live_vars(
                             });
                         } else {
                             assert!(*src_reg_num == 6, "Indirect register is expected to be rbp");
-                            // Handle size mismatch: clear register first if dst > src for zero-extension
+                            // Critical fix: Handle size mismatch properly for zero-extension
+                            let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
+
+                            // If destination is larger than source, we need proper zero-extension
                             if *dst_val_size > *src_val_size {
                                 // Zero out the destination register first for proper zero-extension
-                                let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
                                 dynasm!(asm; xor Rq(dst_reg), Rq(dst_reg));
                             }
+
                             handle_indirect_to_register_additional_locations(
                                 asm,
                                 dst_add_locs,
-                                src_val_size,  // Use source size for reading from buffer
+                                src_val_size, // Use source size for reading from buffer
                                 temp_buffer_offset,
                                 &live_vars_buffer,
                                 &mut dest_reg_nums,
                             );
                             dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
-                            let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
+
                             emit_mem_to_reg(
                                 asm,
                                 MemToRegParams {
                                     src_ptr: live_vars_buffer.ptr as i64,
                                     src_offset: temp_buffer_offset,
                                     dst_reg,
-                                    size: *src_val_size,  // Read the actual source size
+                                    size: *src_val_size, // Read the actual source size
                                 },
                             );
                         }
@@ -414,7 +420,7 @@ pub(crate) fn set_destination_live_vars(
                 let reg_store_offset = reg_num_to_ykrt_control_point_rsp_offset(*src_reg_num);
                 let reg_store_rbp_offset =
                     i32::try_from(rbp_offset_reg_store - reg_store_offset as i64).unwrap();
-                
+
                 match temp_reg.dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
                         // Handle additional locations for both source and destination
@@ -443,45 +449,58 @@ pub(crate) fn set_destination_live_vars(
                             },
                         );
                     }
-                    _ => panic!("Unexpected destination for temporary register restoration: {:?}", temp_reg.dst_location),
+                    _ => panic!(
+                        "Unexpected destination for temporary register restoration: {:?}",
+                        temp_reg.dst_location
+                    ),
                 }
             }
             Indirect(_, _, src_val_size) | Direct(_, _, src_val_size) => {
                 assert!(!live_vars_buffer.ptr.is_null(), "Live vars buffer is null");
-                let temp_buffer_offset = live_vars_buffer.variables[&temp_reg.src_var_indirect_index];
-                
+                let temp_buffer_offset =
+                    live_vars_buffer.variables[&temp_reg.src_var_indirect_index];
+
                 match temp_reg.dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
-                        // Handle size mismatch: clear register first if dst > src for zero-extension
+                        // Critical fix: Handle size mismatch properly for zero-extension
+                        let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
+
+                        // If destination is larger than source, we need proper zero-extension
                         if *dst_val_size > *src_val_size {
                             // Zero out the destination register first for proper zero-extension
-                            let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
                             dynasm!(asm; xor Rq(dst_reg), Rq(dst_reg));
                         }
+
                         handle_indirect_to_register_additional_locations(
                             asm,
                             dst_add_locs,
-                            src_val_size,  // Use source size for reading from buffer
+                            src_val_size, // Use source size for reading from buffer
                             temp_buffer_offset,
                             &live_vars_buffer,
                             &mut dest_reg_nums,
                         );
                         dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
-                        let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
+
                         emit_mem_to_reg(
                             asm,
                             MemToRegParams {
                                 src_ptr: live_vars_buffer.ptr as i64,
                                 src_offset: temp_buffer_offset,
                                 dst_reg,
-                                size: *src_val_size,  // Read the actual source size
+                                size: *src_val_size, // Read the actual source size
                             },
                         );
                     }
-                    _ => panic!("Unexpected destination for temporary register restoration: {:?}", temp_reg.dst_location),
+                    _ => panic!(
+                        "Unexpected destination for temporary register restoration: {:?}",
+                        temp_reg.dst_location
+                    ),
                 }
             }
-            _ => panic!("Unexpected source for temporary register restoration: {:?}", temp_reg.src_location),
+            _ => panic!(
+                "Unexpected source for temporary register restoration: {:?}",
+                temp_reg.src_location
+            ),
         }
     }
 
