@@ -44,14 +44,6 @@ pub static CP_VERBOSE_ASM: LazyLock<bool> = LazyLock::new(|| {
 pub static TRACE_VERBOSE: LazyLock<bool> =
     LazyLock::new(|| env::var("TRACE_VERBOSE").map(|v| v == "1").unwrap_or(false));
 
-// Flag for multi-module control point transition
-// Note: this is not 100% working.
-pub static SWT_MULTI_MODULE: LazyLock<bool> = LazyLock::new(|| {
-    env::var("SWT_MULTI_MODULE")
-        .map(|v| v == "1")
-        .unwrap_or(true)
-});
-
 // Flag for asm breakpoints
 pub(crate) static CP_BREAK: LazyLock<bool> =
     LazyLock::new(|| env::var("CP_BREAK").map(|v| v == "1").unwrap_or(false));

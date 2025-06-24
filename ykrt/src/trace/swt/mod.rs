@@ -16,7 +16,7 @@ pub mod cfg;
 pub mod cp;
 pub(crate) mod debug;
 pub mod live_vars;
-pub use cfg::{CPTransitionDirection, ControlPointStackMapId, SWT_MULTI_MODULE};
+pub use cfg::{CPTransitionDirection, ControlPointStackMapId};
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 struct TracingBBlock {

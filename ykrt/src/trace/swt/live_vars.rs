@@ -354,13 +354,13 @@ pub(crate) fn set_destination_live_vars(
                             assert!(*src_reg_num == 6, "Indirect register is expected to be rbp");
                             // Critical fix: Handle size mismatch properly for zero-extension
                             let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
-                            
+
                             // If destination is larger than source, we need proper zero-extension
                             if *dst_val_size > *src_val_size {
                                 // Zero out the destination register first for proper zero-extension
                                 dynasm!(asm; xor Rq(dst_reg), Rq(dst_reg));
                             }
-                            
+
                             handle_indirect_to_register_additional_locations(
                                 asm,
                                 dst_add_locs,
@@ -370,7 +370,7 @@ pub(crate) fn set_destination_live_vars(
                                 &mut dest_reg_nums,
                             );
                             dest_reg_nums.insert(*dst_reg_num, *dst_val_size);
-                            
+
                             emit_mem_to_reg(
                                 asm,
                                 MemToRegParams {

@@ -40,7 +40,7 @@ pub(crate) fn get_rb_value_at_offset(rbp_offset: i32, src_val_size: &u16) -> u64
 }
 
 pub(crate) fn debug_print_source_live_vars(src_rec: &Record, rbp_offset_reg_store: i64) {
-    eprintln!("@@@ Source live vars values:");
+    eprintln!("Source live vars values:");
     // Print Indirect and Direct locations first.
     for (_, src_var) in src_rec.live_vals.iter().enumerate() {
         let location = src_var.get(0).unwrap();
@@ -66,7 +66,7 @@ pub(crate) fn debug_print_source_live_vars(src_rec: &Record, rbp_offset_reg_stor
 }
 
 pub(crate) fn debug_print_destination_live_vars(dst_rec: &Record, rbp_offset_reg_store: i64) {
-    println!("@@@ Destination live vars values:");
+    println!("Destination live vars values:");
     for (_, dst_var) in dst_rec.live_vals.iter().enumerate() {
         let location = dst_var.get(0).unwrap();
         match location {
