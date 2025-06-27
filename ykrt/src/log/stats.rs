@@ -45,6 +45,10 @@ struct StatsInner {
     /// How many times have traces been executed? Note that the same trace can count arbitrarily
     /// many times to this.
     trace_executions: u64,
+    /// How many times have SWT transitions from unopt to opt been executed?
+    swt_transition_unopt_to_opt: u64,
+    /// How many times have SWT transitions from opt to unopt been executed?
+    swt_transition_opt_to_unopt: u64,
     /// The time spent in each [TimingState].
     durations: [Duration; TimingState::COUNT],
 }
@@ -148,6 +152,13 @@ impl Stats {
         self.update_with(|inner| inner.trace_executions += 1);
     }
 
+    pub fn swt_transition_unopt_to_opt(&self) {
+        self.update_with(|inner| inner.swt_transition_unopt_to_opt += 1);
+    }
+    pub fn swt_transition_opt_to_unopt(&self) {
+        self.update_with(|inner| inner.swt_transition_opt_to_unopt += 1);
+    }
+
     /// Change the [TimingState] the current thread is in.
     pub fn timing_state(&self, new_state: TimingState) {
         self.update_with(|inner| {
@@ -174,6 +185,8 @@ impl StatsInner {
             traces_compiled_ok: 0,
             traces_compiled_err: 0,
             trace_executions: 0,
+            swt_transition_unopt_to_opt: 0,
+            swt_transition_opt_to_unopt: 0,
             durations: [Duration::new(0, 0); TimingState::COUNT],
         }
     }
@@ -215,6 +228,14 @@ impl StatsInner {
             (
                 "trace_executions".to_owned(),
                 self.trace_executions.to_string(),
+            ),
+            (
+                "swt_transition_unopt_to_opt".to_owned(),
+                self.swt_transition_unopt_to_opt.to_string(),
+            ),
+            (
+                "swt_transition_opt_to_unopt".to_owned(),
+                self.swt_transition_opt_to_unopt.to_string(),
             ),
         ];
         for v in TimingState::iter() {

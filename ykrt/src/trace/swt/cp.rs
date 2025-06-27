@@ -9,9 +9,12 @@ use crate::trace::swt::live_vars::{copy_live_vars_to_temp_buffer, set_destinatio
 use capstone::prelude::*;
 use dynasmrt::{dynasm, x64::Assembler, DynasmApi, ExecutableBuffer};
 use std::alloc::{dealloc, Layout};
+
 use std::collections::HashMap;
 use std::error::Error;
 use std::ffi::c_void;
+
+use crate::log::stats::Stats;
 
 pub struct CPTransition {
     // The direction of the transition.
@@ -24,8 +27,6 @@ pub struct CPTransition {
     pub trace_addr: *const c_void,
     // Flag to indicate whether to call __yk_exec_trace.
     pub exec_trace: bool,
-    // The function pointer to __yk_exec_trace.
-    pub exec_trace_fn: ExecTraceFn,
 }
 
 // This function is called from the asm generated code in `swt_module_cp_transition`.
@@ -45,7 +46,7 @@ pub(crate) type ExecTraceFn = unsafe extern "C" fn(
     trace_addr: *const c_void,
 ) -> !;
 
-pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
+pub unsafe fn swt_module_cp_transition(transition: CPTransition, stats: &Stats) {
     let frameaddr = transition.frameaddr as usize;
     let mut asm = Assembler::new().unwrap();
 
@@ -55,6 +56,9 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
     if transition.direction == CPTransitionDirection::UnoptToOpt {
         src_smid = ControlPointStackMapId::UnOpt;
         dst_smid = ControlPointStackMapId::Opt;
+        stats.swt_transition_unopt_to_opt();
+    } else {
+        stats.swt_transition_opt_to_unopt();
     }
 
     let (src_rec, src_pinfo) = AOT_STACKMAPS.as_ref().unwrap().get(src_smid as usize);
@@ -157,29 +161,22 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition) {
             ; pop rax
         );
     }
+    if *CP_VERBOSE {
+        println!(
+            "transition.rsp: 0x{:x}, current_rsp: 0x{:x}",
+            transition.rsp as i64,
+            frameaddr as i64 - dst_frame_size as i64
+        );
+    }
     if transition.exec_trace {
-        if *CP_BREAK_TRACE {
-            dynasm!(asm
-                ; .arch x64
-                ; int3
-            );
-        }
         dynasm!(asm
             ; .arch x64
-            // start of ebug print of hardcoded registers
-            // ; mov rcx, QWORD print_regs as i64
-            // ; call rcx
-            // end of debug print of hardcoded registers
-            // First argument
-            ; mov rdi, QWORD frameaddr as i64
-            // Second argument
-            ; mov rsi, QWORD transition.rsp as i64
-            // Third argument
+            // Similar to __yk_exec_trace code
+            ; mov rbp, QWORD frameaddr as i64
+            ; mov rsp, QWORD transition.rsp as i64
             ; mov rdx, QWORD transition.trace_addr as i64
-            // Move function pointer to rcx
-            ; mov rcx, QWORD transition.exec_trace_fn as i64
-            // Call the function - we don't care about rcx because its overridden in the __yk_exec_trace
-            ; call rcx
+            ; jmp rdx
+
         );
     } else {
         let call_offset = calc_after_cp_offset(dst_rec.offset).unwrap();
