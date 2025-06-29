@@ -15,10 +15,11 @@ const COMMENT_PREFIX: &str = "##";
 
 fn main() {
     println!("Running C tests...");
-    let dest_dir = env::var("TEST_OUT_DIR").unwrap_or("/home/pd/temp/".to_string());
-    std::fs::create_dir_all(&dest_dir).unwrap();
-    let tempdir = if dest_dir != "" {
-        PathBuf::from(dest_dir)
+    let dest_dir_path = env::var("TEST_OUT_DIR");
+    
+    let tempdir = if let Ok(dir) = dest_dir_path {
+        std::fs::create_dir_all(&dir).unwrap();
+        PathBuf::from(dir)
     } else {
         TempDir::new().unwrap().into_path()
     };
