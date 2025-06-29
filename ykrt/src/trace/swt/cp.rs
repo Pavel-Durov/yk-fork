@@ -40,12 +40,6 @@ unsafe extern "C" fn __yk_swt_dealloc_buffer(ptr: *mut u8, size: usize, align: u
     dealloc(ptr, layout);
 }
 
-pub(crate) type ExecTraceFn = unsafe extern "C" fn(
-    frameaddr: *const c_void,
-    rsp: *const c_void,
-    trace_addr: *const c_void,
-) -> !;
-
 pub unsafe fn swt_module_cp_transition(transition: CPTransition, stats: &Stats) {
     let frameaddr = transition.frameaddr as usize;
     let mut asm = Assembler::new().unwrap();
@@ -172,8 +166,8 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition, stats: &Stats) 
         dynasm!(asm
             ; .arch x64
             // Similar to __yk_exec_trace code
-            ; mov rbp, QWORD frameaddr as i64
-            ; mov rsp, QWORD transition.rsp as i64
+            // ; mov rbp, QWORD frameaddr as i64
+            // ; mov rsp, QWORD transition.rsp as i64
             ; mov rdx, QWORD transition.trace_addr as i64
             ; jmp rdx
 
