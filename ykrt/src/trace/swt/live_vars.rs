@@ -411,7 +411,7 @@ pub(crate) fn set_destination_live_vars(
         );
     }
     if *CP_VERBOSE {
-        eprintln!("@@@ Used temp registers: {:?}", used_temp_reg_dist);
+        eprintln!("Used temp registers: {:?}", used_temp_reg_dist);
     }
     // Handle restoration of temporary registers at the end
     for temp_reg in used_temp_reg_dist {
