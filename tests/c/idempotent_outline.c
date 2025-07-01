@@ -1,3 +1,4 @@
+// ignore-if: test "$YKB_TRACER" = "swt" # promotions are disabled for swt
 // Compiler:
 //   env-var: YKB_EXTRA_CC_FLAGS=-O2
 // Run-time:

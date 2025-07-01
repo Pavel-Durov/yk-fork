@@ -333,9 +333,27 @@ impl TraceBuilder {
                     tyidx,
                     safepoint,
                 } => {
-                    // Get the branch instruction of this block.
-                    let nextinst = blk.insts.last().unwrap();
-                    self.handle_promote(bid, iidx, val, safepoint, tyidx, nextinst)
+                    #[cfg(tracer_swt)]
+                    {
+                        // Skip promotion processing for SWT - just copy the original value
+                        match self.handle_operand(val)? {
+                            jit_ir::Operand::Var(ref_iidx) => {
+                                self.jit_mod.push(jit_ir::Inst::Copy(ref_iidx))?;
+                                self.link_iid_to_last_inst(bid, iidx);
+                            }
+                            jit_ir::Operand::Const(_) => {
+                                // If it's already a constant, we can just use it directly
+                                self.link_iid_to_last_inst(bid, iidx);
+                            }
+                        }
+                        Ok(())
+                    }
+                    #[cfg(not(tracer_swt))]
+                    {
+                        // Get the branch instruction of this block.
+                        let nextinst = blk.insts.last().unwrap();
+                        self.handle_promote(bid, iidx, val, safepoint, tyidx, nextinst)
+                    }
                 }
                 aot_ir::Inst::FNeg { val } => self.handle_fneg(bid, iidx, val),
                 aot_ir::Inst::DebugStr { .. } => {
@@ -343,8 +361,26 @@ impl TraceBuilder {
                     self.handle_debug_str(bid, iidx, nextinst)
                 }
                 aot_ir::Inst::IdempotentPromote { val, .. } => {
-                    let nextinst = blk.insts.last().unwrap();
-                    self.handle_idempotent_promote(bid, iidx, val, nextinst)
+                    #[cfg(tracer_swt)]
+                    {
+                        // Skip idempotent promotion processing for SWT - just copy the original value
+                        match self.handle_operand(val)? {
+                            jit_ir::Operand::Var(ref_iidx) => {
+                                self.jit_mod.push(jit_ir::Inst::Copy(ref_iidx))?;
+                                self.link_iid_to_last_inst(bid, iidx);
+                            }
+                            jit_ir::Operand::Const(_) => {
+                                // If it's already a constant, we can just use it directly
+                                self.link_iid_to_last_inst(bid, iidx);
+                            }
+                        }
+                        Ok(())
+                    }
+                    #[cfg(not(tracer_swt))]
+                    {
+                        let nextinst = blk.insts.last().unwrap();
+                        self.handle_idempotent_promote(bid, iidx, val, nextinst)
+                    }
                 }
                 _ => todo!("{:?}", inst),
             }?;
@@ -1637,7 +1673,14 @@ impl TraceBuilder {
             }
         }
 
-        assert_eq!(self.promote_idx, self.promotions.len());
+        #[cfg(tracer_swt)]
+        {
+            // For SWT, we skip promotion processing entirely, so we don't check the assertion
+        }
+        #[cfg(not(tracer_swt))]
+        {
+            assert_eq!(self.promote_idx, self.promotions.len());
+        }
         assert_eq!(self.debug_str_idx, self.debug_strs.len());
         let blk = self.aot_mod.bblock(self.cp_block.as_ref().unwrap());
         let cpcall = blk.insts.iter().rev().nth(1).unwrap();

@@ -163,17 +163,17 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition, stats: &Stats) 
         );
     }
     if transition.exec_trace {
-        /// FIXME: Why do we need this stack adjustment?
-        /// When we execute traces, we want to set the RSP to the same value as when 
-        /// the traces were collected (Unopt RSP). However, when we do that, it 
-        /// corrupts the stderr output of a few tests `idempotent.c` and `srem.c` 
-        /// which cause lang_tester to fail parsing the output with this error:
-        /// ```text
-        /// Can't convert stderr from 'YKD_SERIALISE_COMPILATION="1" "/tmp/.tmpOqHojX/idempotent"' into UTF-8
-        /// ```
-        /// These tests seems to work when RSP is set to the Opt RSP for some reason, 
-        /// but that's obviously wrong and it creates segfault in yklua. Adding 16 bytes 
-        /// to the stack fixes the issue.
+        // FIXME: Why do we need this stack adjustment?
+        // When we execute traces, we want to set the RSP to the same value as when 
+        // the traces were collected (Unopt RSP). However, when we do that, it 
+        // corrupts the stderr output of a few tests `idempotent.c` and `srem.c` 
+        // which cause lang_tester to fail parsing the output with this error:
+        // ```text
+        // Can't convert stderr from 'YKD_SERIALISE_COMPILATION="1" "/tmp/.tmpOqHojX/idempotent"' into UTF-8
+        // ```
+        // These tests seems to work when RSP is set to the Opt RSP for some reason, 
+        // but that's obviously wrong and it creates segfault in yklua. Adding 16 bytes 
+        // to the stack fixes the issue.
         let trace_stack_adjustment = 2 * REG64_BYTESIZE; // 2 * 8 = 16 bytes
         
         dynasm!(asm
