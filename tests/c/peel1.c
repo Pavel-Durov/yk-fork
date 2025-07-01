@@ -1,6 +1,6 @@
 // ## The sanitisers fiddle with the generated code and mean we can't write the
 // ## test we want.
-// ignore-if: echo $RUSTFLAGS | grep "sanitizer"
+// ignore-if: echo $RUSTFLAGS | grep "sanitizer" || test "$YKB_TRACER" = "swt" # promotions are disabled for swt
 // Compiler:
 //   env-var: YKB_EXTRA_CC_FLAGS=-O2
 // Run-time:
