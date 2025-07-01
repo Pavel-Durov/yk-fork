@@ -433,7 +433,7 @@ impl MT {
                             CPTransition {
                                 direction: CPTransitionDirection::UnoptToOpt,
                                 frameaddr,
-                                rsp: 0 as *const c_void,
+                                src_rsp: 0 as *const c_void,
                                 trace_addr: 0 as *const c_void,
                                 exec_trace: false,
                             },
@@ -493,7 +493,7 @@ impl MT {
                             CPTransition {
                                 direction: CPTransitionDirection::OptToUnopt,
                                 frameaddr,
-                                rsp,
+                                src_rsp: rsp,
                                 trace_addr: trace_addr,
                                 exec_trace: true,
                             },
@@ -663,7 +663,7 @@ impl MT {
                     CPTransition {
                         direction: CPTransitionDirection::OptToUnopt,
                         frameaddr,
-                        rsp: 0 as *const c_void,
+                        src_rsp: 0 as *const c_void,
                         trace_addr: 0 as *const c_void,
                         exec_trace: false,
                     },
@@ -743,7 +743,7 @@ impl MT {
                     CPTransition {
                         direction: CPTransitionDirection::UnoptToOpt,
                         frameaddr,
-                        rsp: 0 as *const c_void,
+                        src_rsp: 0 as *const c_void,
                         trace_addr: 0 as *const c_void,
                         exec_trace: false,
                     },

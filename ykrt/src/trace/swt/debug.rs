@@ -79,7 +79,7 @@ pub(crate) fn debug_print_destination_live_vars(dst_rec: &Record, rbp_offset_reg
                 for add_loc in dst_add_locs {
                     if *add_loc >= 0 {
                         // Do not print register values cause its not correct, by the time this funciton is called they might be already clobbered.
-                        println!("{:?}\tvalue=(cannot get register value)", add_loc);
+                        println!("{:?}\tvalue=(cannot get register value)", location);
                     } else {
                         let rbp_offset = i32::try_from(*add_loc).unwrap();
                         let value = get_rb_value_at_offset(rbp_offset, dst_val_size);

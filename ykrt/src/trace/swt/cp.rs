@@ -22,7 +22,7 @@ pub struct CPTransition {
     // The frame address of the caller.
     pub frameaddr: *const c_void,
     // The stack pointer of the caller.
-    pub rsp: *const c_void,
+    pub src_rsp: *const c_void,
     // The address of the trace to execute.
     pub trace_addr: *const c_void,
     // Flag to indicate whether to call __yk_exec_trace.
@@ -157,20 +157,30 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition, stats: &Stats) 
     }
     if *CP_VERBOSE {
         println!(
-            "transition.rsp: 0x{:x}, current_rsp: 0x{:x}",
-            transition.rsp as i64,
+            "transition.src_rsp: 0x{:x}, current_rsp: 0x{:x}",
+            transition.src_rsp as i64,
             frameaddr as i64 - dst_frame_size as i64
         );
     }
     if transition.exec_trace {
+        /// FIXME: Why do we need this stack adjustment?
+        /// When we execute traces, we want to set the RSP to the same value as when 
+        /// the traces were collected (Unopt RSP). However, when we do that, it 
+        /// corrupts the stderr output of a few tests `idempotent.c` and `srem.c` 
+        /// which cause lang_tester to fail parsing the output with this error:
+        /// ```text
+        /// Can't convert stderr from 'YKD_SERIALISE_COMPILATION="1" "/tmp/.tmpOqHojX/idempotent"' into UTF-8
+        /// ```
+        /// These tests seems to work when RSP is set to the Opt RSP for some reason, 
+        /// but that's obviously wrong and it creates segfault in yklua. Adding 16 bytes 
+        /// to the stack fixes the issue.
+        let trace_stack_adjustment = 2 * REG64_BYTESIZE; // 2 * 8 = 16 bytes
+        
         dynasm!(asm
             ; .arch x64
-            // Similar to __yk_exec_trace code
-            // ; mov rbp, QWORD frameaddr as i64
-            // ; mov rsp, QWORD transition.rsp as i64
+            ; sub rsp, trace_stack_adjustment.try_into().unwrap()
             ; mov rdx, QWORD transition.trace_addr as i64
             ; jmp rdx
-
         );
     } else {
         let call_offset = calc_after_cp_offset(dst_rec.offset).unwrap();
