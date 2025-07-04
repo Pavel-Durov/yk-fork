@@ -100,9 +100,9 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition, stats: &Stats) 
         );
     }
 
-    if *CP_VERBOSE {
-        debug_print_source_live_vars(src_rec, rbp_offset_reg_store);
-    }
+    // if *CP_VERBOSE {
+    //     debug_print_source_live_vars(src_rec, rbp_offset_reg_store);
+    // }
     // Set destination live vars
     let used_registers = set_destination_live_vars(
         &mut asm,
