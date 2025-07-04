@@ -163,6 +163,7 @@ pub(crate) unsafe fn swt_module_cp_transition(transition: CPTransition, stats: &
         // These tests seems to work when RSP is set to the Opt RSP for some reason, 
         // but that's obviously wrong and it creates segfault in yklua. Adding 16 bytes 
         // to the stack fixes the issue.
+        // This might be similar to what we do in __yk_exec_trace - removing the return addresses of function calls, cause the rsp is set in the rust control_point call.
         let trace_stack_adjustment = 2 * REG64_BYTESIZE; // 2 * 8 = 16 bytes
         
         dynasm!(asm
