@@ -1,14 +1,14 @@
-use dynasmrt::{dynasm, x64::Assembler, DynasmApi};
+use dynasmrt::{DynasmApi, dynasm, x64::Assembler};
 use smallvec::SmallVec;
-use std::alloc::{alloc, handle_alloc_error, Layout};
+use std::alloc::{Layout, alloc, handle_alloc_error};
 use std::collections::HashMap;
 use std::sync::OnceLock;
 use yksmp::Location::{Direct, Indirect, Register};
 use yksmp::Record;
 
 use crate::trace::swt::cfg::{
-    dwarf_to_dynasm_reg, reg_num_to_ykrt_control_point_rsp_offset, CPTransitionDirection,
-    LiveVarsBuffer, CP_BREAK, CP_VERBOSE,
+    CP_BREAK, CP_VERBOSE, CPTransitionDirection, LiveVarsBuffer, dwarf_to_dynasm_reg,
+    reg_num_to_ykrt_control_point_rsp_offset,
 };
 
 // Create a thread-safe wrapper for the buffer pointer
@@ -243,6 +243,21 @@ pub(crate) fn set_destination_live_vars(
     // Index of the source live variable in the temporary buffer.
     let mut src_var_indirect_index = 0;
 
+    if *CP_VERBOSE {
+        eprintln!("Copying live vars: src={}, dst={}", src_rec.live_vals.len(), dst_rec.live_vals.len());
+        for (index, src_var) in src_rec.live_vals.iter().enumerate() {
+            let dst_var = &dst_rec.live_vals[index];
+            if src_var.len() > 1 || dst_var.len() > 1 {
+                todo!("Deal with multi register locations");
+            }
+            let src_location = &src_var.get(0).unwrap();
+            let dst_location = &dst_var.get(0).unwrap();
+            eprintln!(
+                "Copying live src: {:?}, dst: {:?}",
+                src_location, dst_location
+            );
+        }
+    }
     // Ensure we have matching live variables
     assert!(
         src_rec.live_vals.len() == dst_rec.live_vals.len(),
@@ -259,12 +274,6 @@ pub(crate) fn set_destination_live_vars(
 
         let src_location = &src_var.get(0).unwrap();
         let dst_location = &dst_var.get(0).unwrap();
-        if *CP_VERBOSE {
-            eprintln!(
-                "Copying live src: {:?}, dst: {:?}",
-                src_location, dst_location
-            );
-        }
         match src_location {
             Register(src_reg_num, src_val_size, _src_add_locs) => {
                 let reg_store_offset = reg_num_to_ykrt_control_point_rsp_offset(*src_reg_num);
@@ -530,6 +539,7 @@ fn calculate_live_vars_buffer_size(src_rec: &Record) -> i32 {
 // Allocates a temporary buffer for the live vars.
 // This allocation happens only once per direction.
 // The buffer is aligned to 16 bytes.
+// TODO: dealloc buffer
 fn allocate_buffer(
     src_rec: &Record,
     cp_direction: CPTransitionDirection,
@@ -654,7 +664,7 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
 #[cfg(test)]
 mod live_vars_tests {
     use super::*;
-    use crate::trace::swt::cfg::{REG64_BYTESIZE, REG_OFFSETS};
+    use crate::trace::swt::cfg::{REG_OFFSETS, REG64_BYTESIZE};
     use capstone::prelude::*;
     use dynasmrt::x64::Assembler;
     use yksmp::{Location, Record};

@@ -74,7 +74,7 @@ pub(crate) fn debug_print_destination_live_vars(dst_rec: &Record, rbp_offset_reg
                 let value = get_rb_value_at_offset(*dst_off, dst_val_size);
                 println!("{:?}\tvalue=0x{:016x}", location, value);
             }
-            Register(dst_reg_num, dst_val_size, dst_add_locs) => {
+            Register(_, dst_val_size, dst_add_locs) => {
                 // Do not print register values cause its not correct, by the time this funciton is called they might be already clobbered.
                 for add_loc in dst_add_locs {
                     if *add_loc >= 0 {

@@ -29,18 +29,7 @@ pub struct CPTransition {
     pub exec_trace: bool,
 }
 
-// This function is called from the asm generated code in `swt_module_cp_transition`.
-// It deallocates the buffer created to temporary store the live variables.
-#[unsafe(no_mangle)]
-unsafe extern "C" fn __yk_swt_dealloc_buffer(ptr: *mut u8, size: usize, align: usize) {
-    if ptr.is_null() {
-        return;
-    }
-    let layout = Layout::from_size_align_unchecked(size, align);
-    dealloc(ptr, layout);
-}
-
-pub unsafe fn swt_module_cp_transition(transition: CPTransition, stats: &Stats) {
+pub(crate) unsafe fn swt_module_cp_transition(transition: CPTransition, stats: &Stats) {
     let frameaddr = transition.frameaddr as usize;
     let mut asm = Assembler::new().unwrap();
 

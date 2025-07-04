@@ -16,7 +16,7 @@ const COMMENT_PREFIX: &str = "##";
 fn main() {
     println!("Running C tests...");
     let dest_dir_path = env::var("TEST_OUT_DIR");
-    
+
     let tempdir = if let Ok(dir) = dest_dir_path {
         std::fs::create_dir_all(&dir).unwrap();
         PathBuf::from(dir)

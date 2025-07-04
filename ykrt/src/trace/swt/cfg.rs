@@ -102,14 +102,14 @@ pub(crate) fn dwarf_to_dynasm_reg(dwarf_reg_num: u8) -> u8 {
 pub(crate) static REG_OFFSETS: LazyLock<HashMap<u16, i32>> = LazyLock::new(|| {
     let mut m = HashMap::new();
     m.insert(0, 0x60); // rax
-                       // 1 => 8,  // rdx - is not saved
+    // 1 => 8,  // rdx - is not saved
     m.insert(2, 0x58); // rcx
     m.insert(3, 0x50); // rbx
-                       // Question: why rsi and rdi are not at their index?
+    // Question: why rsi and rdi are not at their index?
     m.insert(5, 0x48); // rdi
     m.insert(4, 0x40); // rsi
-                       // 6 => 0x48 - not saved
-                       // 7 => 0x40 - not saved
+    // 6 => 0x48 - not saved
+    // 7 => 0x40 - not saved
     m.insert(8, 0x38); // r8
     m.insert(9, 0x30); // r9
     m.insert(10, 0x28); // r10
