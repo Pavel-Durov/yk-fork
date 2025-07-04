@@ -56,8 +56,7 @@ thread_local! {
 /// * `function_index` - The index of the function to which the basic block belongs.
 /// * `block_index` - The index of the basic block within the function.
 #[cfg(tracer_swt)]
-#[no_mangle]
-#[inline(never)]
+#[unsafe(no_mangle)]
 pub extern "C" fn __yk_trace_basicblock(function_index: usize, block_index: usize) {
     if MTThread::is_tracing() {
         BASIC_BLOCKS.with(|v| {
@@ -77,9 +76,9 @@ pub extern "C" fn __yk_trace_basicblock(function_index: usize, block_index: usiz
 /// block belongs.
 /// * `block_index` - The index of the basic block within the function.
 #[cfg(tracer_swt)]
-#[no_mangle]
 #[inline(never)]
 #[cold]
+#[unsafe(no_mangle)]
 pub extern "C" fn __yk_trace_basicblock_dummy(function_index: usize, block_index: usize) {
     // Consume the parameters to prevent LLVM from treating them as unused
     std::hint::black_box(function_index);

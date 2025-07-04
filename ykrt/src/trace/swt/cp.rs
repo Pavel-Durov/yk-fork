@@ -1,7 +1,7 @@
 use crate::aotsmp::AOT_STACKMAPS;
 use crate::trace::swt::cfg::{dwarf_reg_to_str, CPTransitionDirection, ControlPointStackMapId};
 use crate::trace::swt::cfg::{
-    dwarf_to_dynasm_reg, reg_num_to_ykrt_control_point_rsp_offset, CP_BREAK, CP_BREAK_TRACE,
+    dwarf_to_dynasm_reg, reg_num_to_ykrt_control_point_rsp_offset, CP_BREAK,
     CP_VERBOSE, CP_VERBOSE_ASM, REG64_BYTESIZE, REG_OFFSETS,
 };
 use crate::trace::swt::debug::{debug_print_destination_live_vars, debug_print_source_live_vars};
@@ -31,7 +31,7 @@ pub struct CPTransition {
 
 // This function is called from the asm generated code in `swt_module_cp_transition`.
 // It deallocates the buffer created to temporary store the live variables.
-#[no_mangle]
+#[unsafe(no_mangle)]
 unsafe extern "C" fn __yk_swt_dealloc_buffer(ptr: *mut u8, size: usize, align: usize) {
     if ptr.is_null() {
         return;
@@ -212,6 +212,7 @@ pub unsafe fn swt_module_cp_transition(transition: CPTransition, stats: &Stats) 
 }
 
 /// Execute an assembled buffer with optional verbose assembly dumping
+#[unsafe(no_mangle)]
 unsafe fn execute_asm_buffer(buffer: ExecutableBuffer) {
     let func: unsafe fn() = std::mem::transmute(buffer.as_ptr());
 

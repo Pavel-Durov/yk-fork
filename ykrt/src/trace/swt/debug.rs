@@ -101,85 +101,85 @@ pub(crate) fn debug_print_destination_live_vars(dst_rec: &Record, rbp_offset_reg
 
 // Utility function to print the value of a register.
 // Used for debugging.
-pub unsafe extern "C" fn get_reg_value(reg_num: u16) -> u64 {
-    let reg_val: u64;
-    match reg_num {
-        0 => asm!(
-            "mov {0}, rax",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        1 => asm!(
-            "mov {0}, rcx",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        2 => asm!(
-            "mov {0}, rdx",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        3 => asm!(
-            "mov {0}, rbx",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        6 => asm!(
-            "mov {0}, rbp",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        5 => asm!(
-            "mov {0}, rdi",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        7 => asm!(
-            "mov {0}, rdi",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        8 => asm!(
-            "mov {0}, r8",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        9 => asm!(
-            "mov {0}, r9",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        10 => asm!(
-            "mov {0}, r10",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        11 => asm!(
-            "mov {0}, r11",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        12 => asm!(
-            "mov {0}, r12",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        13 => asm!(
-            "mov {0}, r13",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        14 => asm!(
-            "mov {0}, r14",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        15 => asm!(
-            "mov {0}, r15",
-            out(reg) reg_val,
-            options(nostack, nomem, preserves_flags)
-        ),
-        _ => panic!("Unsupported register number: {}", reg_num),
-    }
-    return reg_val;
-}
+// pub unsafe extern "C" fn get_reg_value(reg_num: u16) -> u64 {
+//     let reg_val: u64;
+//     match reg_num {
+//         0 => asm!(
+//             "mov {0}, rax",
+//             out(reg) reg_val,
+//             options(nostack, nomem, preserves_flags)
+//         ),
+//         1 => asm!(
+//             "mov {0}, rcx",
+//             out(reg) reg_val,
+//             options(nostack, nomem, preserves_flags)
+//         ),
+//         2 => asm!(
+//             "mov {0}, rdx",
+//             out(reg) reg_val,
+//             options(nostack, nomem, preserves_flags)
+//         ),
+//         3 => asm!(
+//             "mov {0}, rbx",
+//             out(reg) reg_val,
+//             options(nostack, nomem, preserves_flags)
+//         ),
+//         6 => asm!(
+//             "mov {0}, rbp",
+//             out(reg) reg_val,
+//             options(nostack, nomem, preserves_flags)
+//         ),
+//         5 => asm!(
+//             "mov {0}, rdi",
+//             out(reg) reg_val,
+//             options(nostack, nomem, preserves_flags)
+//         ),
+//         7 => asm!(
+//             "mov {0}, rdi",
+//             out(reg) reg_val,
+//             options(nostack, nomem, preserves_flags)
+//         ),
+//         8 => asm!(
+//             "mov {0}, r8",
+//             out(reg) reg_val,
+//             options(nostack, nomem, preserves_flags)
+//         ),
+//         9 => asm!(
+//             "mov {0}, r9",
+//             out(reg) reg_val,
+//             options(nostack, nomem, preserves_flags)
+//         ),
+//         10 => asm!(
+//             "mov {0}, r10",
+//             out(reg) reg_val,
+//             options(nostack, nomem, preserves_flags)
+//         ),
+//         11 => asm!(
+//             "mov {0}, r11",
+//             out(reg) reg_val,
+//             options(nostack, nomem, preserves_flags)
+//         ),
+//         12 => asm!(
+//             "mov {0}, r12",
+//             out(reg) reg_val,
+//             options(nostack, nomem, preserves_flags)
+//         ),
+//         13 => asm!(
+//             "mov {0}, r13",
+//             out(reg) reg_val,
+//             options(nostack, nomem, preserves_flags)
+//         ),
+//         14 => asm!(
+//             "mov {0}, r14",
+//             out(reg) reg_val,
+//             options(nostack, nomem, preserves_flags)
+//         ),
+//         15 => asm!(
+//             "mov {0}, r15",
+//             out(reg) reg_val,
+//             options(nostack, nomem, preserves_flags)
+//         ),
+//         _ => panic!("Unsupported register number: {}", reg_num),
+//     }
+//     return reg_val;
+// }
