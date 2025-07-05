@@ -30,6 +30,7 @@ pub struct CPTransition {
     pub exec_trace: bool,
 }
 
+#[inline]
 pub(crate) unsafe fn swt_module_cp_transition(transition: CPTransition, stats: &Stats) {
     let frameaddr = transition.frameaddr as usize;
     let mut asm = Assembler::new().unwrap();
@@ -90,9 +91,9 @@ pub(crate) unsafe fn swt_module_cp_transition(transition: CPTransition, stats: &
         );
     }
 
-    // if *CP_VERBOSE {
-    //     debug_print_source_live_vars(src_rec, rbp_offset_reg_store);
-    // }
+    if *CP_VERBOSE {
+        debug_print_source_live_vars(src_rec, rbp_offset_reg_store);
+    }
     // Set destination live vars
     let used_registers = set_destination_live_vars(
         &mut asm,

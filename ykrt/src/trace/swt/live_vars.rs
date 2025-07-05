@@ -77,6 +77,7 @@ struct RegToRbpParams {
 }
 
 // Helper function to generate assembly for memory-to-register operations
+#[inline]
 fn emit_mem_to_reg(asm: &mut Assembler, params: MemToRegParams) {
     match params.size {
         1 => dynasm!(asm
@@ -96,6 +97,7 @@ fn emit_mem_to_reg(asm: &mut Assembler, params: MemToRegParams) {
 }
 
 // Helper function to generate assembly for memory-to-memory operations
+#[inline]
 fn emit_mem_to_mem(asm: &mut Assembler, params: MemToMemParams) {
     match params.size {
         1 => dynasm!(asm
@@ -123,6 +125,7 @@ fn emit_mem_to_mem(asm: &mut Assembler, params: MemToMemParams) {
 }
 
 // Helper function to generate assembly for rbp-relative register loads
+#[inline]
 fn emit_rbp_to_reg(asm: &mut Assembler, params: RbpToRegParams) {
     match params.size {
         1 => dynasm!(asm; mov Rb(params.dst_reg), BYTE [rbp - params.rbp_offset]),
@@ -134,6 +137,7 @@ fn emit_rbp_to_reg(asm: &mut Assembler, params: RbpToRegParams) {
 }
 
 // Helper function to generate assembly for rbp-relative register stores
+#[inline]
 fn emit_reg_to_rbp(asm: &mut Assembler, params: RegToRbpParams) {
     match params.size {
         1 => dynasm!(asm; mov BYTE [rbp + params.rbp_offset], Rb(params.src_reg)),
@@ -145,6 +149,7 @@ fn emit_reg_to_rbp(asm: &mut Assembler, params: RegToRbpParams) {
 }
 
 // Handles additional locations for register-to-register.
+#[inline]
 fn handle_register_to_register_additional_locations(
     asm: &mut dynasmrt::Assembler<dynasmrt::x64::X64Relocation>,
     reg_store_rbp_offset: i32,
@@ -191,6 +196,7 @@ fn handle_register_to_register_additional_locations(
 }
 
 // Handles additional locations for indirect-to-register.
+#[inline]
 fn handle_indirect_to_register_additional_locations(
     asm: &mut dynasmrt::Assembler<dynasmrt::x64::X64Relocation>,
     dst_add_locs: &SmallVec<[i16; 1]>,
@@ -229,6 +235,7 @@ fn handle_indirect_to_register_additional_locations(
     }
 }
 
+#[inline]
 pub(crate) fn set_destination_live_vars(
     asm: &mut Assembler,
     src_rec: &Record,
@@ -348,7 +355,6 @@ pub(crate) fn set_destination_live_vars(
             | Direct(src_reg_num, _src_off, src_val_size) => {
                 // Indirect(src_reg_num, _src_off, src_val_size) => {
                 assert!(!live_vars_buffer.ptr.is_null(), "Live vars buffer is null");
-                // let temp_buffer_offset = live_vars_buffer.variables[&src_var_indirect_index];
                 let temp_buffer_offset = src_var_indirect_index * (*src_val_size as i32);
                 match dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
@@ -519,6 +525,7 @@ pub(crate) fn set_destination_live_vars(
 
 // Calculates the size of the live vars buffer.
 // The buffer is aligned to 16 bytes.
+#[inline]
 fn calculate_live_vars_buffer_size(src_rec: &Record) -> i32 {
     let mut src_val_buffer_size: i32 = 0;
     for (_, src_var) in src_rec.live_vals.iter().enumerate() {
@@ -541,6 +548,7 @@ fn calculate_live_vars_buffer_size(src_rec: &Record) -> i32 {
 // This allocation happens only once per direction.
 // The buffer is aligned to 16 bytes.
 // TODO: dealloc buffer
+#[inline]
 fn allocate_buffer(
     src_rec: &Record,
     cp_direction: CPTransitionDirection,
@@ -571,6 +579,7 @@ fn allocate_buffer(
     Some(thread_safe_buffer)
 }
 
+#[inline]
 pub(crate) fn copy_live_vars_to_temp_buffer(
     asm: &mut Assembler,
     src_rec: &Record,

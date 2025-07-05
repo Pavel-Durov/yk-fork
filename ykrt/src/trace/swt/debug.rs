@@ -65,7 +65,7 @@ pub(crate) fn debug_print_source_live_vars(src_rec: &Record, rbp_offset_reg_stor
     }
 }
 
-pub(crate) fn debug_print_destination_live_vars(dst_rec: &Record, rbp_offset_reg_store: i64) {
+pub(crate) fn debug_print_destination_live_vars(dst_rec: &Record, _rbp_offset_reg_store: i64) {
     println!("Destination live vars values:");
     for (_, dst_var) in dst_rec.live_vals.iter().enumerate() {
         let location = dst_var.get(0).unwrap();
