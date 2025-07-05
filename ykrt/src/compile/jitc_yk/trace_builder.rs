@@ -2,22 +2,28 @@
 //!
 //! This takes in an (AOT IR, execution trace) pair and constructs a JIT IR trace from it.
 
-use super::aot_ir::{self, BBlockId, BinOp, Module};
 use super::YkSideTraceInfo;
+use super::aot_ir::{self, BBlockId, BinOp, Module};
 use super::{
+    AOT_MOD,
     arbbitint::ArbBitInt,
     jit_ir::{self, Const, Operand, PackedOperand, ParamIdx, TraceKind},
-    AOT_MOD,
 };
 use crate::{
     aotsmp::AOT_STACKMAPS,
     compile::{CompilationError, CompiledTrace},
     log::stats::TimingState,
-    mt::{TraceId, MT},
+    mt::{MT, TraceId},
     trace::{AOTTraceIterator, TraceAction},
 };
+use std::env;
+use std::sync::LazyLock;
 use std::{collections::HashMap, ffi::CString, sync::Arc};
 use ykaddr::addr::symbol_to_ptr;
+
+// Flag for verbose logging of trace actions
+pub(crate) static TRACE_VERBOSE: LazyLock<bool> =
+    LazyLock::new(|| env::var("TRACE_VERBOSE").map(|v| v == "1").unwrap_or(false));
 
 /// Given an execution trace and AOT IR, creates a JIT IR trace.
 pub(crate) struct TraceBuilder {
@@ -821,7 +827,9 @@ impl TraceBuilder {
         // `__yk_trace_basicblock` instruction calls into the beginning of
         // every basic block. These calls can be ignored as they are
         // only used to collect runtime information for the tracer itself.
-        if AOT_MOD.func(*callee).name() == "__yk_trace_basicblock" {
+        if AOT_MOD.func(*callee).name() == "__yk_trace_basicblock"
+            || AOT_MOD.func(*callee).name() == "__yk_trace_basicblock_dummy"
+        {
             return Ok(());
         }
 
@@ -1372,6 +1380,15 @@ impl TraceBuilder {
             .map(|x| x.map_err(|e| CompilationError::General(e.to_string())))
             .collect::<Result<Vec<_>, _>>()?;
 
+        if *TRACE_VERBOSE {
+            // Print all trace actions for debugging
+            eprintln!("\n=== TRACE ACTIONS ===");
+            for (i, action) in tas.iter().enumerate() {
+                eprintln!("[{}] {:?}", i, action);
+            }
+            eprintln!("====================\n");
+        }
+
         // Peek to the last block (needed for side-tracing).
         let lastblk = match &tas.last() {
             Some(b) => self.lookup_aot_block(b),
@@ -1509,6 +1526,12 @@ impl TraceBuilder {
         while let Some(b) = trace_iter.next() {
             match self.lookup_aot_block(&b) {
                 Some(bid) => {
+                    if *TRACE_VERBOSE {
+                        // Print the block information
+                        eprintln!("\n=== BLOCK: {:?} ===", bid);
+                        let blk = self.aot_mod.bblock(&bid);
+                        println!("{}", blk.display(self.aot_mod, None))
+                    }
                     // MappedAOTBBlock block
                     if let Some(prev_mbid) = &prev_mappable_bid {
                         // Due to the way HWT works, when you return from a call, you see the same

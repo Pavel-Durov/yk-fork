@@ -25,28 +25,26 @@ impl PacketParserState {
         // and optimise.
         match self {
             Self::Normal => &[
-                PacketKind::ShortTNT,
-                PacketKind::PAD,
-                PacketKind::FUP,
                 PacketKind::TIP,
-                PacketKind::CYC,
-                PacketKind::LongTNT,
-                PacketKind::PSB,
-                PacketKind::MODEExec,
-                PacketKind::MODETSX,
-                PacketKind::CBR,
+                PacketKind::ShortTNT,
                 PacketKind::TIPPGE,
                 PacketKind::TIPPGD,
+                PacketKind::CBR,
+                PacketKind::MODEExec,
+                PacketKind::PSB,
+                PacketKind::MODETSX,
+                PacketKind::FUP,
+                PacketKind::CYC,
+                PacketKind::LongTNT,
                 PacketKind::EXSTOP,
                 PacketKind::OVF,
             ],
             Self::PSBPlus => &[
-                PacketKind::PAD,
                 PacketKind::CBR,
-                PacketKind::FUP,
+                PacketKind::PSBEND,
                 PacketKind::MODEExec,
                 PacketKind::MODETSX,
-                PacketKind::PSBEND,
+                PacketKind::FUP,
                 PacketKind::OVF,
                 PacketKind::VMCS,
             ],
@@ -118,7 +116,6 @@ impl<'t> PacketParser<'t> {
             PacketKind::PSBEND => {
                 read_to_packet!(PSBENDPacket, self.pt_bytes, Packet::PSBEND)
             }
-            PacketKind::PAD => read_to_packet!(PADPacket, self.pt_bytes, Packet::PAD),
             PacketKind::MODEExec => {
                 read_to_packet!(MODEExecPacket, self.pt_bytes, Packet::MODEExec)
             }
@@ -219,6 +216,10 @@ impl Iterator for PacketParser<'_> {
     type Item = Result<Packet, HWTracerError>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        // Skip over PAD packets as quickly/early as possible.
+        let skip = self.pt_bytes.iter().take_while(|&&b| b == PAD_BYTE).count();
+        self.pt_bytes = &self.pt_bytes[skip..];
+
         if !self.pt_bytes.is_empty() {
             Some(self.parse_packet())
         } else {

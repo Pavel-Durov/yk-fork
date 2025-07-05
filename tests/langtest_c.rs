@@ -7,7 +7,7 @@ use std::{
     process::Command,
 };
 use tempfile::TempDir;
-use tests::{mk_compiler, EXTRA_LINK};
+use tests::{EXTRA_LINK, mk_compiler};
 use ykbuild::{completion_wrapper::CompletionWrapper, ykllvm_bin};
 
 const COMMENT: &str = "//";
@@ -15,24 +15,40 @@ const COMMENT_PREFIX: &str = "##";
 
 fn main() {
     println!("Running C tests...");
+    let dest_dir_path = env::var("TEST_OUT_DIR");
 
-    let tempdir = TempDir::new().unwrap();
+    let tempdir = if let Ok(dir) = dest_dir_path {
+        std::fs::create_dir_all(&dir).unwrap();
+        PathBuf::from(dir)
+    } else {
+        TempDir::new().unwrap().into_path()
+    };
 
     // Generate a `compile_commands.json` database for clangd.
     let ccg = CompletionWrapper::new(ykllvm_bin("clang"), "c_tests");
     for (k, v) in ccg.build_env() {
-        env::set_var(k, v);
+        // While this is unsafe, this is only for clangd and doesn't affect the tests.
+        unsafe { env::set_var(k, v) };
     }
     let wrapper_path = ccg.wrapper_path();
 
     // Set variables for tests `ignore-if`s.
+    // These env vars stay the same for the entirety of the `cargo test` run, so we don't need to
+    // worry about this being unsafe.
     #[cfg(cargo_profile = "debug")]
-    env::set_var("YK_CARGO_PROFILE", "debug");
+    unsafe {
+        env::set_var("YK_CARGO_PROFILE", "debug")
+    };
     #[cfg(cargo_profile = "release")]
-    env::set_var("YK_CARGO_PROFILE", "release");
+    unsafe {
+        env::set_var("YK_CARGO_PROFILE", "release")
+    };
 
+    // As with the above, this env var remains the same for the entire `cargo test` run.
     #[cfg(target_arch = "x86_64")]
-    env::set_var("YK_ARCH", "x86_64");
+    unsafe {
+        env::set_var("YK_ARCH", "x86_64")
+    };
     #[cfg(not(target_arch = "x86_64"))]
     panic!("Unknown target_arch");
 
@@ -64,7 +80,7 @@ fn main() {
                 .get(key)
                 .unwrap_or(&Vec::new())
                 .iter()
-                .map(|l| l.generate_obj(tempdir.path()))
+                .map(|l| l.generate_obj(&tempdir))
                 .collect::<Vec<PathBuf>>();
 
             let mut compiler =

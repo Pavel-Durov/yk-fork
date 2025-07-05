@@ -19,7 +19,7 @@
 //     --- End aot ---
 //     --- Begin jit-pre-opt ---
 //     ...
-//     %{{21}}: i32 = call @f()
+//     %{{21}}: i32 = call @__yk_unopt_f()
 //     ...
 //     %{{25}}: i32 = add %{{21}}, 1i32
 //     ...
@@ -35,6 +35,8 @@
 //     yk-execution: deoptimise ...
 
 // Check that ptr addition in C input leads to the expected AOT and JIT IR.
+
+// SWT Note: Signal 11 after exec trace
 
 #include <stdio.h>
 #include <stdlib.h>

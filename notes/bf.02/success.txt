@@ -1,0 +1,201 @@
+
+Buffer population complete. Variables mapping: {0: 0, 1: 8, 2: 16}
+Transition: OptToUnopt ExecTrace: false
+src_rbp: 0x7fff5b3215e0, reg_store: 0x7fff5b321500, src_frame_size: 0x70, dst_frame_size: 0x70, rbp_offset_reg_store: 0xe0
+Copying live vars: src=8, dst=8
+Copying live src: Register(14, 8, [-80]), dst: Register(13, 8, [-80])
+Copying live src: Indirect(6, -48, 8), dst: Indirect(6, -48, 8)
+Copying live src: Indirect(6, -56, 8), dst: Indirect(6, -56, 8)
+Copying live src: Register(13, 8, [-72, 5]), dst: Register(12, 8, [-72, 5])
+Copying live src: Register(12, 8, [-104]), dst: Register(14, 8, [-104])
+Copying live src: Register(3, 8, [-64]), dst: Register(3, 8, [-64])
+Copying live src: Indirect(6, -96, 8), dst: Indirect(6, -96, 8)
+Copying live src: Register(15, 8, []), dst: Register(15, 8, [])
+Used temp registers: []
+Restoring unused register to __ykrt_control_point save point: "rax"
+Restoring unused register to __ykrt_control_point save point: "rcx"
+Restoring unused register to __ykrt_control_point save point: "rsi"
+Restoring unused register to __ykrt_control_point save point: "r8"
+Restoring unused register to __ykrt_control_point save point: "r9"
+Restoring unused register to __ykrt_control_point save point: "r10"
+Restoring unused register to __ykrt_control_point save point: "r11"
+transition.src_rsp: 0x0, current_rsp: 0x7fff5b321570
+ASM DUMP:
+  0: movabs rbp, 0x7fff5b3215e0
+  a: movabs rsp, 0x7fff5b3215e0
+  14: sub rsp, 0x70
+  1b: movabs rax, 0x35222490
+  25: mov rcx, qword ptr [rbp - 0x30]
+  2c: mov qword ptr [rax + riz], rcx
+  34: mov rcx, qword ptr [rbp - 0x38]
+  3b: mov qword ptr [rax + riz + 8], rcx
+  43: mov rcx, qword ptr [rbp - 0x60]
+  4a: mov qword ptr [rax + riz + 0x10], rcx
+  52: mov rax, qword ptr [rbp - 0xd8]
+  59: mov qword ptr [rbp - 0x50], rax
+  60: mov r13, qword ptr [rbp - 0xd8]
+  67: movabs rax, 0x35222490
+  71: mov rcx, qword ptr [rax + riz]
+  79: mov qword ptr [rbp - 0x30], rcx
+  80: movabs rax, 0x35222490
+  8a: mov rcx, qword ptr [rax + riz + 8]
+  92: mov qword ptr [rbp - 0x38], rcx
+  99: mov rax, qword ptr [rbp - 0xd0]
+  a0: mov qword ptr [rbp - 0x48], rax
+  a7: mov rdi, qword ptr [rbp - 0xd0]
+  ae: mov r12, qword ptr [rbp - 0xd0]
+  b5: mov rax, qword ptr [rbp - 0xc8]
+  bc: mov qword ptr [rbp - 0x68], rax
+  c3: mov r14, qword ptr [rbp - 0xc8]
+  ca: mov rax, qword ptr [rbp - 0x90]
+  d1: mov qword ptr [rbp - 0x40], rax
+  d8: mov rbx, qword ptr [rbp - 0x90]
+  df: movabs rax, 0x35222490
+  e9: mov rcx, qword ptr [rax + riz + 0x10]
+  f1: mov qword ptr [rbp - 0x60], rcx
+  f8: mov r15, qword ptr [rbp - 0xe0]
+  ff: mov rax, qword ptr [rbp - 0x80]
+  106: mov rcx, qword ptr [rbp - 0x88]
+  10d: mov rsi, qword ptr [rbp - 0xa0]
+  114: mov r8, qword ptr [rbp - 0xa8]
+  11b: mov r9, qword ptr [rbp - 0xb0]
+  122: mov r10, qword ptr [rbp - 0xb8]
+  129: mov r11, qword ptr [rbp - 0xc0]
+  130: push rax
+  131: push rcx
+  132: push rdx
+  133: push rsi
+  134: push rdi
+  135: push r8
+  137: push r9
+  139: push r10
+  13b: push r11
+  13d: movabs rdi, 0x7fb38c000ee8
+  147: movabs rsi, 0xe0
+  151: movabs rax, 0x7fb394bc32c0
+  15b: call rax
+  15d: pop r11
+  15f: pop r10
+  161: pop r9
+  163: pop r8
+  165: pop rdi
+  166: pop rsi
+  167: pop rdx
+  168: pop rcx
+  169: pop rax
+  16a: sub rsp, 0x10
+  16e: mov qword ptr [rsp], rax
+  172: movabs rax, 0x20884b
+  17c: mov qword ptr [rsp + 8], rax
+  181: pop rax
+  182: ret 
+Destination live vars values:
+Register(13, 8, [-80])	value=0x000000000020b469 (based on additional location)
+Indirect(6, -48, 8)	value=0x000000003521a2a0
+Indirect(6, -56, 8)	value=0x00000000352217d0
+Register(12, 8, [-72, 5])	value=0x0000000035221ba0 (based on additional location)
+Register(12, 8, [-72, 5])	value=(cannot get register value)
+Register(14, 8, [-104])	value=0x0000000035221d30 (based on additional location)
+Register(3, 8, [-64])	value=0x000000000020b3f9 (based on additional location)
+Indirect(6, -96, 8)	value=0x000000003521a2a0
+Using buffer at 0x352218a0 for direction UnoptToOpt
+Buffer population complete. Variables mapping: {1: 8, 2: 16, 0: 0}
+Transition: UnoptToOpt ExecTrace: false
+src_rbp: 0x7fff5b3215e0, reg_store: 0x7fff5b321500, src_frame_size: 0x70, dst_frame_size: 0x70, rbp_offset_reg_store: 0xe0
+Copying live vars: src=8, dst=8
+Copying live src: Register(13, 8, [-80]), dst: Register(14, 8, [-80])
+Copying live src: Indirect(6, -48, 8), dst: Indirect(6, -48, 8)
+Copying live src: Indirect(6, -56, 8), dst: Indirect(6, -56, 8)
+Copying live src: Register(12, 8, [-72, 5]), dst: Register(13, 8, [-72, 5])
+Copying live src: Register(14, 8, [-104]), dst: Register(12, 8, [-104])
+Copying live src: Register(3, 8, [-64]), dst: Register(3, 8, [-64])
+Copying live src: Indirect(6, -96, 8), dst: Indirect(6, -96, 8)
+Copying live src: Register(15, 8, []), dst: Register(15, 8, [])
+Used temp registers: []
+Restoring unused register to __ykrt_control_point save point: "rax"
+Restoring unused register to __ykrt_control_point save point: "rcx"
+Restoring unused register to __ykrt_control_point save point: "rsi"
+Restoring unused register to __ykrt_control_point save point: "r8"
+Restoring unused register to __ykrt_control_point save point: "r9"
+Restoring unused register to __ykrt_control_point save point: "r10"
+Restoring unused register to __ykrt_control_point save point: "r11"
+transition.src_rsp: 0x0, current_rsp: 0x7fff5b321570
+ASM DUMP:
+  0: movabs rbp, 0x7fff5b3215e0
+  a: movabs rsp, 0x7fff5b3215e0
+  14: sub rsp, 0x70
+  1b: movabs rax, 0x352218a0
+  25: mov rcx, qword ptr [rbp - 0x30]
+  2c: mov qword ptr [rax + riz], rcx
+  34: mov rcx, qword ptr [rbp - 0x38]
+  3b: mov qword ptr [rax + riz + 8], rcx
+  43: mov rcx, qword ptr [rbp - 0x60]
+  4a: mov qword ptr [rax + riz + 0x10], rcx
+  52: mov rax, qword ptr [rbp - 0xd0]
+  59: mov qword ptr [rbp - 0x50], rax
+  60: mov r14, qword ptr [rbp - 0xd0]
+  67: movabs rax, 0x352218a0
+  71: mov rcx, qword ptr [rax + riz]
+  79: mov qword ptr [rbp - 0x30], rcx
+  80: movabs rax, 0x352218a0
+  8a: mov rcx, qword ptr [rax + riz + 8]
+  92: mov qword ptr [rbp - 0x38], rcx
+  99: mov rax, qword ptr [rbp - 0xc8]
+  a0: mov qword ptr [rbp - 0x48], raxf
+  a7: mov rdi, qword ptr [rbp - 0xc8]
+  ae: mov r13, qword ptr [rbp - 0xc8]
+  b5: mov rax, qword ptr [rbp - 0xd8]
+  bc: mov qword ptr [rbp - 0x68], rax
+  c3: mov r12, qword ptr [rbp - 0xd8]
+  ca: mov rax, qword ptr [rbp - 0x90]
+  d1: mov qword ptr [rbp - 0x40], rax
+  d8: mov rbx, qword ptr [rbp - 0x90]
+  df: movabs rax, 0x352218a0
+  e9: mov rcx, qword ptr [rax + riz + 0x10]
+  f1: mov qword ptr [rbp - 0x60], rcx
+  f8: mov r15, qword ptr [rbp - 0xe0]
+  ff: mov rax, qword ptr [rbp - 0x80]
+  106: mov rcx, qword ptr [rbp - 0x88]
+  10d: mov rsi, qword ptr [rbp - 0xa0]
+  114: mov r8, qword ptr [rbp - 0xa8]
+  11b: mov r9, qword ptr [rbp - 0xb0]
+  122: mov r10, qword ptr [rbp - 0xb8]
+  129: mov r11, qword ptr [rbp - 0xc0]
+  130: push rax
+  131: push rcx
+  132: push rdx
+  133: push rsi
+  134: push rdi
+  135: push r8
+  137: push r9
+  139: push r10
+  13b: push r11
+  13d: movabs rdi, 0x7fb38c000eb0
+  147: movabs rsi, 0xe0
+  151: movabs rax, 0x7fb394bc32c0
+  15b: call rax
+  15d: pop r11
+  15f: pop r10
+  161: pop r9
+  163: pop r8
+  165: pop rdi
+  166: pop rsi
+  167: pop rdx
+  168: pop rcx
+  169: pop rax
+  16a: sub rsp, 0x10
+  16e: mov qword ptr [rsp], rax
+  172: movabs rax, 0x20827c
+  17c: mov qword ptr [rsp + 8], rax
+  181: pop rax
+  182: ret 
+Destination live vars values:
+Register(14, 8, [-80])	value=0x000000000020b469 (based on additional location)
+Indirect(6, -48, 8)	value=0x000000003521a2a0
+Indirect(6, -56, 8)	value=0x00000000352217d0
+Register(13, 8, [-72, 5])	value=0x0000000035221ba0 (based on additional location)
+Register(13, 8, [-72, 5])	value=(cannot get register value)
+Register(12, 8, [-104])	value=0x0000000035221d30 (based on additional location)
+Register(3, 8, [-64])	value=0x000000000020b3f9 (based on additional location)
+Indirect(6, -96, 8)	value=0x000000003521a2a0
+Hello World!

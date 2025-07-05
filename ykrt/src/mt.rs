@@ -9,10 +9,17 @@ use std::{
     ffi::c_void,
     marker::PhantomData,
     sync::{
-        atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, Ordering},
         Arc,
+        atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, Ordering},
     },
 };
+
+#[cfg(tracer_swt)]
+use crate::trace::swt::cfg::CPTransitionDirection;
+#[cfg(tracer_swt)]
+use crate::trace::swt::cfg::ControlPointStackMapId;
+#[cfg(tracer_swt)]
+use crate::trace::swt::cp::{swt_module_cp_transition, CPTransition};
 
 use atomic_enum::atomic_enum;
 use parking_lot::Mutex;
@@ -20,15 +27,15 @@ use parking_lot::Mutex;
 use parking_lot_core::SpinWait;
 
 use crate::{
-    aotsmp::{load_aot_stackmaps, AOT_STACKMAPS},
-    compile::{default_compiler, CompilationError, CompiledTrace, Compiler, GuardIdx},
+    aotsmp::{AOT_STACKMAPS, load_aot_stackmaps},
+    compile::{CompilationError, CompiledTrace, Compiler, GuardIdx, default_compiler},
     job_queue::{Job, JobQueue},
     location::{HotLocation, HotLocationKind, Location, TraceFailed},
     log::{
-        stats::{Stats, TimingState},
         Log, Verbosity,
+        stats::{Stats, TimingState},
     },
-    trace::{default_tracer, AOTTraceIterator, TraceRecorder, Tracer},
+    trace::{AOTTraceIterator, TraceRecorder, Tracer, default_tracer},
 };
 
 // Emit a log entry with hot location debug information if present and support is compiled in.
@@ -417,7 +424,24 @@ impl MT {
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
     pub fn control_point(self: &Arc<Self>, loc: &Location, frameaddr: *mut c_void, smid: u64) {
         match self.transition_control_point(loc, frameaddr) {
-            TransitionControlPoint::NoAction => (),
+            TransitionControlPoint::NoAction => {
+                #[cfg(tracer_swt)]
+                if smid == ControlPointStackMapId::UnOpt as u64 {
+                    unsafe {
+                        // Transition into opt interpreter when we stop tracing.
+                        swt_module_cp_transition(
+                            CPTransition {
+                                direction: CPTransitionDirection::UnoptToOpt,
+                                frameaddr,
+                                src_rsp: 0 as *const c_void,
+                                trace_addr: 0 as *const c_void,
+                                exec_trace: false,
+                            },
+                            &self.stats,
+                        );
+                    }
+                }
+            }
             TransitionControlPoint::AbortTracing(ak) => {
                 let thread_tracer = MTThread::with_borrow_mut(|mtt| match mtt.pop_tstate() {
                     MTThreadState::Tracing { thread_tracer, .. } => thread_tracer,
@@ -458,16 +482,35 @@ impl MT {
                     });
                 });
                 self.stats.timing_state(TimingState::JitExecuting);
+                #[cfg(tracer_swt)]
+                if smid == ControlPointStackMapId::Opt as u64 {
+                    unsafe {
+                        // Transition to unopt before trace execution since``
+                        // the trace was collected un unopt version.
+                        // This function will call __yk_exec_trace when live variables are restored.
+                        #[cfg(tracer_swt)]
+                        swt_module_cp_transition(
+                            CPTransition {
+                                direction: CPTransitionDirection::OptToUnopt,
+                                frameaddr,
+                                src_rsp: rsp,
+                                trace_addr: trace_addr,
+                                exec_trace: true,
+                            },
+                            &self.stats,
+                        );
+                    }
+                }
 
                 // FIXME: Calling this function overwrites the current (Rust) function frame,
                 // rather than unwinding it. https://github.com/ykjit/yk/issues/778.
                 unsafe { __yk_exec_trace(frameaddr, rsp, trace_addr) };
             }
             TransitionControlPoint::StartTracing(hl, trid) => {
-                self.start_tracing(frameaddr, loc, hl, trid);
+                self.start_tracing(frameaddr, loc, hl, trid, smid);
             }
             TransitionControlPoint::StopTracing(trid, connector_tid) => {
-                self.stop_tracing(frameaddr, loc, trid, connector_tid);
+                self.stop_tracing(frameaddr, loc, trid, connector_tid, smid);
             }
             TransitionControlPoint::StopSideTracing {
                 trid,
@@ -520,6 +563,7 @@ impl MT {
                                 loc,
                                 loc.hot_location_arc_clone().unwrap(),
                                 connector_tid,
+                                smid,
                             );
                         }
                     }
@@ -550,6 +594,7 @@ impl MT {
         _loc: &Location,
         hl: Arc<Mutex<HotLocation>>,
         trid: TraceId,
+        smid: u64,
     ) {
         self.stats
             .timing_state(crate::log::stats::TimingState::Tracing);
@@ -609,6 +654,23 @@ impl MT {
                 }
             }
         });
+        #[cfg(tracer_swt)]
+        if smid == ControlPointStackMapId::Opt as u64 {
+            unsafe {
+                // Transition to unopt before start tracing cause
+                // we need the intepreter version with tracing calls..
+                swt_module_cp_transition(
+                    CPTransition {
+                        direction: CPTransitionDirection::OptToUnopt,
+                        frameaddr,
+                        src_rsp: 0 as *const c_void,
+                        trace_addr: 0 as *const c_void,
+                        exec_trace: false,
+                    },
+                    &self.stats,
+                );
+            }
+        }
     }
 
     /// Stop tracing of the trace with id `trid` at `loc`. If `connector_tid` is `Some`, the
@@ -619,6 +681,7 @@ impl MT {
         _loc: &Location,
         trid: TraceId,
         connector_tid: Option<TraceId>,
+        smid: u64,
     ) {
         // Assuming no bugs elsewhere, the `unwrap`s cannot fail, because `StartTracing`
         // will have put a `Some` in the `Rc`.
@@ -672,6 +735,22 @@ impl MT {
             }
         }
         self.stats.timing_state(TimingState::OutsideYk);
+        #[cfg(tracer_swt)]
+        if smid == ControlPointStackMapId::UnOpt as u64 {
+            unsafe {
+                // Transition into opt interpreter when we stop tracing.
+                swt_module_cp_transition(
+                    CPTransition {
+                        direction: CPTransitionDirection::UnoptToOpt,
+                        frameaddr,
+                        src_rsp: 0 as *const c_void,
+                        trace_addr: 0 as *const c_void,
+                        exec_trace: false,
+                    },
+                    &self.stats,
+                );
+            }
+        }
     }
 
     /// Perform the next step to `loc` in the `Location` state-machine for a control point. If
@@ -1159,7 +1238,7 @@ impl MT {
 
 #[cfg(target_arch = "x86_64")]
 #[unsafe(naked)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 unsafe extern "C" fn __yk_exec_trace(
     frameaddr: *const c_void,
     rsp: *const c_void,
@@ -1355,10 +1434,7 @@ impl MTThread {
     /// If the stack is empty. There should always be at least one element on the stack, so a panic
     /// here means that something has gone wrong elsewhere.
     pub(crate) fn promote_i32(&mut self, val: i32) -> bool {
-        if let MTThreadState::Tracing {
-            ref mut promotions, ..
-        } = self.peek_mut_tstate()
-        {
+        if let MTThreadState::Tracing { promotions, .. } = self.peek_mut_tstate() {
             promotions.extend_from_slice(&val.to_ne_bytes());
         }
         true
@@ -1376,10 +1452,7 @@ impl MTThread {
     /// If the stack is empty. There should always be at least one element on the stack, so a panic
     /// here means that something has gone wrong elsewhere.
     pub(crate) fn promote_u32(&mut self, val: u32) -> bool {
-        if let MTThreadState::Tracing {
-            ref mut promotions, ..
-        } = self.peek_mut_tstate()
-        {
+        if let MTThreadState::Tracing { promotions, .. } = self.peek_mut_tstate() {
             promotions.extend_from_slice(&val.to_ne_bytes());
         }
         true
@@ -1397,10 +1470,7 @@ impl MTThread {
     /// If the stack is empty. There should always be at least one element on the stack, so a panic
     /// here means that something has gone wrong elsewhere.
     pub(crate) fn promote_i64(&mut self, val: i64) -> bool {
-        if let MTThreadState::Tracing {
-            ref mut promotions, ..
-        } = self.peek_mut_tstate()
-        {
+        if let MTThreadState::Tracing { promotions, .. } = self.peek_mut_tstate() {
             promotions.extend_from_slice(&val.to_ne_bytes());
         }
         true
@@ -1418,10 +1488,7 @@ impl MTThread {
     /// If the stack is empty. There should always be at least one element on the stack, so a panic
     /// here means that something has gone wrong elsewhere.
     pub(crate) fn promote_usize(&mut self, val: usize) -> bool {
-        if let MTThreadState::Tracing {
-            ref mut promotions, ..
-        } = self.peek_mut_tstate()
-        {
+        if let MTThreadState::Tracing { promotions, .. } = self.peek_mut_tstate() {
             promotions.extend_from_slice(&val.to_ne_bytes());
         }
         true
@@ -1434,10 +1501,7 @@ impl MTThread {
     /// If the stack is empty. There should always be at least one element on the stack, so a panic
     /// here means that something has gone wrong elsewhere.
     pub(crate) fn insert_debug_str(&mut self, msg: String) -> bool {
-        if let MTThreadState::Tracing {
-            ref mut debug_strs, ..
-        } = self.peek_mut_tstate()
-        {
+        if let MTThreadState::Tracing { debug_strs, .. } = self.peek_mut_tstate() {
             debug_strs.push(msg);
         }
         true

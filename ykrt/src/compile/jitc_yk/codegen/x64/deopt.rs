@@ -1,4 +1,6 @@
 use super::{Register, VarLocation};
+#[cfg(tracer_swt)]
+use crate::trace::swt::cfg::CP_VERBOSE;
 use crate::{
     aotsmp::AOT_STACKMAPS,
     compile::{CompiledTrace, GuardIdx},
@@ -11,16 +13,16 @@ use page_size;
 #[cfg(debug_assertions)]
 use std::collections::HashMap;
 use std::{
-    alloc::{alloc, realloc, Layout},
+    alloc::{Layout, alloc, realloc},
     ptr,
     sync::{
-        atomic::{AtomicPtr, AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicPtr, AtomicUsize, Ordering},
     },
 };
 use yksmp::Location as SMLocation;
 
-use super::{X64CompiledTrace, RBP_DWARF_NUM, REG64_BYTESIZE};
+use super::{RBP_DWARF_NUM, REG64_BYTESIZE, X64CompiledTrace};
 
 thread_local! {
     // This caches the memory we use to generate the "new stack" that deopt has to create.
@@ -54,7 +56,7 @@ const REGISTER_NUM: usize = RECOVER_REG.len() + 2;
 ///   order as [crate::compile::jitc_yk::codegen::x64::lsregalloc::GP_REGS]
 /// * `fp_regs` - a pointer to the saved values of the 16 floating point registers
 /// * `ctrid` - the ID of the compiled trace that is being deoptimized
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub(crate) extern "C" fn __yk_deopt(
     frameaddr: *mut c_void,
     gidx: u64,
@@ -228,6 +230,11 @@ pub(crate) extern "C" fn __yk_deopt(
             } else {
                 todo!("Deal with multi register locations");
             };
+
+            #[cfg(tracer_swt)]
+            if *CP_VERBOSE {
+                println!("[DEOPT] {:?}\tvalue=0x{:016x}", aotloc, jitval);
+            }
             match aotloc {
                 SMLocation::Register(reg, size, extras) => {
                     #[cfg(debug_assertions)]
@@ -236,9 +243,6 @@ pub(crate) extern "C" fn __yk_deopt(
                     for extra in extras {
                         #[cfg(debug_assertions)]
                         seen(isize::from(*extra), jitval);
-                        // Write any additional locations that were tracked for this variable.
-                        // Numbers greater or equal to zero are registers in Dwarf notation.
-                        // Negative numbers are offsets relative to RBP.
                         if *extra >= 0 {
                             registers[usize::try_from(*extra).unwrap()] = jitval;
                         } else if *extra < 0 {
