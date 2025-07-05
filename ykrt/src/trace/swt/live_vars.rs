@@ -348,7 +348,8 @@ pub(crate) fn set_destination_live_vars(
             | Direct(src_reg_num, _src_off, src_val_size) => {
                 // Indirect(src_reg_num, _src_off, src_val_size) => {
                 assert!(!live_vars_buffer.ptr.is_null(), "Live vars buffer is null");
-                let temp_buffer_offset = live_vars_buffer.variables[&src_var_indirect_index];
+                // let temp_buffer_offset = live_vars_buffer.variables[&src_var_indirect_index];
+                let temp_buffer_offset = src_var_indirect_index * (*src_val_size as i32);
                 match dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
                         if *dst_reg_num == TEMP_REG_PRIMARY.into()
@@ -1257,7 +1258,7 @@ mod live_vars_tests {
         let instructions = get_asm_instructions(&buffer);
 
         assert_eq!(format!("movabs rax, 0x{:x}", ptr as i64), instructions[0]);
-        assert_eq!("mov r15, qword ptr [rax + riz + 8]", instructions[1]);
+        assert_eq!("mov r15, qword ptr [rax + riz]", instructions[1]);
         assert_eq!(
             dest_reg_nums.get(&15),
             Some(&8),

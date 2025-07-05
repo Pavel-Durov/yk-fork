@@ -22,6 +22,7 @@ pub struct CPTransition {
     // The frame address of the caller.
     pub frameaddr: *const c_void,
     // The stack pointer of the caller.
+    // TODO: remove this field, only used for debugging.
     pub src_rsp: *const c_void,
     // The address of the trace to execute.
     pub trace_addr: *const c_void,

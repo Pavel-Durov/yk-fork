@@ -181,6 +181,7 @@ pub(crate) fn reg_num_to_ykrt_control_point_rsp_offset(dwarf_reg_num: u16) -> i3
 pub(crate) struct LiveVarsBuffer {
     pub ptr: *mut u8,
     pub layout: Layout,
+    // varibles are only used in tests - can eb removed
     pub variables: HashMap<i32, i32>,
     pub size: i32,
 }
