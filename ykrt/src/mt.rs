@@ -19,7 +19,7 @@ use crate::trace::swt::cfg::CPTransitionDirection;
 #[cfg(tracer_swt)]
 use crate::trace::swt::cfg::ControlPointStackMapId;
 #[cfg(tracer_swt)]
-use crate::trace::swt::cp::{swt_module_cp_transition, CPTransition};
+use crate::trace::swt::cp::{CPTransition, swt_module_cp_transition};
 
 use atomic_enum::atomic_enum;
 use parking_lot::Mutex;

@@ -1,14 +1,14 @@
 use crate::aotsmp::AOT_STACKMAPS;
-use crate::trace::swt::cfg::{dwarf_reg_to_str, CPTransitionDirection, ControlPointStackMapId};
 use crate::trace::swt::cfg::{
-    dwarf_to_dynasm_reg, reg_num_to_ykrt_control_point_rsp_offset, CP_BREAK,
-    CP_VERBOSE, CP_VERBOSE_ASM, REG64_BYTESIZE, REG_OFFSETS,
+    CP_BREAK, CP_VERBOSE, CP_VERBOSE_ASM, REG_OFFSETS, REG64_BYTESIZE, dwarf_to_dynasm_reg,
+    reg_num_to_ykrt_control_point_rsp_offset,
 };
+use crate::trace::swt::cfg::{CPTransitionDirection, ControlPointStackMapId, dwarf_reg_to_str};
 use crate::trace::swt::debug::{debug_print_destination_live_vars, debug_print_source_live_vars};
 use crate::trace::swt::live_vars::{copy_live_vars_to_temp_buffer, set_destination_live_vars};
 use capstone::prelude::*;
-use dynasmrt::{dynasm, x64::Assembler, DynasmApi, ExecutableBuffer};
-use std::alloc::{dealloc, Layout};
+use dynasmrt::{DynasmApi, ExecutableBuffer, dynasm, x64::Assembler};
+use std::alloc::{Layout, dealloc};
 
 use std::collections::HashMap;
 use std::error::Error;
@@ -154,20 +154,17 @@ pub(crate) unsafe fn swt_module_cp_transition(transition: CPTransition, stats: &
         );
     }
     if transition.exec_trace {
-        // FIXME: Why do we need this stack adjustment?
-        // When we execute traces, we want to set the RSP to the same value as when 
-        // the traces were collected (Unopt RSP). However, when we do that, it 
-        // corrupts the stderr output of a few tests `idempotent.c` and `srem.c` 
-        // which cause lang_tester to fail parsing the output with this error:
+        // When we execute traces, we want to set the RSP to the same value as when
+        // the traces were collected (Unopt RSP). However, when we do exactly that,
+        // it corrupts the stderr output of a few tests (`idempotent.c` and `srem.c` are the examples)
+        // with errors such as:
         // ```text
         // Can't convert stderr from 'YKD_SERIALISE_COMPILATION="1" "/tmp/.tmpOqHojX/idempotent"' into UTF-8
         // ```
-        // These tests seems to work when RSP is set to the Opt RSP for some reason, 
-        // but that's obviously wrong and it creates segfault in yklua. Adding 16 bytes 
-        // to the stack fixes the issue.
-        // This might be similar to what we do in __yk_exec_trace - removing the return addresses of function calls, cause the rsp is set in the rust control_point call.
+        // This addition of 16 bytes to the stack fixes the issue.
+        // TODO: Understand why we need this stack adjustment to execute traces.
         let trace_stack_adjustment = 2 * REG64_BYTESIZE; // 2 * 8 = 16 bytes
-        
+
         dynasm!(asm
             ; .arch x64
             ; sub rsp, trace_stack_adjustment.try_into().unwrap()
