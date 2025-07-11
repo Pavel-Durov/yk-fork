@@ -21,10 +21,6 @@ use std::sync::LazyLock;
 use std::{collections::HashMap, ffi::CString, sync::Arc};
 use ykaddr::addr::symbol_to_ptr;
 
-// Flag for verbose logging of trace actions
-pub(crate) static TRACE_VERBOSE: LazyLock<bool> =
-    LazyLock::new(|| env::var("TRACE_VERBOSE").map(|v| v == "1").unwrap_or(false));
-
 /// Given an execution trace and AOT IR, creates a JIT IR trace.
 pub(crate) struct TraceBuilder {
     /// The AOT IR.
@@ -1380,15 +1376,6 @@ impl TraceBuilder {
             .map(|x| x.map_err(|e| CompilationError::General(e.to_string())))
             .collect::<Result<Vec<_>, _>>()?;
 
-        if *TRACE_VERBOSE {
-            // Print all trace actions for debugging
-            eprintln!("\n=== TRACE ACTIONS ===");
-            for (i, action) in tas.iter().enumerate() {
-                eprintln!("[{}] {:?}", i, action);
-            }
-            eprintln!("====================\n");
-        }
-
         // Peek to the last block (needed for side-tracing).
         let lastblk = match &tas.last() {
             Some(b) => self.lookup_aot_block(b),
@@ -1526,12 +1513,6 @@ impl TraceBuilder {
         while let Some(b) = trace_iter.next() {
             match self.lookup_aot_block(&b) {
                 Some(bid) => {
-                    if *TRACE_VERBOSE {
-                        // Print the block information
-                        eprintln!("\n=== BLOCK: {:?} ===", bid);
-                        let blk = self.aot_mod.bblock(&bid);
-                        println!("{}", blk.display(self.aot_mod, None))
-                    }
                     // MappedAOTBBlock block
                     if let Some(prev_mbid) = &prev_mappable_bid {
                         // Due to the way HWT works, when you return from a call, you see the same

@@ -40,10 +40,6 @@ pub static CP_VERBOSE_ASM: LazyLock<bool> = LazyLock::new(|| {
         .unwrap_or(false)
 });
 
-// Flag for verbose logging of trace actions
-pub static TRACE_VERBOSE: LazyLock<bool> =
-    LazyLock::new(|| env::var("TRACE_VERBOSE").map(|v| v == "1").unwrap_or(false));
-
 // Flag for asm breakpoints
 pub(crate) static CP_BREAK: LazyLock<bool> =
     LazyLock::new(|| env::var("CP_BREAK").map(|v| v == "1").unwrap_or(false));
