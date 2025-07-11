@@ -20,7 +20,7 @@ pub enum CPTransitionDirection {
 }
 
 /// The size of a 64-bit register in bytes.
-pub(crate) static REG64_BYTESIZE: u64 = 8;`
+pub(crate) static REG64_BYTESIZE: u64 = 8;
 
 // Flag for verbose logging
 pub static CP_VERBOSE: LazyLock<bool> =
