@@ -91,9 +91,6 @@ pub(crate) unsafe fn swt_module_cp_transition(transition: CPTransition, stats: &
         );
     }
 
-    if *CP_VERBOSE {
-        debug_print_source_live_vars(src_rec, rbp_offset_reg_store);
-    }
     // Set destination live vars
     let used_registers = set_destination_live_vars(
         &mut asm,
@@ -108,51 +105,9 @@ pub(crate) unsafe fn swt_module_cp_transition(transition: CPTransition, stats: &
         0,
         "RSP is not aligned to 16 bytes"
     );
-    // Restore only unused registers.
+    // Restore unused registers.
     restore_registers(&mut asm, used_registers, rbp_offset_reg_store as i32);
 
-    if *CP_VERBOSE {
-        // Call debug_print_live_var_values from assembly
-        dynasm!(asm
-            ; .arch x64
-            // Save caller-saved registers that might be used
-            ; push rax
-            ; push rcx
-            ; push rdx
-            ; push rsi
-            ; push rdi
-            ; push r8
-            ; push r9
-            ; push r10
-            ; push r11
-
-            // Set up arguments for debug_print_live_var_values(dst_rec, rbp_offset_reg_store)
-            ; mov rdi, QWORD dst_rec as *const _ as i64  // First argument: dst_rec
-            ; mov rsi, QWORD rbp_offset_reg_store        // Second argument: rbp_offset_reg_store
-
-            // Call the function
-            ; mov rax, QWORD debug_print_destination_live_vars as usize as i64
-            ; call rax
-
-            // Restore caller-saved registers
-            ; pop r11
-            ; pop r10
-            ; pop r9
-            ; pop r8
-            ; pop rdi
-            ; pop rsi
-            ; pop rdx
-            ; pop rcx
-            ; pop rax
-        );
-    }
-    if *CP_VERBOSE {
-        println!(
-            "transition.src_rsp: 0x{:x}, current_rsp: 0x{:x}",
-            transition.src_rsp as i64,
-            frameaddr as i64 - dst_frame_size as i64
-        );
-    }
     if transition.exec_trace {
         dynasm!(asm
             ; .arch x64
@@ -164,20 +119,11 @@ pub(crate) unsafe fn swt_module_cp_transition(transition: CPTransition, stats: &
         let dst_target_addr = i64::try_from(dst_rec.offset).unwrap() + call_offset;
         dynasm!(asm
             ; .arch x64
-            // rsp is set to rbp - dst_frame_size
-            // Allocate 16 bytes on the stack -
-            // 0x0 - rax store
-            // 0x8 - return address
-            ; sub rsp, 0x10
-            // Save the original rsp at 0x0
-            ; mov [rsp], rax
-            // Load the target address into rax at 0x8
+            ; sub rsp, 0x10 // Allocate 16 bytes on the stack
+            ; mov [rsp], rax // Save the original rsp at 0x0
             ; mov rax, QWORD dst_target_addr
-            // Store the target address into 0x8
-            ; mov [rsp + 0x8], rax
-            // Restore the original rax
-            ; pop rax
-            // Load 8 bytes from rsp and jump to it
+            ; mov [rsp + 0x8], rax // Store the target address into 0x8
+            ; pop rax // Restore the original rax
             ; ret
         );
     }
@@ -284,14 +230,6 @@ fn calc_after_cp_offset(rec_offset: u64) -> Result<i64, Box<dyn Error>> {
         offset += inst.bytes().len() as i64;
 
         if inst.mnemonic().unwrap_or("") == "call" {
-            // Check if this is a dummy trace call by examining the preceding instructions
-            // or by checking if the target is __yk_trace_basicblock_dummy
-            if let Some(op_str) = inst.op_str() {
-                if op_str.contains("__yk_trace_basicblock_dummy") {
-                    // Skip this dummy call - continue to find the actual control point call
-                    continue;
-                }
-            }
             return Ok(offset);
         }
     }
