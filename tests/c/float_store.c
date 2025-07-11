@@ -42,15 +42,6 @@
 //     1 -> 0.813008
 //     yk-execution: deoptimise ...
 
-// SWT Note: Signal 11 just before  yk-jit-event: stop-tracing
-// yk-jit-event: start-tracing
-// 4 -> 3.252033
-// 4 -> 3.252033
-// 4 -> 3.252033
-// 4 -> 3.252033
-// 4 -> 3.252033
-
-
 // Check basic 32-bit float support.
 
 #include <assert.h>
