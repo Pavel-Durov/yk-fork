@@ -110,6 +110,7 @@ impl<Register: Send + Sync + 'static> JITCYk<Register> {
         promotions: Box<[u8]>,
         debug_strs: Vec<String>,
         connector_ctr: Option<Arc<dyn CompiledTrace>>,
+        smid: usize,
     ) -> Result<Arc<dyn CompiledTrace>, CompilationError> {
         // If either `unwrap` fails, there is no chance of the system working correctly.
         let aot_mod = &*AOT_MOD;
@@ -170,7 +171,7 @@ impl<Register: Send + Sync + 'static> JITCYk<Register> {
         }
 
         // FIXME: This needs to be the combined stacksize of all parent traces.
-        let ct = self.codegen.codegen(jit_mod, mt, hl)?;
+        let ct = self.codegen.codegen(jit_mod, mt, hl, smid)?;
 
         if should_log_ir(IRPhase::Asm) {
             log_ir(&format!(
@@ -199,6 +200,7 @@ impl<Register: Send + Sync + 'static> Compiler for JITCYk<Register> {
         promotions: Box<[u8]>,
         debug_strs: Vec<String>,
         connector_ctr: Option<Arc<dyn CompiledTrace>>,
+        smid: usize,
     ) -> Result<Arc<dyn CompiledTrace>, CompilationError> {
         self.compile(
             mt,
@@ -209,6 +211,7 @@ impl<Register: Send + Sync + 'static> Compiler for JITCYk<Register> {
             promotions,
             debug_strs,
             connector_ctr,
+            smid,
         )
     }
 
@@ -223,6 +226,7 @@ impl<Register: Send + Sync + 'static> Compiler for JITCYk<Register> {
         hl: Arc<Mutex<HotLocation>>,
         promotions: Box<[u8]>,
         debug_strs: Vec<String>,
+        smid: usize,
     ) -> Result<Arc<dyn CompiledTrace>, CompilationError> {
         let parent_ctr = parent_ctr
             .as_any()
@@ -238,6 +242,7 @@ impl<Register: Send + Sync + 'static> Compiler for JITCYk<Register> {
             promotions,
             debug_strs,
             None,
+            smid,
         )
     }
 }

@@ -154,20 +154,8 @@ pub(crate) unsafe fn swt_module_cp_transition(transition: CPTransition, stats: &
         );
     }
     if transition.exec_trace {
-        // When we execute traces, we want to set the RSP to the same value as when
-        // the traces were collected (Unopt RSP). However, when we do exactly that,
-        // it corrupts the stderr output of a few tests (`idempotent.c` and `srem.c` are the examples)
-        // with errors such as:
-        // ```text
-        // Can't convert stderr from 'YKD_SERIALISE_COMPILATION="1" "/tmp/.tmpOqHojX/idempotent"' into UTF-8
-        // ```
-        // This addition of 16 bytes to the stack fixes the issue.
-        // TODO: Understand why we need this stack adjustment to execute traces.
-        let trace_stack_adjustment = 2 * REG64_BYTESIZE; // 2 * 8 = 16 bytes
-
         dynasm!(asm
             ; .arch x64
-            ; sub rsp, trace_stack_adjustment.try_into().unwrap()
             ; mov rdx, QWORD transition.trace_addr as i64
             ; jmp rdx
         );

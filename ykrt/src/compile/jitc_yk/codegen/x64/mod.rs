@@ -311,8 +311,9 @@ impl CodeGen for X64CodeGen {
         m: Module,
         mt: Arc<MT>,
         hl: Arc<Mutex<HotLocation>>,
+        smid: usize,
     ) -> Result<Arc<dyn CompiledTrace>, CompilationError> {
-        Assemble::new(&m)?.codegen(mt, hl)
+        Assemble::new(&m, smid)?.codegen(mt, hl)
     }
 }
 
@@ -349,7 +350,7 @@ struct Assemble<'a> {
 }
 
 impl<'a> Assemble<'a> {
-    fn new(m: &'a jit_ir::Module) -> Result<Box<Assemble<'a>>, CompilationError> {
+    fn new(m: &'a jit_ir::Module, smid: usize) -> Result<Box<Assemble<'a>>, CompilationError> {
         #[cfg(debug_assertions)]
         m.assert_well_formed();
 
@@ -365,7 +366,7 @@ impl<'a> Assemble<'a> {
                 // dynamically upon entering the control point (e.g. by subtracting the current RBP
                 // from the previous RBP).
                 if let Ok(sm) = AOT_STACKMAPS.as_ref() {
-                    let (rec, pinfo) = sm.get(0);
+                    let (rec, pinfo) = sm.get(smid);
                     let size = if pinfo.hasfp {
                         // The frame size includes the pushed RBP, but since we only care about the size of
                         // the local variables we need to subtract it again.
@@ -4118,7 +4119,7 @@ mod tests {
             debug_str: None,
         };
         match_asm(
-            Assemble::new(&m)
+            Assemble::new(&m, 0)
                 .unwrap()
                 .codegen(mt, Arc::new(Mutex::new(hl)))
                 .unwrap()
@@ -7055,7 +7056,7 @@ mod tests {
             debug_str: None,
         };
 
-        Assemble::new(&m)
+        Assemble::new(&m, 0)
             .unwrap()
             .codegen(mt, Arc::new(Mutex::new(hl)))
             .unwrap()

@@ -238,6 +238,7 @@ impl MT {
         hl_arc: Arc<Mutex<HotLocation>>,
         trid: TraceId,
         connector_tid: Option<TraceId>,
+        smid: usize,
     ) {
         self.stats.trace_recorded_ok();
 
@@ -258,6 +259,7 @@ impl MT {
                 trace_iter.1,
                 trace_iter.2,
                 connector_ctr,
+                smid,
             ) {
                 Ok(ctr) => {
                     assert_eq!(ctr.ctrid(), trid);
@@ -344,6 +346,7 @@ impl MT {
         parent_ctr: Arc<dyn CompiledTrace>,
         gidx: GuardIdx,
         connector_tid: TraceId,
+        smid: usize,
     ) {
         self.stats.trace_recorded_ok();
         let mt = Arc::clone(self);
@@ -368,6 +371,7 @@ impl MT {
                 Arc::clone(&hl_arc),
                 trace_iter.1,
                 trace_iter.2,
+                smid,
             ) {
                 Ok(ctr) => {
                     assert_eq!(ctr.ctrid(), trid);
@@ -422,11 +426,11 @@ impl MT {
     }
 
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    pub fn control_point(self: &Arc<Self>, loc: &Location, frameaddr: *mut c_void, smid: u64) {
-        match self.transition_control_point(loc, frameaddr) {
+    pub fn control_point(self: &Arc<Self>, loc: &Location, frameaddr: *mut c_void, smid: usize) {
+        match self.transition_control_point(loc, frameaddr, smid) {
             TransitionControlPoint::NoAction => {
                 #[cfg(tracer_swt)]
-                if smid == ControlPointStackMapId::UnOpt as u64 {
+                if smid == ControlPointStackMapId::UnOpt as usize {
                     unsafe {
                         // Transition into opt interpreter when we stop tracing.
                         swt_module_cp_transition(
@@ -483,7 +487,7 @@ impl MT {
                 });
                 self.stats.timing_state(TimingState::JitExecuting);
                 #[cfg(tracer_swt)]
-                if smid == ControlPointStackMapId::Opt as u64 {
+                if smid == ControlPointStackMapId::Opt as usize {
                     unsafe {
                         // Transition to unopt before trace execution since``
                         // the trace was collected un unopt version.
@@ -518,6 +522,7 @@ impl MT {
                 parent_ctr,
                 connector_tid,
                 start,
+                smid,
             } => {
                 // Assuming no bugs elsewhere, the `unwrap`s cannot fail, because
                 // `StartSideTracing` will have put a `Some` in the `Rc`.
@@ -556,6 +561,7 @@ impl MT {
                             parent_ctr,
                             gidx,
                             connector_tid,
+                            smid,
                         );
                         if start {
                             self.start_tracing(
@@ -594,7 +600,7 @@ impl MT {
         _loc: &Location,
         hl: Arc<Mutex<HotLocation>>,
         trid: TraceId,
-        smid: u64,
+        smid: usize,
     ) {
         self.stats
             .timing_state(crate::log::stats::TimingState::Tracing);
@@ -655,7 +661,7 @@ impl MT {
             }
         });
         #[cfg(tracer_swt)]
-        if smid == ControlPointStackMapId::Opt as u64 {
+        if smid == ControlPointStackMapId::Opt as usize {
             unsafe {
                 // Transition to unopt before start tracing cause
                 // we need the intepreter version with tracing calls..
@@ -681,7 +687,7 @@ impl MT {
         _loc: &Location,
         trid: TraceId,
         connector_tid: Option<TraceId>,
-        smid: u64,
+        smid: usize,
     ) {
         // Assuming no bugs elsewhere, the `unwrap`s cannot fail, because `StartTracing`
         // will have put a `Some` in the `Rc`.
@@ -719,6 +725,7 @@ impl MT {
                     hl,
                     trid,
                     connector_tid,
+                    smid,
                 );
             }
             Err(e) => {
@@ -736,7 +743,7 @@ impl MT {
         }
         self.stats.timing_state(TimingState::OutsideYk);
         #[cfg(tracer_swt)]
-        if smid == ControlPointStackMapId::UnOpt as u64 {
+        if smid == ControlPointStackMapId::UnOpt as usize {
             unsafe {
                 // Transition into opt interpreter when we stop tracing.
                 swt_module_cp_transition(
@@ -759,6 +766,7 @@ impl MT {
         self: &Arc<Self>,
         loc: &Location,
         frameaddr: *mut c_void,
+        smid: usize,
     ) -> TransitionControlPoint {
         match MTThread::tracing_kind() {
             IsTracing::None => self.transition_control_point_not_tracing(loc),
@@ -766,7 +774,7 @@ impl MT {
                 self.transition_control_point_tracing_loop(loc, frameaddr, mtt)
             }),
             IsTracing::Guard => MTThread::with_borrow_mut(|mtt| {
-                self.transition_control_point_tracing_guard(loc, frameaddr, mtt)
+                self.transition_control_point_tracing_guard(loc, frameaddr, mtt, smid)
             }),
         }
     }
@@ -1003,6 +1011,7 @@ impl MT {
         loc: &Location,
         frameaddr: *mut c_void,
         mtt: &mut MTThread,
+        smid: usize,
     ) -> TransitionControlPoint {
         let MTThreadState::Tracing {
             trid: tracing_trid,
@@ -1069,6 +1078,7 @@ impl MT {
                             parent_ctr,
                             connector_tid,
                             start: false,
+                            smid,
                         }
                     }
                     HotLocationKind::Counting(_) => {
@@ -1086,6 +1096,7 @@ impl MT {
                             parent_ctr,
                             connector_tid: next_tid,
                             start: true,
+                            smid,
                         }
                     }
                     HotLocationKind::DontTrace => TransitionControlPoint::NoAction,
@@ -1537,6 +1548,7 @@ enum TransitionControlPoint {
         connector_tid: TraceId,
         // Should a new trace be immediately started after the guard trace?
         start: bool,
+        smid: usize,
     },
 }
 
@@ -1636,9 +1648,9 @@ mod tests {
         }
     }
 
-    fn expect_start_tracing(mt: &Arc<MT>, loc: &Location) {
+    fn expect_start_tracing(mt: &Arc<MT>, loc: &Location, smid: usize) {
         let TransitionControlPoint::StartTracing(hl, trid) =
-            mt.transition_control_point(loc, ptr::null_mut())
+            mt.transition_control_point(loc, ptr::null_mut(), smid)
         else {
             panic!()
         };
@@ -1659,7 +1671,7 @@ mod tests {
 
     fn expect_stop_tracing(mt: &Arc<MT>, loc: &Location) {
         let TransitionControlPoint::StopTracing(_, _) =
-            mt.transition_control_point(loc, ptr::null_mut())
+            mt.transition_control_point(loc, ptr::null_mut(), 0)
         else {
             panic!()
         };
@@ -1700,12 +1712,12 @@ mod tests {
         let loc = Location::new();
         for i in 0..mt.hot_threshold() {
             assert_eq!(
-                mt.transition_control_point(&loc, ptr::null_mut()),
+                mt.transition_control_point(&loc, ptr::null_mut(), 0),
                 TransitionControlPoint::NoAction
             );
             assert_eq!(loc.count(), Some(i + 1));
         }
-        expect_start_tracing(&mt, &loc);
+        expect_start_tracing(&mt, &loc, 0);
         assert!(matches!(
             loc.hot_location().unwrap().lock().kind,
             HotLocationKind::Tracing(_)
@@ -1720,12 +1732,12 @@ mod tests {
         )));
         loc.hot_location().unwrap().lock().kind = HotLocationKind::Compiled(ctr.clone());
         assert!(matches!(
-            mt.transition_control_point(&loc, ptr::null_mut()),
+            mt.transition_control_point(&loc, ptr::null_mut(), 0),
             TransitionControlPoint::Execute(_)
         ));
         expect_start_side_tracing(&mt, ctr);
 
-        match mt.transition_control_point(&loc, ptr::null_mut()) {
+        match mt.transition_control_point(&loc, ptr::null_mut(), 0) {
             TransitionControlPoint::StopSideTracing { .. } => {
                 MTThread::set_tracing(IsTracing::None);
                 MTThread::with_borrow_mut(|mtt| {
@@ -1740,7 +1752,7 @@ mod tests {
             _ => unreachable!(),
         }
         assert!(matches!(
-            mt.transition_control_point(&loc, ptr::null_mut()),
+            mt.transition_control_point(&loc, ptr::null_mut(), 0),
             TransitionControlPoint::Execute(_)
         ));
     }
@@ -1764,25 +1776,25 @@ mod tests {
                 // otherwise tracing will start, and the assertions will fail.
                 for _ in 0..hot_thrsh / (num_threads * 4) {
                     assert_eq!(
-                        mt.transition_control_point(&loc, ptr::null_mut()),
+                        mt.transition_control_point(&loc, ptr::null_mut(), 0),
                         TransitionControlPoint::NoAction
                     );
                     let c1 = loc.count();
                     assert!(c1.is_some());
                     assert_eq!(
-                        mt.transition_control_point(&loc, ptr::null_mut()),
+                        mt.transition_control_point(&loc, ptr::null_mut(), 0),
                         TransitionControlPoint::NoAction
                     );
                     let c2 = loc.count();
                     assert!(c2.is_some());
                     assert_eq!(
-                        mt.transition_control_point(&loc, ptr::null_mut()),
+                        mt.transition_control_point(&loc, ptr::null_mut(), 0),
                         TransitionControlPoint::NoAction
                     );
                     let c3 = loc.count();
                     assert!(c3.is_some());
                     assert_eq!(
-                        mt.transition_control_point(&loc, ptr::null_mut()),
+                        mt.transition_control_point(&loc, ptr::null_mut(), 0),
                         TransitionControlPoint::NoAction
                     );
                     let c4 = loc.count();
@@ -1802,7 +1814,7 @@ mod tests {
         // at or below the threshold: it could even be (although it's rather unlikely) 0!
         assert!(loc.count().is_some());
         loop {
-            match mt.transition_control_point(&loc, ptr::null_mut()) {
+            match mt.transition_control_point(&loc, ptr::null_mut(), 0) {
                 TransitionControlPoint::NoAction => (),
                 TransitionControlPoint::StartTracing(hl, trid) => {
                     MTThread::set_tracing(IsTracing::Loop);
@@ -1840,7 +1852,7 @@ mod tests {
         // Get the location to the point of being hot.
         for _ in 0..THRESHOLD {
             assert_eq!(
-                mt.transition_control_point(&loc, ptr::null_mut()),
+                mt.transition_control_point(&loc, ptr::null_mut(), 0),
                 TransitionControlPoint::NoAction
             );
         }
@@ -1852,7 +1864,7 @@ mod tests {
                 let mt = Arc::clone(&mt);
                 let loc = Arc::clone(&loc);
                 thread::spawn(move || {
-                    expect_start_tracing(&mt, &loc);
+                    expect_start_tracing(&mt, &loc, 0);
                 })
                 .join()
                 .unwrap();
@@ -1872,7 +1884,7 @@ mod tests {
             HotLocationKind::Tracing(_)
         ));
         assert_eq!(
-            mt.transition_control_point(&loc, ptr::null_mut()),
+            mt.transition_control_point(&loc, ptr::null_mut(), 0),
             TransitionControlPoint::NoAction
         );
         assert!(matches!(
@@ -1893,7 +1905,7 @@ mod tests {
         // Get the location to the point of being hot.
         for _ in 0..THRESHOLD {
             assert_eq!(
-                mt.transition_control_point(&loc, ptr::null_mut()),
+                mt.transition_control_point(&loc, ptr::null_mut(), 0),
                 TransitionControlPoint::NoAction
             );
         }
@@ -1904,7 +1916,7 @@ mod tests {
             {
                 let mt = Arc::clone(&mt);
                 let loc = Arc::clone(&loc);
-                thread::spawn(move || expect_start_tracing(&mt, &loc))
+                thread::spawn(move || expect_start_tracing(&mt, &loc, 0))
                     .join()
                     .unwrap();
             }
@@ -1923,7 +1935,7 @@ mod tests {
             HotLocationKind::Tracing(_)
         ));
         // Start tracing again...
-        expect_start_tracing(&mt, &loc);
+        expect_start_tracing(&mt, &loc, 0);
         assert!(matches!(
             loc.hot_location().unwrap().lock().kind,
             HotLocationKind::Tracing(_)
@@ -1947,12 +1959,12 @@ mod tests {
         let loc = Location::new();
         for i in 0..mt.hot_threshold() {
             assert_eq!(
-                mt.transition_control_point(&loc, ptr::null_mut()),
+                mt.transition_control_point(&loc, ptr::null_mut(), 0),
                 TransitionControlPoint::NoAction
             );
             assert_eq!(loc.count(), Some(i + 1));
         }
-        expect_start_tracing(&mt, &loc);
+        expect_start_tracing(&mt, &loc, 0);
         expect_stop_tracing(&mt, &loc);
 
         for _ in 0..mt.trace_failure_threshold() {
@@ -1987,17 +1999,17 @@ mod tests {
 
         for _ in 0..THRESHOLD {
             assert_eq!(
-                mt.transition_control_point(&loc1, ptr::null_mut()),
+                mt.transition_control_point(&loc1, ptr::null_mut(), 0),
                 TransitionControlPoint::NoAction
             );
             assert_eq!(
-                mt.transition_control_point(&loc2, ptr::null_mut()),
+                mt.transition_control_point(&loc2, ptr::null_mut(), 0),
                 TransitionControlPoint::NoAction
             );
         }
-        expect_start_tracing(&mt, &loc1);
+        expect_start_tracing(&mt, &loc1, 0);
         assert_eq!(
-            mt.transition_control_point(&loc2, ptr::null_mut()),
+            mt.transition_control_point(&loc2, ptr::null_mut(), 0),
             TransitionControlPoint::NoAction
         );
         assert!(matches!(
@@ -2014,7 +2026,7 @@ mod tests {
             loc1.hot_location().unwrap().lock().kind,
             HotLocationKind::Compiling(_)
         ));
-        expect_start_tracing(&mt, &loc2);
+        expect_start_tracing(&mt, &loc2, 0);
         expect_stop_tracing(&mt, &loc2);
     }
 
@@ -2038,7 +2050,7 @@ mod tests {
             let num_starts = Arc::clone(&num_starts);
             thrs.push(thread::spawn(move || {
                 for _ in 0..THRESHOLD {
-                    match mt.transition_control_point(&loc, ptr::null_mut()) {
+                    match mt.transition_control_point(&loc, ptr::null_mut(), 0) {
                         TransitionControlPoint::NoAction => (),
                         TransitionControlPoint::AbortTracing(_) => panic!(),
                         TransitionControlPoint::Execute(_) => (),
@@ -2067,7 +2079,7 @@ mod tests {
                                 HotLocationKind::Compiling(_)
                             ));
                             assert_eq!(
-                                mt.transition_control_point(&loc, ptr::null_mut()),
+                                mt.transition_control_point(&loc, ptr::null_mut(), 0),
                                 TransitionControlPoint::NoAction
                             );
                             assert!(matches!(
@@ -2079,7 +2091,7 @@ mod tests {
                             );
                             loop {
                                 if let TransitionControlPoint::Execute(_) =
-                                    mt.transition_control_point(&loc, ptr::null_mut())
+                                    mt.transition_control_point(&loc, ptr::null_mut(), 0)
                                 {
                                     break;
                                 }
@@ -2114,11 +2126,11 @@ mod tests {
 
         for _ in 0..THRESHOLD {
             assert_eq!(
-                mt.transition_control_point(&loc1, ptr::null_mut()),
+                mt.transition_control_point(&loc1, ptr::null_mut(), 0),
                 TransitionControlPoint::NoAction
             );
             assert_eq!(
-                mt.transition_control_point(&loc2, ptr::null_mut()),
+                mt.transition_control_point(&loc2, ptr::null_mut(), 0),
                 TransitionControlPoint::NoAction
             );
         }
@@ -2126,14 +2138,14 @@ mod tests {
         {
             let mt = Arc::clone(&mt);
             let loc1 = Arc::clone(&loc1);
-            thread::spawn(move || expect_start_tracing(&mt, &loc1))
+            thread::spawn(move || expect_start_tracing(&mt, &loc1, 0))
                 .join()
                 .unwrap();
         }
 
-        expect_start_tracing(&mt, &loc2);
+        expect_start_tracing(&mt, &loc2, 0);
         assert_eq!(
-            mt.transition_control_point(&loc1, ptr::null_mut()),
+            mt.transition_control_point(&loc1, ptr::null_mut(), 0),
             TransitionControlPoint::NoAction
         );
         expect_stop_tracing(&mt, &loc2);
@@ -2145,7 +2157,7 @@ mod tests {
         let loc = Location::new();
         b.iter(|| {
             for _ in 0..100000 {
-                black_box(mt.transition_control_point(&loc, ptr::null_mut()));
+                black_box(mt.transition_control_point(&loc, ptr::null_mut(), 0));
             }
         });
     }
@@ -2161,7 +2173,7 @@ mod tests {
                 let mt = Arc::clone(&mt);
                 thrs.push(thread::spawn(move || {
                     for _ in 0..100 {
-                        black_box(mt.transition_control_point(&loc, ptr::null_mut()));
+                        black_box(mt.transition_control_point(&loc, ptr::null_mut(), 0));
                     }
                 }));
             }
@@ -2179,20 +2191,20 @@ mod tests {
         let loc2 = Location::new();
 
         // Get `loc1` to the point where there's a compiled trace for it.
-        expect_start_tracing(&mt, &loc1);
+        expect_start_tracing(&mt, &loc1, 0);
         expect_stop_tracing(&mt, &loc1);
         loc1.hot_location().unwrap().lock().kind =
             HotLocationKind::Compiled(Arc::new(CompiledTraceTestingMinimal::new()));
 
-        expect_start_tracing(&mt, &loc2);
+        expect_start_tracing(&mt, &loc2, 0);
         assert_matches!(
-            mt.transition_control_point(&loc1, ptr::null_mut()),
+            mt.transition_control_point(&loc1, ptr::null_mut(), 0),
             TransitionControlPoint::StopTracing(_, _)
         );
 
         expect_stop_tracing(&mt, &loc2);
         assert_matches!(
-            mt.transition_control_point(&loc1, ptr::null_mut()),
+            mt.transition_control_point(&loc1, ptr::null_mut(), 0),
             TransitionControlPoint::Execute(_)
         );
     }
