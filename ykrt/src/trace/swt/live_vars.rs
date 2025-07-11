@@ -417,12 +417,6 @@ pub(crate) fn set_destination_live_vars(
         }
     }
 
-    if *CP_BREAK {
-        dynasm!(asm
-            ; .arch x64
-            ; int3
-        );
-    }
     if *CP_VERBOSE {
         eprintln!("Used temp registers: {:?}", used_temp_reg_dist);
     }
