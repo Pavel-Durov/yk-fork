@@ -51,6 +51,7 @@ pub(crate) trait Compiler: Send + Sync {
         promotions: Box<[u8]>,
         debug_strs: Vec<String>,
         connector_ctr: Option<Arc<dyn CompiledTrace>>,
+        smid: usize,
     ) -> Result<Arc<dyn CompiledTrace>, CompilationError>;
 
     /// Compile a guard trace into machine code.
@@ -65,6 +66,7 @@ pub(crate) trait Compiler: Send + Sync {
         hl: Arc<Mutex<HotLocation>>,
         promotions: Box<[u8]>,
         debug_strs: Vec<String>,
+        smid: usize,
     ) -> Result<Arc<dyn CompiledTrace>, CompilationError>;
 }
 
