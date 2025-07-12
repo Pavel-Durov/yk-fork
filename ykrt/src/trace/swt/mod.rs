@@ -12,11 +12,9 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
-pub mod cfg;
-pub mod cp;
-pub(crate) mod debug;
-pub mod live_vars;
-pub use cfg::{CPTransitionDirection, ControlPointStackMapId};
+pub(crate) mod cfg;
+pub(crate) mod cp;
+pub(crate) mod live_vars;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 struct TracingBBlock {

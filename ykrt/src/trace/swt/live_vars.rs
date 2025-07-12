@@ -7,7 +7,7 @@ use yksmp::Location::{Direct, Indirect, Register};
 use yksmp::Record;
 
 use crate::trace::swt::cfg::{
-    CP_BREAK, CP_VERBOSE, CPTransitionDirection, LiveVarsBuffer, dwarf_to_dynasm_reg,
+    CP_VERBOSE, CPTransitionDirection, LiveVarsBuffer, dwarf_to_dynasm_reg,
     reg_num_to_ykrt_control_point_rsp_offset,
 };
 

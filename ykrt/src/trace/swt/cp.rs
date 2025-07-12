@@ -4,11 +4,10 @@ use crate::trace::swt::cfg::{
     reg_num_to_ykrt_control_point_rsp_offset,
 };
 use crate::trace::swt::cfg::{CPTransitionDirection, ControlPointStackMapId, dwarf_reg_to_str};
-use crate::trace::swt::debug::{debug_print_destination_live_vars, debug_print_source_live_vars};
 use crate::trace::swt::live_vars::{copy_live_vars_to_temp_buffer, set_destination_live_vars};
 use capstone::prelude::*;
 use dynasmrt::{DynasmApi, ExecutableBuffer, dynasm, x64::Assembler};
-use std::alloc::{Layout, dealloc};
+use std::sync::LazyLock;
 
 use std::collections::HashMap;
 use std::error::Error;
@@ -21,30 +20,96 @@ pub struct CPTransition {
     pub direction: CPTransitionDirection,
     // The frame address of the caller.
     pub frameaddr: *const c_void,
-    // The stack pointer of the caller.
-    // TODO: remove this field, only used for debugging.
-    pub src_rsp: *const c_void,
     // The address of the trace to execute.
     pub trace_addr: *const c_void,
     // Flag to indicate whether to call __yk_exec_trace.
     pub exec_trace: bool,
 }
 
-#[inline]
+// Lazy-loaded assembly for UnOpt -> Opt transitions
+static UNOPT_TO_OPT_ASM_GENERATOR: LazyLock<
+    Box<dyn Fn(CPTransition) -> ExecutableBuffer + Send + Sync>,
+> = LazyLock::new(|| {
+    Box::new(|transition: CPTransition| {
+        generate_transition_asm(
+            transition,
+            ControlPointStackMapId::UnOpt,
+            ControlPointStackMapId::Opt,
+        )
+    })
+});
+
+// Lazy-loaded assembly for Opt -> UnOpt transitions
+static OPT_TO_UNOPT_ASM_GENERATOR: LazyLock<
+    Box<dyn Fn(CPTransition) -> ExecutableBuffer + Send + Sync>,
+> = LazyLock::new(|| {
+    Box::new(|transition: CPTransition| {
+        generate_transition_asm(
+            transition,
+            ControlPointStackMapId::Opt,
+            ControlPointStackMapId::UnOpt,
+        )
+    })
+});
+
 pub(crate) unsafe fn swt_module_cp_transition(transition: CPTransition, stats: &Stats) {
-    let frameaddr = transition.frameaddr as usize;
-    let mut asm = Assembler::new().unwrap();
-
-    let mut src_smid = ControlPointStackMapId::Opt;
-    let mut dst_smid = ControlPointStackMapId::UnOpt;
-
-    if transition.direction == CPTransitionDirection::UnoptToOpt {
-        src_smid = ControlPointStackMapId::UnOpt;
-        dst_smid = ControlPointStackMapId::Opt;
+    let buffer = if transition.direction == CPTransitionDirection::UnoptToOpt {
         stats.swt_transition_unopt_to_opt();
+        UNOPT_TO_OPT_ASM_GENERATOR(transition)
     } else {
         stats.swt_transition_opt_to_unopt();
+        OPT_TO_UNOPT_ASM_GENERATOR(transition)
+    };
+    unsafe {
+        execute_asm_buffer(buffer);
     }
+}
+
+/// Execute an assembled buffer with optional verbose assembly dumping
+#[unsafe(no_mangle)]
+unsafe fn execute_asm_buffer(buffer: ExecutableBuffer) {
+    if *CP_VERBOSE_ASM {
+        let cs = Capstone::new()
+            .x86()
+            .mode(arch::x86::ArchMode::Mode64)
+            .build()
+            .unwrap();
+
+        let instructions = cs
+            .disasm_all(
+                unsafe {
+                    std::slice::from_raw_parts(
+                        buffer.ptr(dynasmrt::AssemblyOffset(0)) as *const u8,
+                        buffer.len(),
+                    )
+                },
+                0,
+            )
+            .unwrap();
+
+        println!("ASM DUMP:");
+        for i in instructions.iter() {
+            println!(
+                "  {:x}: {} {}",
+                i.address(),
+                i.mnemonic().unwrap(),
+                i.op_str().unwrap()
+            );
+        }
+    }
+    unsafe {
+        let func: unsafe fn() = std::mem::transmute(buffer.as_ptr());
+        func();
+    }
+}
+
+fn generate_transition_asm(
+    transition: CPTransition,
+    src_smid: ControlPointStackMapId,
+    dst_smid: ControlPointStackMapId,
+) -> ExecutableBuffer {
+    let frameaddr = transition.frameaddr as usize;
+    let mut asm = Assembler::new().unwrap();
 
     let (src_rec, src_pinfo) = AOT_STACKMAPS.as_ref().unwrap().get(src_smid as usize);
     let (dst_rec, dst_pinfo) = AOT_STACKMAPS.as_ref().unwrap().get(dst_smid as usize);
@@ -127,47 +192,8 @@ pub(crate) unsafe fn swt_module_cp_transition(transition: CPTransition, stats: &
             ; ret
         );
     }
-    // Execute the generated ASM code.
-    let buffer = asm.finalize().unwrap();
-    unsafe {
-        execute_asm_buffer(buffer);
-    }
-}
 
-/// Execute an assembled buffer with optional verbose assembly dumping
-#[unsafe(no_mangle)]
-unsafe fn execute_asm_buffer(buffer: ExecutableBuffer) {
-    let func: unsafe fn() = std::mem::transmute(buffer.as_ptr());
-
-    if *CP_VERBOSE_ASM {
-        let cs = Capstone::new()
-            .x86()
-            .mode(arch::x86::ArchMode::Mode64)
-            .build()
-            .unwrap();
-
-        let instructions = cs
-            .disasm_all(
-                std::slice::from_raw_parts(
-                    buffer.ptr(dynasmrt::AssemblyOffset(0)) as *const u8,
-                    buffer.len(),
-                ),
-                0,
-            )
-            .unwrap();
-
-        println!("ASM DUMP:");
-        for i in instructions.iter() {
-            println!(
-                "  {:x}: {} {}",
-                i.address(),
-                i.mnemonic().unwrap(),
-                i.op_str().unwrap()
-            );
-        }
-    }
-
-    func();
+    asm.finalize().unwrap()
 }
 
 // Restores the registers from the rbp offset.

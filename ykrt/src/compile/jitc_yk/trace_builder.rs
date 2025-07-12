@@ -16,8 +16,6 @@ use crate::{
     mt::{MT, TraceId},
     trace::{AOTTraceIterator, TraceAction},
 };
-use std::env;
-use std::sync::LazyLock;
 use std::{collections::HashMap, ffi::CString, sync::Arc};
 use ykaddr::addr::symbol_to_ptr;
 
