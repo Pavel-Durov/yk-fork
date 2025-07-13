@@ -206,12 +206,6 @@ fn restore_registers(
 
     for (dwarf_reg_num, _) in sorted_offsets.iter() {
         if !exclude_registers.contains_key(dwarf_reg_num) {
-            if *CP_VERBOSE {
-                eprintln!(
-                    "Restoring unused register to __ykrt_control_point save point: {:?}",
-                    dwarf_reg_to_str(**dwarf_reg_num as u8)
-                );
-            }
             restore_register(
                 asm,
                 (**dwarf_reg_num).try_into().unwrap(),
