@@ -21,9 +21,8 @@ pub struct CPTransition {
     // The frame address of the caller.
     pub frameaddr: *const c_void,
     // The address of the trace to execute.
+    // If the value is 0, it means that there is no trace to execute.
     pub trace_addr: *const c_void,
-    // Flag to indicate whether to call __yk_exec_trace.
-    pub exec_trace: bool,
 }
 
 // Lazy-loaded assembly for UnOpt -> Opt transitions
@@ -143,8 +142,8 @@ fn generate_transition_asm(
         copy_live_vars_to_temp_buffer(&mut asm, src_rec, transition.direction);
     if *CP_VERBOSE {
         println!(
-            "Transition: {:?} ExecTrace: {:?}",
-            transition.direction, transition.exec_trace
+            "Transition: {:?} Trace: {:?}",
+            transition.direction, transition.trace_addr
         );
         println!(
             "src_rbp: 0x{:x}, reg_store: 0x{:x}, src_frame_size: 0x{:x}, dst_frame_size: 0x{:x}, rbp_offset_reg_store: 0x{:x}",
@@ -173,7 +172,8 @@ fn generate_transition_asm(
     // Restore unused registers.
     restore_registers(&mut asm, used_registers, rbp_offset_reg_store as i32);
 
-    if transition.exec_trace {
+    // If there is a trace to execute, jump to the trace.
+    if transition.trace_addr != 0 as *const c_void {
         dynasm!(asm
             ; .arch x64
             ; mov rdx, QWORD transition.trace_addr as i64

@@ -428,17 +428,16 @@ impl MT {
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
     pub fn control_point(self: &Arc<Self>, loc: &Location, frameaddr: *mut c_void, smid: usize) {
         match self.transition_control_point(loc, frameaddr, smid) {
-            TransitionControlPoint::NoAction => {
+            TransitionControlPoint::NoAction =>
+            {
                 #[cfg(tracer_swt)]
                 if smid == ControlPointStackMapId::UnOpt as usize {
                     unsafe {
-                        // Transition into opt interpreter when we stop tracing.
                         swt_module_cp_transition(
                             CPTransition {
                                 direction: CPTransitionDirection::UnoptToOpt,
                                 frameaddr,
                                 trace_addr: 0 as *const c_void,
-                                exec_trace: false,
                             },
                             &self.stats,
                         );
@@ -488,16 +487,11 @@ impl MT {
                 #[cfg(tracer_swt)]
                 if smid == ControlPointStackMapId::Opt as usize {
                     unsafe {
-                        // Transition to unopt before trace execution since``
-                        // the trace was collected un unopt version.
-                        // This function will call __yk_exec_trace when live variables are restored.
-                        #[cfg(tracer_swt)]
                         swt_module_cp_transition(
                             CPTransition {
                                 direction: CPTransitionDirection::OptToUnopt,
                                 frameaddr,
                                 trace_addr: trace_addr,
-                                exec_trace: true,
                             },
                             &self.stats,
                         );
@@ -661,14 +655,11 @@ impl MT {
         #[cfg(tracer_swt)]
         if smid == ControlPointStackMapId::Opt as usize {
             unsafe {
-                // Transition to unopt before start tracing cause
-                // we need the intepreter version with tracing calls..
                 swt_module_cp_transition(
                     CPTransition {
                         direction: CPTransitionDirection::OptToUnopt,
                         frameaddr,
                         trace_addr: 0 as *const c_void,
-                        exec_trace: false,
                     },
                     &self.stats,
                 );
@@ -742,13 +733,11 @@ impl MT {
         #[cfg(tracer_swt)]
         if smid == ControlPointStackMapId::UnOpt as usize {
             unsafe {
-                // Transition into opt interpreter when we stop tracing.
                 swt_module_cp_transition(
                     CPTransition {
                         direction: CPTransitionDirection::UnoptToOpt,
                         frameaddr,
                         trace_addr: 0 as *const c_void,
-                        exec_trace: false,
                     },
                     &self.stats,
                 );
