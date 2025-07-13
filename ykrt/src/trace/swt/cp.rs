@@ -1,7 +1,6 @@
 use crate::aotsmp::AOT_STACKMAPS;
 use crate::trace::swt::cfg::{
     CP_BREAK, CP_VERBOSE, CP_VERBOSE_ASM, REG_OFFSETS, REG64_BYTESIZE, dwarf_to_dynasm_reg,
-    reg_num_to_ykrt_control_point_rsp_offset,
 };
 use crate::trace::swt::cfg::{CPTransitionDirection, ControlPointStackMapId, dwarf_reg_to_str};
 use crate::trace::swt::live_vars::{copy_live_vars_to_temp_buffer, set_destination_live_vars};
@@ -223,7 +222,7 @@ fn restore_registers(
 }
 
 fn restore_register(asm: &mut Assembler, dwarf_reg_num: u16, rbp_offset_reg_store: i32) {
-    let reg_offset = reg_num_to_ykrt_control_point_rsp_offset(dwarf_reg_num);
+    let reg_offset = REG_OFFSETS.get(&dwarf_reg_num).unwrap();
     let reg_val_rbp_offset = i32::try_from(rbp_offset_reg_store - reg_offset).unwrap();
     let dynasm_reg = dwarf_to_dynasm_reg(dwarf_reg_num.try_into().unwrap());
     dynasm!(asm

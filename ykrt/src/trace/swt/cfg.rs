@@ -66,43 +66,6 @@ pub(crate) fn dwarf_to_dynasm_reg(dwarf_reg_num: u8) -> u8 {
     }
 }
 
-// We use the registers saved by the control point.
-// __ykrt_control_point:
-// "push rax",
-// "push rcx",
-// "push rbx",
-// "push rdi",
-// "push rsi",
-// "push r8",
-// "push r9",
-// "push r10",
-// "push r11",
-// "push r12",
-// "push r13",
-// "push r14",
-// "push r15",
-pub(crate) static REG_OFFSETS: LazyLock<HashMap<u16, i32>> = LazyLock::new(|| {
-    let mut m = HashMap::new();
-    m.insert(0, 0x60); // rax
-    // 1 => 8,  // rdx - is not saved
-    m.insert(2, 0x58); // rcx
-    m.insert(3, 0x50); // rbx
-    // Question: why rsi and rdi are not at their index?
-    m.insert(5, 0x48); // rdi
-    m.insert(4, 0x40); // rsi
-    // 6 => 0x48 - not saved
-    // 7 => 0x40 - not saved
-    m.insert(8, 0x38); // r8
-    m.insert(9, 0x30); // r9
-    m.insert(10, 0x28); // r10
-    m.insert(11, 0x20); // r11
-    m.insert(12, 0x18); // r12
-    m.insert(13, 0x10); // r13
-    m.insert(14, 0x8); // r14
-    m.insert(15, 0x0); // r15
-    m
-});
-
 pub(crate) fn dwarf_reg_to_str(dwarf_reg_num: u8) -> String {
     match dwarf_reg_num {
         0 => "rax".to_string(),
@@ -140,24 +103,27 @@ pub(crate) fn dwarf_reg_to_str(dwarf_reg_num: u8) -> String {
 // "push r13",
 // "push r14",
 // "push r15",
-pub(crate) fn reg_num_to_ykrt_control_point_rsp_offset(dwarf_reg_num: u16) -> i32 {
-    match dwarf_reg_num {
-        0 => 0x60,  // rax
-        2 => 0x58,  // rcx
-        3 => 0x50,  // rbx
-        5 => 0x48,  // rdi
-        4 => 0x40,  // rsi
-        8 => 0x38,  // r8
-        9 => 0x30,  // r9
-        10 => 0x28, // r10
-        11 => 0x20, // r11
-        12 => 0x18, // r12
-        13 => 0x10, // r13
-        14 => 0x8,  // r14
-        15 => 0x0,  // r15
-        _ => panic!("Unsupported register {}", dwarf_reg_num),
-    }
-}
+pub(crate) static REG_OFFSETS: LazyLock<HashMap<u16, i32>> = LazyLock::new(|| {
+    let mut m = HashMap::new();
+    m.insert(0, 0x60); // rax
+    // 1 => 8,  // rdx - is not saved
+    m.insert(2, 0x58); // rcx
+    m.insert(3, 0x50); // rbx
+    // Question: why rsi and rdi are not at their index?
+    m.insert(5, 0x48); // rdi
+    m.insert(4, 0x40); // rsi
+    // 6 => 0x48 - not saved
+    // 7 => 0x40 - not saved
+    m.insert(8, 0x38); // r8
+    m.insert(9, 0x30); // r9
+    m.insert(10, 0x28); // r10
+    m.insert(11, 0x20); // r11
+    m.insert(12, 0x18); // r12
+    m.insert(13, 0x10); // r13
+    m.insert(14, 0x8); // r14
+    m.insert(15, 0x0); // r15
+    m
+});
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LiveVarsBuffer {
@@ -177,11 +143,5 @@ mod cfg_tests {
     fn test_dwarf_to_dynasm_reg_invalid() {
         // Passing an invalid register number should panic.
         let _ = dwarf_to_dynasm_reg(100);
-    }
-
-    #[test]
-    #[should_panic(expected = "Unsupported register")]
-    fn test_reg_num_to_ykrt_control_point_rsp_offset_invalid() {
-        let _ = reg_num_to_ykrt_control_point_rsp_offset(42);
     }
 }

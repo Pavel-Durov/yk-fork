@@ -7,8 +7,7 @@ use yksmp::Location::{Direct, Indirect, Register};
 use yksmp::Record;
 
 use crate::trace::swt::cfg::{
-    CP_VERBOSE, CPTransitionDirection, LiveVarsBuffer, dwarf_to_dynasm_reg,
-    reg_num_to_ykrt_control_point_rsp_offset,
+    CP_VERBOSE, CPTransitionDirection, LiveVarsBuffer, REG_OFFSETS, dwarf_to_dynasm_reg,
 };
 
 // Create a thread-safe wrapper for the buffer pointer
@@ -280,9 +279,9 @@ pub(crate) fn set_destination_live_vars(
         let dst_location = &dst_var.get(0).unwrap();
         match src_location {
             Register(src_reg_num, src_val_size, _src_add_locs) => {
-                let reg_store_offset = reg_num_to_ykrt_control_point_rsp_offset(*src_reg_num);
+                let reg_store_offset = REG_OFFSETS.get(src_reg_num).unwrap();
                 let reg_store_rbp_offset =
-                    i32::try_from(rbp_offset_reg_store - reg_store_offset as i64).unwrap();
+                    i32::try_from(rbp_offset_reg_store - *reg_store_offset as i64).unwrap();
                 match dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
                         if *dst_reg_num == TEMP_REG_PRIMARY.into()
@@ -424,9 +423,9 @@ pub(crate) fn set_destination_live_vars(
     for temp_reg in used_temp_reg_dist {
         match temp_reg.src_location {
             Register(src_reg_num, src_val_size, _src_add_locs) => {
-                let reg_store_offset = reg_num_to_ykrt_control_point_rsp_offset(*src_reg_num);
+                let reg_store_offset = REG_OFFSETS.get(src_reg_num).unwrap();
                 let reg_store_rbp_offset =
-                    i32::try_from(rbp_offset_reg_store - reg_store_offset as i64).unwrap();
+                    i32::try_from(rbp_offset_reg_store - *reg_store_offset as i64).unwrap();
 
                 match temp_reg.dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
