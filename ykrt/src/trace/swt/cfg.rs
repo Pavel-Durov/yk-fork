@@ -66,28 +66,6 @@ pub(crate) fn dwarf_to_dynasm_reg(dwarf_reg_num: u8) -> u8 {
     }
 }
 
-pub(crate) fn dwarf_reg_to_str(dwarf_reg_num: u8) -> String {
-    match dwarf_reg_num {
-        0 => "rax".to_string(),
-        1 => "rdx".to_string(),
-        2 => "rcx".to_string(),
-        3 => "rbx".to_string(),
-        4 => "rsi".to_string(),
-        5 => "rdi".to_string(),
-        6 => "rbp".to_string(),
-        7 => "rsp".to_string(),
-        8 => "r8".to_string(),
-        9 => "r9".to_string(),
-        10 => "r10".to_string(),
-        11 => "r11".to_string(),
-        12 => "r12".to_string(),
-        13 => "r13".to_string(),
-        14 => "r14".to_string(),
-        15 => "r15".to_string(),
-        _ => panic!("Unsupported DWARF register number: {}", dwarf_reg_num),
-    }
-}
-
 // We use the registers saved by the control point.
 // __ykrt_control_point:
 // "push rax",

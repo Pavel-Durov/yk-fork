@@ -2,7 +2,7 @@ use crate::aotsmp::AOT_STACKMAPS;
 use crate::trace::swt::cfg::{
     CP_BREAK, CP_VERBOSE, CP_VERBOSE_ASM, REG_OFFSETS, REG64_BYTESIZE, dwarf_to_dynasm_reg,
 };
-use crate::trace::swt::cfg::{CPTransitionDirection, ControlPointStackMapId, dwarf_reg_to_str};
+use crate::trace::swt::cfg::{CPTransitionDirection, ControlPointStackMapId};
 use crate::trace::swt::live_vars::{copy_live_vars_to_temp_buffer, set_destination_live_vars};
 use capstone::prelude::*;
 use dynasmrt::{DynasmApi, ExecutableBuffer, dynasm, x64::Assembler};
