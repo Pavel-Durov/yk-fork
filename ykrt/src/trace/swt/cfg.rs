@@ -23,19 +23,25 @@ pub enum CPTransitionDirection {
 pub(crate) static REG64_BYTESIZE: u64 = 8;
 
 // Flag for verbose logging
-pub static CP_VERBOSE: LazyLock<bool> =
-    LazyLock::new(|| env::var("CP_VERBOSE").map(|v| v == "1").unwrap_or(false));
-
-// Flag for verbose logging of asm
-pub static CP_VERBOSE_ASM: LazyLock<bool> = LazyLock::new(|| {
-    env::var("CP_VERBOSE_ASM")
+pub static YKB_SWT_VERBOSE: LazyLock<bool> = LazyLock::new(|| {
+    env::var("YKB_SWT_VERBOSE")
         .map(|v| v == "1")
         .unwrap_or(false)
 });
 
-// Flag for asm breakpoints
-pub(crate) static CP_BREAK: LazyLock<bool> =
-    LazyLock::new(|| env::var("CP_BREAK").map(|v| v == "1").unwrap_or(false));
+// Flag for verbose logging of asm
+pub static YKB_SWT_VERBOSE_ASM: LazyLock<bool> = LazyLock::new(|| {
+    env::var("YKB_SWT_VERBOSE_ASM")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+});
+
+// Flag for module cloning
+pub(crate) static YKB_SWT_MODCLONE: LazyLock<bool> = LazyLock::new(|| {
+    env::var("YKB_SWT_MODCLONE")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+});
 
 // Maps DWARF register numbers to `dynasm` register numbers.
 // This function takes a DWARF register number as input and returns the

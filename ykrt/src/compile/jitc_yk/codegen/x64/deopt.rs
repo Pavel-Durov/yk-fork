@@ -1,6 +1,4 @@
 use super::{Register, VarLocation};
-#[cfg(tracer_swt)]
-use crate::trace::swt::cfg::CP_VERBOSE;
 use crate::{
     aotsmp::AOT_STACKMAPS,
     compile::{CompiledTrace, GuardIdx},
@@ -231,10 +229,6 @@ pub(crate) extern "C" fn __yk_deopt(
                 todo!("Deal with multi register locations");
             };
 
-            #[cfg(tracer_swt)]
-            if *CP_VERBOSE {
-                println!("[DEOPT] {:?}\tvalue=0x{:016x}", aotloc, jitval);
-            }
             match aotloc {
                 SMLocation::Register(reg, size, extras) => {
                     #[cfg(debug_assertions)]

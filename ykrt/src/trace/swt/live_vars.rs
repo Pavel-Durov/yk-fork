@@ -7,7 +7,7 @@ use yksmp::Location::{Direct, Indirect, Register};
 use yksmp::Record;
 
 use crate::trace::swt::cfg::{
-    CP_VERBOSE, CPTransitionDirection, LiveVarsBuffer, REG_OFFSETS, dwarf_to_dynasm_reg,
+    CPTransitionDirection, LiveVarsBuffer, REG_OFFSETS, YKB_SWT_VERBOSE, dwarf_to_dynasm_reg,
 };
 
 // Create a thread-safe wrapper for the buffer pointer
@@ -242,7 +242,7 @@ pub(crate) fn set_destination_live_vars(
     // Index of the source live variable in the temporary buffer.
     let mut src_var_indirect_index = 0;
 
-    if *CP_VERBOSE {
+    if *YKB_SWT_VERBOSE {
         eprintln!(
             "Copying live vars: src={}, dst={}",
             src_rec.live_vals.len(),
@@ -578,7 +578,7 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
             size: 0,
         };
     }
-    if *CP_VERBOSE {
+    if *YKB_SWT_VERBOSE {
         if let Some(buffer) = thread_safe_buffer {
             println!(
                 "Using buffer at {:p} for direction {:?}",
@@ -640,7 +640,7 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
     // Add memory barrier to ensure all stores complete before buffer is used
     std::sync::atomic::fence(std::sync::atomic::Ordering::Release);
 
-    if *CP_VERBOSE {
+    if *YKB_SWT_VERBOSE {
         eprintln!(
             "Buffer population complete. Variables mapping: {:?}",
             variables

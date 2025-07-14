@@ -1,8 +1,8 @@
 use crate::aotsmp::AOT_STACKMAPS;
-use crate::trace::swt::cfg::{
-    CP_BREAK, CP_VERBOSE, CP_VERBOSE_ASM, REG_OFFSETS, REG64_BYTESIZE, dwarf_to_dynasm_reg,
-};
 use crate::trace::swt::cfg::{CPTransitionDirection, ControlPointStackMapId};
+use crate::trace::swt::cfg::{
+    REG_OFFSETS, REG64_BYTESIZE, YKB_SWT_VERBOSE, YKB_SWT_VERBOSE_ASM, dwarf_to_dynasm_reg,
+};
 use crate::trace::swt::live_vars::{copy_live_vars_to_temp_buffer, set_destination_live_vars};
 use capstone::prelude::*;
 use dynasmrt::{DynasmApi, ExecutableBuffer, dynasm, x64::Assembler};
@@ -66,7 +66,7 @@ pub(crate) unsafe fn swt_module_cp_transition(transition: CPTransition, stats: &
 /// Execute an assembled buffer with optional verbose assembly dumping
 #[unsafe(no_mangle)]
 unsafe fn execute_asm_buffer(buffer: ExecutableBuffer) {
-    if *CP_VERBOSE_ASM {
+    if *YKB_SWT_VERBOSE_ASM {
         let cs = Capstone::new()
             .x86()
             .mode(arch::x86::ArchMode::Mode64)
@@ -121,10 +121,6 @@ fn generate_transition_asm(
         dst_frame_size -= REG64_BYTESIZE;
     }
 
-    if *CP_BREAK {
-        dynasm!(asm; .arch x64; int3);
-    }
-
     // Set RBP and RSP
     dynasm!(asm
         ; .arch x64
@@ -139,7 +135,7 @@ fn generate_transition_asm(
 
     let temp_live_vars_buffer =
         copy_live_vars_to_temp_buffer(&mut asm, src_rec, transition.direction);
-    if *CP_VERBOSE {
+    if *YKB_SWT_VERBOSE {
         println!(
             "Transition: {:?} Trace: {:?}",
             transition.direction, transition.trace_addr
