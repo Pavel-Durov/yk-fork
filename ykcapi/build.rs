@@ -12,4 +12,11 @@ pub fn main() {
         Ok(x) => panic!("Unknown tracer {x}"),
         Err(_) => panic!("Invalid value for YKB_TRACER"),
     }
+
+    match env::var("YKB_SWT_MODCLONE") {
+        Ok(ref modclone) if modclone == "1" => println!("cargo::rustc-cfg=swt_modclone"),
+        Ok(ref modclone) if modclone == "0" => println!("cargo::rustc-cfg=!swt_modclone"),
+        Ok(x) => panic!("Invalid value for YKB_SWT_MODCLONE: {x}"),
+        Err(_) => println!("cargo::rustc-cfg=swt_modclone"),
+    }
 }
