@@ -19,14 +19,14 @@ use crate::compile::jitc_yk::gdb::{self, GdbCtx};
 use crate::{
     aotsmp::AOT_STACKMAPS,
     compile::{
-        CompilationError, CompiledTrace, Guard, GuardIdx,
+        CompilationError, CompiledTrace, Guard, GuardId,
         jitc_yk::{
             CodeGen, YkSideTraceInfo,
             aot_ir::{self, DeoptSafepoint},
             arbbitint::ArbBitInt,
             jit_ir::{
-                self, BinOp, Const, FloatTy, GuardInst, IndirectCallIdx, InlinedFrame, Inst,
-                InstIdx, Module, Operand, TraceKind, Ty,
+                self, BinOp, Const, FloatTy, GuardInfoIdx, HasGuardInfo, IndirectCallIdx,
+                InlinedFrame, Inst, InstIdx, Module, Operand, TraceKind, Ty,
             },
         },
     },
@@ -57,7 +57,7 @@ mod deopt;
 pub(super) mod lsregalloc;
 mod rev_analyse;
 
-use deopt::__yk_deopt;
+use deopt::{__yk_deopt, __yk_ret_from_trace};
 use lsregalloc::{GPConstraint, GuardSnapshot, LSRegAlloc, RegConstraint, RegExtension};
 
 /// General purpose argument registers as defined by the x64 SysV ABI.
@@ -359,7 +359,10 @@ impl<'a> Assemble<'a> {
         // Since we are executing the trace in the main interpreter frame we need this to
         // initialise the trace's register allocator in order to access local variables.
         let sp_offset = match m.tracekind() {
-            TraceKind::HeaderOnly | TraceKind::HeaderAndBody | TraceKind::Connector(_) => {
+            TraceKind::HeaderOnly
+            | TraceKind::HeaderAndBody
+            | TraceKind::Connector(_)
+            | TraceKind::DifferentFrames => {
                 // FIXME: For now the control point stackmap id is always 0. Though
                 // we likely want to support multiple control points in the future. We can either pass
                 // the correct stackmap id in via the control point, or compute the stack size
@@ -601,6 +604,8 @@ impl<'a> Assemble<'a> {
                 jit_ir::Inst::TraceBodyStart => self.cg_body_start(),
                 jit_ir::Inst::TraceBodyEnd => self.cg_body_end(iidx),
                 jit_ir::Inst::SidetraceEnd => self.cg_sidetrace_end(iidx),
+                jit_ir::Inst::Deopt(gidx) => self.cg_deopt(iidx, *gidx),
+                jit_ir::Inst::Return(id) => self.cg_return(iidx, *id),
                 jit_ir::Inst::SExt(i) => self.cg_sext(iidx, i),
                 jit_ir::Inst::ZExt(i) => self.cg_zext(iidx, i),
                 jit_ir::Inst::BitCast(i) => self.cg_bitcast(iidx, i),
@@ -654,7 +659,7 @@ impl<'a> Assemble<'a> {
                     .collect::<Vec<_>>()
                     .join(", ");
                 self.comment(format!(
-                    "guard {}, {}, [{live_vars}] ; trace_gidx {} safepoint_id {}",
+                    "guard {}, {}, [{live_vars}] ; trace_gid {} safepoint_id {}",
                     if x.expect() { "true" } else { "false" },
                     x.cond(self.m).display(self.m),
                     self.guards.len(),
@@ -767,7 +772,7 @@ impl<'a> Assemble<'a> {
             dynasm!(self.asm;=> fail_label);
 
             self.ra.restore_guard_snapshot(gd.guard_snapshot);
-            let ginfo = gd.ginst.guard_info(self.m);
+            let ginfo = gd.ginfo.guard_info(self.m);
             let mut body_iidxs = Vec::new();
             let mut todos = ginfo
                 .live_vars()
@@ -820,7 +825,7 @@ impl<'a> Assemble<'a> {
                 }
             }
 
-            let (jumpreg, live_vars) = self.ra.get_ready_for_deopt(&mut self.asm, gd.ginst);
+            let (jumpreg, live_vars) = self.ra.get_ready_for_deopt(&mut self.asm, gd.ginfo);
             // FIXME: Why are `deoptid`s 64 bit? We're not going to have that many guards!
 
             // Align this location in such a way that the operand of the below `mov`
@@ -2508,7 +2513,7 @@ impl<'a> Assemble<'a> {
         // Codegen guard
         self.ra.expire_regs(g_iidx);
         self.comment_inst(g_iidx, g_inst.into());
-        let fail_label = self.guard_to_deopt(g_inst);
+        let fail_label = self.guard_to_deopt(HasGuardInfo::Guard(g_inst));
 
         if g_inst.expect() {
             match pred {
@@ -2807,6 +2812,7 @@ impl<'a> Assemble<'a> {
                 assert_eq!(sti.sp_offset, self.sp_offset);
                 (sti.entry_vars.clone(), self.m.trace_header_end())
             }
+            TraceKind::DifferentFrames => panic!(),
         };
 
         // First of all we work out what to do with registers.
@@ -3010,6 +3016,7 @@ impl<'a> Assemble<'a> {
                     ; jmp rdi);
             }
             TraceKind::HeaderOnly | TraceKind::HeaderAndBody | TraceKind::Connector(_) => panic!(),
+            TraceKind::DifferentFrames => panic!(),
         }
     }
 
@@ -3037,6 +3044,7 @@ impl<'a> Assemble<'a> {
             }
             TraceKind::Sidetrace(_) => todo!(),
             TraceKind::Connector(_) => (),
+            TraceKind::DifferentFrames => (),
         }
         self.prologue_offset = self.asm.offset();
     }
@@ -3108,6 +3116,7 @@ impl<'a> Assemble<'a> {
                     .as_any()
                     .downcast::<X64CompiledTrace>()
                     .unwrap();
+
                 self.write_jump_vars(iidx);
                 self.ra.align_stack(SYSV_CALL_STACK_ALIGN);
 
@@ -3122,7 +3131,56 @@ impl<'a> Assemble<'a> {
                     ; jmp rdi);
             }
             TraceKind::Sidetrace(_) => panic!(),
+            TraceKind::DifferentFrames => panic!(),
         }
+    }
+
+    fn cg_deopt(&mut self, _iidx: InstIdx, gidx: GuardInfoIdx) {
+        let fail_label = self.guard_to_deopt(HasGuardInfo::Deopt(gidx));
+        // Until this place is patched with a side-trace, we always forcibly deopt at
+        // this point.
+        dynasm!(self.asm ; jmp =>fail_label);
+    }
+
+    fn cg_return(&mut self, _iidx: InstIdx, safepoint: u64) {
+        // Return from the trace naturally back into the interpreter.
+        let aot_smaps = AOT_STACKMAPS.as_ref().unwrap();
+        let (_, pinfo) = aot_smaps.get(usize::try_from(safepoint).unwrap());
+        if !pinfo.hasfp {
+            todo!();
+        }
+        let size = i32::try_from(pinfo.csrs.len()).unwrap() * 8;
+        #[allow(clippy::fn_to_numeric_cast)]
+        {
+            dynasm!(self.asm
+                ; mov rdi, QWORD self.m.ctrid().as_u64().cast_signed()
+                ; mov rax, QWORD __yk_ret_from_trace as i64
+                ; call rax
+                ; mov rsp, rbp
+                ; sub rsp, size
+            );
+        }
+        // Restore callee-saved registers.
+        let mut csrs = pinfo.csrs.clone();
+        csrs.sort_by_key(|v| v.1);
+        for (reg, _) in csrs {
+            let rq = match reg {
+                0 => Rq::RAX,
+                15 => Rq::R15,
+                14 => Rq::R14,
+                13 => Rq::R13,
+                12 => Rq::R12,
+                3 => Rq::RBX,
+                _ => panic!("Not a callee-saved register"),
+            };
+            dynasm!(self.asm
+                ; pop Rq(rq.code())
+            );
+        }
+        dynasm!(self.asm
+            ; pop rbp
+            ; ret
+        );
     }
 
     fn cg_body_start(&mut self) {
@@ -3567,11 +3625,11 @@ impl<'a> Assemble<'a> {
         }
     }
 
-    fn guard_to_deopt(&mut self, ginst: jit_ir::GuardInst) -> DynamicLabel {
+    fn guard_to_deopt(&mut self, hgi: HasGuardInfo) -> DynamicLabel {
         let fail_label = self.asm.new_dynamic_label();
-        let ginfo = ginst.guard_info(self.m);
+        let ginfo = hgi.guard_info(self.m);
         let gd = CompilingGuard {
-            ginst,
+            ginfo: hgi,
             guard_snapshot: self.ra.guard_snapshot(),
             bid: ginfo.bid().clone(),
             fail_label,
@@ -3621,7 +3679,7 @@ impl<'a> Assemble<'a> {
     fn cg_guard(&mut self, iidx: jit_ir::InstIdx, inst: &jit_ir::GuardInst) {
         let cond = inst.cond(self.m);
         let reg = self.ra.tmp_register_for_guard(&mut self.asm, iidx, cond);
-        let fail_label = self.guard_to_deopt(*inst);
+        let fail_label = self.guard_to_deopt(HasGuardInfo::Guard(*inst));
         dynasm!(self.asm ; bt Rd(reg.code()), 0);
         if inst.expect() {
             dynasm!(self.asm ; jnb =>fail_label);
@@ -3634,7 +3692,7 @@ impl<'a> Assemble<'a> {
 /// Information required by guards while we're compiling them.
 #[derive(Debug)]
 struct CompilingGuard {
-    ginst: GuardInst,
+    ginfo: HasGuardInfo,
     guard_snapshot: GuardSnapshot,
     /// The AOT block that the failing guard originated from.
     bid: aot_ir::BBlockId,
@@ -3696,20 +3754,20 @@ impl X64CompiledTrace {
         &self.entry_vars
     }
 
-    /// Return the [CompiledGuard] at `gidx`.
-    fn compiled_guard(&self, gidx: GuardIdx) -> &CompiledGuard {
-        &self.compiled_guards[usize::from(gidx)]
+    /// Return the [CompiledGuard] at `gid`.
+    fn compiled_guard(&self, gid: GuardId) -> &CompiledGuard {
+        &self.compiled_guards[usize::from(gid)]
     }
 
     pub(crate) fn sidetraceinfo(
         &self,
-        gidx: GuardIdx,
+        gid: GuardId,
         target_ctr: Arc<dyn CompiledTrace>,
     ) -> Arc<YkSideTraceInfo<Register>> {
         let target_ctr = target_ctr.as_any().downcast::<X64CompiledTrace>().unwrap();
         // FIXME: Can we reference these instead of copying them, e.g. by passing in a reference to
-        // the `CompiledTrace` and `gidx` or better a reference to `DeoptInfo`?
-        let gd = &self.compiled_guards[usize::from(gidx)];
+        // the `CompiledTrace` and `gid` or better a reference to `DeoptInfo`?
+        let gd = &self.compiled_guards[usize::from(gid)];
         let lives = gd
             .live_vars
             .iter()
@@ -3745,20 +3803,20 @@ impl CompiledTrace for X64CompiledTrace {
         self.sp_offset
     }
 
-    fn guard(&self, gidx: GuardIdx) -> &crate::compile::Guard {
-        &self.compiled_guards[usize::from(gidx)].guard
+    fn guard(&self, gid: GuardId) -> &crate::compile::Guard {
+        &self.compiled_guards[usize::from(gid)].guard
     }
 
     /// Patch the address of a side-trace directly into the parent trace.
-    /// * `gidx`: The guard to be patched.
+    /// * `gid`: The guard to be patched.
     /// * `staddr`: The address of the side-trace.
-    fn patch_guard(&self, gidx: GuardIdx, staddr: *const std::ffi::c_void) {
+    fn patch_guard(&self, gid: GuardId, staddr: *const std::ffi::c_void) {
         // Since we have to temporarily make the parent trace writable, another thread trying
         // to patch this trace could interfere with that. Having this lock prevents this.
         let _lock = LK_PATCH.lock();
 
         // Calculate a pointer to the address we want to patch.
-        let patch_offset = self.compiled_guards[usize::from(gidx)].fail_offset;
+        let patch_offset = self.compiled_guards[usize::from(gid)].fail_offset;
         // Add 2 bytes to get to the address operand of the mov instruction.
         let patch_addr = unsafe { self.buf.ptr(patch_offset).offset(2) };
         // FIXME: Is it better/faster to protect the entire buffer in one go and then patch each
@@ -5872,7 +5930,7 @@ mod tests {
             ",
             "
                 ...
-                ; guard false, %0, [0:%0_0: %0, 0:%0_1: 10i8, 0:%0_2: 32i8, 0:%0_3: 42i8] ; trace_gidx 0 safepoint_id 0
+                ; guard false, %0, [0:%0_0: %0, 0:%0_1: 10i8, 0:%0_2: 32i8, 0:%0_3: 42i8] ; trace_gid 0 safepoint_id 0
                 bt r.32._, 0x00
                 jb 0x...
                 ...

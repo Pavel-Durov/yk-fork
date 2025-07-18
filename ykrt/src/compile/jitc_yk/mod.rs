@@ -2,12 +2,13 @@
 
 use super::CompilationError;
 use crate::{
-    compile::{CompiledTrace, Compiler, GuardIdx, jitc_yk::codegen::CodeGen},
+    compile::{CompiledTrace, Compiler, GuardId, jitc_yk::codegen::CodeGen},
     location::HotLocation,
     log::{IRPhase, log_ir, should_log_ir},
     mt::{MT, TraceId},
     trace::AOTTraceIterator,
 };
+use jit_ir::TraceEndFrame;
 use parking_lot::Mutex;
 use std::{
     env,
@@ -111,6 +112,7 @@ impl<Register: Send + Sync + 'static> JITCYk<Register> {
         debug_strs: Vec<String>,
         connector_ctr: Option<Arc<dyn CompiledTrace>>,
         smid: usize,
+        endframe: TraceEndFrame,
     ) -> Result<Arc<dyn CompiledTrace>, CompilationError> {
         // If either `unwrap` fails, there is no chance of the system working correctly.
         let aot_mod = &*AOT_MOD;
@@ -128,6 +130,7 @@ impl<Register: Send + Sync + 'static> JITCYk<Register> {
             promotions,
             debug_strs,
             connector_ctr,
+            endframe,
         )?;
 
         let ds = if let Some(x) = &hl.lock().debug_str {
@@ -142,6 +145,7 @@ impl<Register: Send + Sync + 'static> JITCYk<Register> {
                 jit_ir::TraceKind::HeaderAndBody => unreachable!(),
                 jit_ir::TraceKind::Connector(_) => "connector",
                 jit_ir::TraceKind::Sidetrace(_) => "side-trace",
+                jit_ir::TraceKind::DifferentFrames => "call-recursion",
             };
             let mut out = String::new();
             out.push_str(&format!("--- Begin debugstrs: {kind}{ds} ---\n"));
@@ -201,6 +205,7 @@ impl<Register: Send + Sync + 'static> Compiler for JITCYk<Register> {
         debug_strs: Vec<String>,
         connector_ctr: Option<Arc<dyn CompiledTrace>>,
         smid: usize,
+        endframe: TraceEndFrame,
     ) -> Result<Arc<dyn CompiledTrace>, CompilationError> {
         self.compile(
             mt,
@@ -212,6 +217,7 @@ impl<Register: Send + Sync + 'static> Compiler for JITCYk<Register> {
             debug_strs,
             connector_ctr,
             smid,
+            endframe,
         )
     }
 
@@ -221,18 +227,19 @@ impl<Register: Send + Sync + 'static> Compiler for JITCYk<Register> {
         aottrace_iter: Box<dyn AOTTraceIterator>,
         ctrid: TraceId,
         parent_ctr: Arc<dyn CompiledTrace>,
-        gidx: GuardIdx,
+        gid: GuardId,
         target_ctr: Arc<dyn CompiledTrace>,
         hl: Arc<Mutex<HotLocation>>,
         promotions: Box<[u8]>,
         debug_strs: Vec<String>,
         smid: usize,
+        endframe: TraceEndFrame,
     ) -> Result<Arc<dyn CompiledTrace>, CompilationError> {
         let parent_ctr = parent_ctr
             .as_any()
             .downcast::<codegen::x64::X64CompiledTrace>()
             .unwrap();
-        let sti = parent_ctr.sidetraceinfo(gidx, Arc::clone(&target_ctr));
+        let sti = parent_ctr.sidetraceinfo(gid, Arc::clone(&target_ctr));
         self.compile(
             mt,
             aottrace_iter,
@@ -243,6 +250,7 @@ impl<Register: Send + Sync + 'static> Compiler for JITCYk<Register> {
             debug_strs,
             None,
             smid,
+            endframe,
         )
     }
 }

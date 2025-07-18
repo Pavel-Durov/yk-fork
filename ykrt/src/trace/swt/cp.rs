@@ -1,5 +1,5 @@
 use crate::aotsmp::AOT_STACKMAPS;
-use crate::trace::swt::cfg::{CPTransitionDirection, ControlPointStackMapId};
+use crate::trace::swt::cfg::{CPTransitionDirection, ControlPointStackMapId, YKB_SWT_CP_BREAK};
 use crate::trace::swt::cfg::{
     REG_OFFSETS, REG64_BYTESIZE, YKB_SWT_VERBOSE, YKB_SWT_VERBOSE_ASM, dwarf_to_dynasm_reg,
 };
@@ -120,6 +120,12 @@ fn generate_transition_asm(
     if dst_pinfo.hasfp {
         dst_frame_size -= REG64_BYTESIZE;
     }
+    if *YKB_SWT_CP_BREAK {
+        dynasm!(asm
+            ; .arch x64
+            ; int3
+        );
+    }
 
     // Set RBP and RSP
     dynasm!(asm
@@ -136,11 +142,11 @@ fn generate_transition_asm(
     let temp_live_vars_buffer =
         copy_live_vars_to_temp_buffer(&mut asm, src_rec, transition.direction);
     if *YKB_SWT_VERBOSE {
-        println!(
+        eprintln!(
             "Transition: {:?} Trace: {:?}",
             transition.direction, transition.trace_addr
         );
-        println!(
+        eprintln!(
             "src_rbp: 0x{:x}, reg_store: 0x{:x}, src_frame_size: 0x{:x}, dst_frame_size: 0x{:x}, rbp_offset_reg_store: 0x{:x}",
             frameaddr as i64,
             frameaddr as i64 - rbp_offset_reg_store,

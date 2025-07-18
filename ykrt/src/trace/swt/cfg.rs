@@ -43,6 +43,13 @@ pub(crate) static YKB_SWT_MODCLONE: LazyLock<bool> = LazyLock::new(|| {
         .unwrap_or(false)
 });
 
+// Flag for control point break
+pub(crate) static YKB_SWT_CP_BREAK: LazyLock<bool> = LazyLock::new(|| {
+    env::var("YKB_SWT_CP_BREAK")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+});
+
 // Maps DWARF register numbers to `dynasm` register numbers.
 // This function takes a DWARF register number as input and returns the
 // corresponding dynasm register number1. The mapping is based on the
