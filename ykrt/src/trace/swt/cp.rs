@@ -25,39 +25,37 @@ pub struct CPTransition {
 }
 
 // Lazy-loaded assembly for UnOpt -> Opt transitions
-static UNOPT_TO_OPT_ASM: LazyLock<
-    Box<dyn Fn(CPTransition) -> ExecutableBuffer + Send + Sync>,
-> = LazyLock::new(|| {
-    Box::new(|transition: CPTransition| {
-        generate_transition_asm(
-            transition,
-            ControlPointStackMapId::UnOpt,
-            ControlPointStackMapId::Opt,
-        )
-    })
-});
+static UNOPT_TO_OPT_ASM: LazyLock<Box<dyn Fn(CPTransition) -> ExecutableBuffer + Send + Sync>> =
+    LazyLock::new(|| {
+        Box::new(|transition: CPTransition| {
+            generate_transition_asm(
+                transition,
+                ControlPointStackMapId::UnOpt,
+                ControlPointStackMapId::Opt,
+            )
+        })
+    });
 
 // Lazy-loaded assembly for Opt -> UnOpt transitions
-static OPT_TO_UNOPT_ASM: LazyLock<
-    Box<dyn Fn(CPTransition) -> ExecutableBuffer + Send + Sync>,
-> = LazyLock::new(|| {
-    Box::new(|transition: CPTransition| {
-        generate_transition_asm(
-            transition,
-            ControlPointStackMapId::Opt,
-            ControlPointStackMapId::UnOpt,
-        )
-    })
-});
+static OPT_TO_UNOPT_ASM: LazyLock<Box<dyn Fn(CPTransition) -> ExecutableBuffer + Send + Sync>> =
+    LazyLock::new(|| {
+        Box::new(|transition: CPTransition| {
+            generate_transition_asm(
+                transition,
+                ControlPointStackMapId::Opt,
+                ControlPointStackMapId::UnOpt,
+            )
+        })
+    });
 
 /// Transitions from optimised to unoptimised execution mode at a control point.
-/// 
+///
 /// This function generates and executes assembly code to transition from the optimised
 /// control point to the unoptimised control point. It copies the live variables and
 /// restores the registers.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `frameaddr` - Pointer to the current frame address
 /// * `stats` - Statistics tracker for recording the transition
 pub(crate) unsafe fn cp_transition_to_unopt(frameaddr: *const c_void, stats: &Stats) {
@@ -73,16 +71,16 @@ pub(crate) unsafe fn cp_transition_to_unopt(frameaddr: *const c_void, stats: &St
 }
 
 /// Transitions from unoptimised to optimised execution mode at a control point.
-/// 
+///
 /// This function generates and executes assembly code to transition from the unoptimised
 /// control point to the optimised control point. It copies the live variables and
 /// restores the registers.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `frameaddr` - Pointer to the current frame address  
 /// * `stats` - Statistics tracker for recording the transition
-pub(crate) unsafe fn cp_transition_to_opt(frameaddr: *const c_void, stats: &Stats   ) {
+pub(crate) unsafe fn cp_transition_to_opt(frameaddr: *const c_void, stats: &Stats) {
     let buffer = UNOPT_TO_OPT_ASM(CPTransition {
         smid: ControlPointStackMapId::UnOpt,
         frameaddr,
@@ -94,19 +92,22 @@ pub(crate) unsafe fn cp_transition_to_opt(frameaddr: *const c_void, stats: &Stat
     }
 }
 
-
 /// Transitions from optimised to unoptimised execution mode at a control point and executes a trace.
-/// 
+///
 /// This function generates and executes assembly code to transition from the optimised
 /// control point to the unoptimised control point and executes a trace. It copies the live variables and
 /// restores the registers.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `frameaddr` - Pointer to the current frame address
 /// * `trace_addr` - Pointer to the trace to execute
 /// * `stats` - Statistics tracker for recording the transition
-pub(crate) unsafe fn cp_transition_to_unopt_and_exec_trace(frameaddr: *const c_void, trace_addr: *const c_void, stats: &Stats) {
+pub(crate) unsafe fn cp_transition_to_unopt_and_exec_trace(
+    frameaddr: *const c_void,
+    trace_addr: *const c_void,
+    stats: &Stats,
+) {
     let buffer = OPT_TO_UNOPT_ASM(CPTransition {
         smid: ControlPointStackMapId::Opt,
         frameaddr,
@@ -117,7 +118,6 @@ pub(crate) unsafe fn cp_transition_to_unopt_and_exec_trace(frameaddr: *const c_v
         execute_asm_buffer(buffer);
     }
 }
-
 
 /// Execute an assembled buffer with optional verbose assembly dumping
 #[unsafe(no_mangle)]
@@ -195,8 +195,7 @@ fn generate_transition_asm(
     // Example: r15 address = rbp - rbp_offset_reg_store
     let rbp_offset_reg_store = src_frame_size as i64 + (14 * REG64_BYTESIZE) as i64;
 
-    let temp_live_vars_buffer =
-        copy_live_vars_to_temp_buffer(&mut asm, src_rec, transition.smid);
+    let temp_live_vars_buffer = copy_live_vars_to_temp_buffer(&mut asm, src_rec, transition.smid);
     if *YKB_SWT_VERBOSE {
         eprintln!(
             "Transition from {:?} to {:?}, trace: {:?}",

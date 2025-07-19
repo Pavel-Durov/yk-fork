@@ -36,7 +36,6 @@ pub(crate) trait CodeGen: Send + Sync {
         m: Module,
         mt: Arc<MT>,
         hl: Arc<Mutex<HotLocation>>,
-        smid: usize,
     ) -> Result<Arc<dyn CompiledTrace>, CompilationError>;
 }
 

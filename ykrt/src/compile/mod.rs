@@ -52,7 +52,6 @@ pub(crate) trait Compiler: Send + Sync {
         promotions: Box<[u8]>,
         debug_strs: Vec<String>,
         connector_ctr: Option<Arc<dyn CompiledTrace>>,
-        smid: usize,
         endframe: TraceEndFrame,
     ) -> Result<Arc<dyn CompiledTrace>, CompilationError>;
 
@@ -68,7 +67,6 @@ pub(crate) trait Compiler: Send + Sync {
         hl: Arc<Mutex<HotLocation>>,
         promotions: Box<[u8]>,
         debug_strs: Vec<String>,
-        smid: usize,
         endframe: TraceEndFrame,
     ) -> Result<Arc<dyn CompiledTrace>, CompilationError>;
 }

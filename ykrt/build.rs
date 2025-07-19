@@ -28,7 +28,7 @@ pub fn main() {
     }
     match env::var("YKB_SWT_MODCLONE") {
         Ok(ref modclone) if modclone == "1" => println!("cargo::rustc-cfg=swt_modclone"),
-        _ => {},
+        _ => {}
     }
     // We need to explicitly tell Cargo to track these files otherwise it won't rebuild when they
     // change.

@@ -12,8 +12,11 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
+#[cfg(swt_modclone)]
 pub(crate) mod cfg;
+#[cfg(swt_modclone)]
 pub(crate) mod cp;
+#[cfg(swt_modclone)]
 pub(crate) mod live_vars;
 
 #[derive(Debug, Eq, PartialEq, Clone)]

@@ -67,7 +67,8 @@ pub extern "C" fn __ykrt_control_point(
     // Stackmap id for the control point.
     smid: u64,
 ) {
-    #[cfg(not(swt_modclone))]{    
+    #[cfg(not(swt_modclone))]
+    {
         // FIXME: We could get rid of this entire function if we pass the frame's base pointer into the
         // control point from the interpreter.
         std::arch::naked_asm!(
@@ -116,7 +117,7 @@ pub extern "C" fn __ykrt_control_point(
             "pop rcx",
             "pop rax",
             "ret",
-        );   
+        );
     }
 }
 // The actual control point, after we have pushed the callee-saved registers.
@@ -134,7 +135,7 @@ pub extern "C" fn __ykrt_control_point_real(
     let loc = unsafe { &*loc };
     if !loc.is_null() {
         let arc = unsafe { Arc::from_raw(mt) };
-        arc.control_point(loc, frameaddr, smid as usize);
+        arc.control_point(loc, frameaddr, smid);
         forget(arc);
     }
 }

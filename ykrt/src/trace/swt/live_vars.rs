@@ -534,10 +534,7 @@ fn calculate_live_vars_buffer_size(src_rec: &Record) -> i32 {
 // This allocation happens only once per direction.
 // The buffer is aligned to 16 bytes.
 // TODO: dealloc buffer
-fn allocate_buffer(
-    src_rec: &Record,
-    smid: ControlPointStackMapId,
-) -> Option<&ThreadSafeBuffer> {
+fn allocate_buffer(src_rec: &Record, smid: ControlPointStackMapId) -> Option<&ThreadSafeBuffer> {
     let src_val_buffer_size = calculate_live_vars_buffer_size(src_rec);
 
     if src_val_buffer_size == 0 {
@@ -580,10 +577,7 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
     }
     if *YKB_SWT_VERBOSE {
         if let Some(buffer) = thread_safe_buffer {
-            println!(
-                "Using buffer at {:p} for smid {:?}",
-                buffer.ptr, smid
-            );
+            println!("Using buffer at {:p} for smid {:?}", buffer.ptr, smid);
         }
     }
 
@@ -1311,8 +1305,7 @@ mod live_vars_tests {
         };
 
         let mut asm = Assembler::new().unwrap();
-        let lvb =
-            copy_live_vars_to_temp_buffer(&mut asm, &src_rec, ControlPointStackMapId::UnOpt);
+        let lvb = copy_live_vars_to_temp_buffer(&mut asm, &src_rec, ControlPointStackMapId::UnOpt);
         assert_eq!(32, lvb.size);
         assert_eq!(3, lvb.variables.len());
 
