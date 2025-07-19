@@ -67,23 +67,24 @@ pub extern "C" fn __ykrt_control_point(
     // Stackmap id for the control point.
     smid: u64,
 ) {
+    #[cfg(not(swt_modclone))]{    
+        // FIXME: We could get rid of this entire function if we pass the frame's base pointer into the
+        // control point from the interpreter.
+        std::arch::naked_asm!(
+            // Pass the interpreter frame's base pointer via the 4th argument register.
+            "sub rsp, 8",   // Alignment
+            "mov rcx, rbp", // Pass interpreter frame's base pointer via 4th argument register.
+            "call __ykrt_control_point_real",
+            "add rsp, 8",
+            "ret",
+        );
+    }
     #[cfg(swt_modclone)]
     {
-        // FIXME: We can possibly avoid the below (and this entire function) by patching the return
-        // address of the control point on the stack to point to the compiled trace. This means we
-        // still run the epilogue of the control point function call, which automatically restores the
-        // callee-saved registers for us (so we don't have to do it here).
+        // FIXME: Adapt multi version swt control point transition.
         std::arch::naked_asm!(
             // Push all registers to the stack as these may contain trace inputs (live
             // variables) referenced by the control point's stackmap.
-            //
-            // We don't need to push and restore `rdx` since `smid` can never be a live value and
-            // thus won't be tracked by the stackmap.
-            //
-            // FIXME: In the future we want the control point to return naturally into the compiled
-            // trace (at the moment we just rip out the control point's stack), which means we then
-            // no longer need to recover callee-saved registers as the control point will do this
-            // for us.
             "push rax",
             "push rcx",
             "push rbx",
@@ -117,19 +118,6 @@ pub extern "C" fn __ykrt_control_point(
             "ret",
         );   
     }
-    #[cfg(not(swt_modclone))]{    
-        // FIXME: We could get rid of this entire function if we pass the frame's base pointer into the
-        // control point from the interpreter.
-        std::arch::naked_asm!(
-            // Pass the interpreter frame's base pointer via the 4th argument register.
-            "sub rsp, 8",   // Alignment
-            "mov rcx, rbp", // Pass interpreter frame's base pointer via 4th argument register.
-            "call __ykrt_control_point_real",
-            "add rsp, 8",
-            "ret",
-        );
-    }
-    
 }
 // The actual control point, after we have pushed the callee-saved registers.
 #[unsafe(no_mangle)]
