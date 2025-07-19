@@ -15,7 +15,7 @@ use std::{
 };
 
 #[cfg(swt_modclone)]
-use crate::trace::swt::cfg::ControlPointStackMapId;
+use crate::trace::swt::cp::ControlPointStackMapId;
 #[cfg(swt_modclone)]
 use crate::trace::swt::cp::{
     cp_transition_to_opt, cp_transition_to_unopt, cp_transition_to_unopt_and_exec_trace,

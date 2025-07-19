@@ -156,9 +156,12 @@ impl Stats {
         self.update_with(|inner| inner.trace_executions += 1);
     }
 
+    #[cfg(swt_modclone)]
     pub fn swt_transition_unopt_to_opt(&self) {
         self.update_with(|inner| inner.swt_transition_unopt_to_opt += 1);
     }
+
+    #[cfg(swt_modclone)]
     pub fn swt_transition_opt_to_unopt(&self) {
         self.update_with(|inner| inner.swt_transition_opt_to_unopt += 1);
     }

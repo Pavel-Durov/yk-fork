@@ -13,11 +13,12 @@ use std::{
 };
 
 #[cfg(swt_modclone)]
-pub(crate) mod cfg;
-#[cfg(swt_modclone)]
 pub(crate) mod cp;
 #[cfg(swt_modclone)]
 pub(crate) mod live_vars;
+
+#[cfg(test)]
+pub(crate) mod tests;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 struct TracingBBlock {

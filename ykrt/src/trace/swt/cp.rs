@@ -1,14 +1,106 @@
+use std::alloc::Layout;
+use std::collections::HashMap;
+use std::env;
+use std::sync::LazyLock;
+
+#[repr(usize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControlPointStackMapId {
+    // unoptimised (original functions) control point stack map id
+    Opt = 0,
+    // optimised (cloned functions) control point stack map id
+    UnOpt = 1,
+}
+
+/// The size of a 64-bit register in bytes.
+pub(crate) static REG64_BYTESIZE: u64 = 8;
+
+// Flag for verbose logging
+pub static YKB_SWT_VERBOSE: LazyLock<bool> = LazyLock::new(|| {
+    env::var("YKB_SWT_VERBOSE")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+});
+
+// Flag for verbose logging of asm
+pub static YKB_SWT_VERBOSE_ASM: LazyLock<bool> = LazyLock::new(|| {
+    env::var("YKB_SWT_VERBOSE_ASM")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+});
+
+// Flag for control point break
+pub(crate) static YKB_SWT_CP_BREAK: LazyLock<bool> = LazyLock::new(|| {
+    env::var("YKB_SWT_CP_BREAK")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+});
+
+// Maps DWARF register numbers to `dynasm` register numbers.
+// This function takes a DWARF register number as input and returns the
+// corresponding dynasm register number1. The mapping is based on the
+// x86_64 architecture, and it's important to note that some registers
+// (rsi, rdi, rbp, and rsp) have a slightly different order in dynasm
+// compared to their sequential DWARF numbering.
+// https://docs.rs/dynasmrt/latest/dynasmrt/x64/enum.Rq.html
+pub(crate) fn dwarf_to_dynasm_reg(dwarf_reg_num: u8) -> u8 {
+    match dwarf_reg_num {
+        0 => 0,   // RAX
+        1 => 2,   // RDX
+        2 => 1,   // RCX
+        3 => 3,   // RBX
+        4 => 6,   // RSI
+        5 => 7,   // RDI
+        6 => 5,   // RBP
+        7 => 4,   // RSP
+        8 => 8,   // R8
+        9 => 9,   // R9
+        10 => 10, // R10
+        11 => 11, // R11
+        12 => 12, // R12
+        13 => 13, // R13
+        14 => 14, // R14
+        15 => 15, // R15
+        _ => panic!("Unsupported DWARF register number: {}", dwarf_reg_num),
+    }
+}
+
+// Mapping of DWARF register numbers to offsets in the __ykrt_control_point stack frame.
+pub(crate) static REG_OFFSETS: LazyLock<HashMap<u16, i32>> = LazyLock::new(|| {
+    let mut m = HashMap::new();
+    m.insert(0, 0x60); // rax
+    // 1 => 8,  // rdx - is not saved
+    m.insert(2, 0x58); // rcx
+    m.insert(3, 0x50); // rbx
+    m.insert(5, 0x48); // rdi
+    m.insert(4, 0x40); // rsi
+    // 6 => 0x48 - not saved
+    // 7 => 0x40 - not saved
+    m.insert(8, 0x38); // r8
+    m.insert(9, 0x30); // r9
+    m.insert(10, 0x28); // r10
+    m.insert(11, 0x20); // r11
+    m.insert(12, 0x18); // r12
+    m.insert(13, 0x10); // r13
+    m.insert(14, 0x8); // r14
+    m.insert(15, 0x0); // r15
+    m
+});
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LiveVarsBuffer {
+    pub ptr: *mut u8,
+    pub layout: Layout,
+    // varibles are only used in tests - can eb removed
+    pub variables: HashMap<i32, i32>,
+    pub size: i32,
+}
+
 use crate::aotsmp::AOT_STACKMAPS;
-use crate::trace::swt::cfg::{ControlPointStackMapId, YKB_SWT_CP_BREAK};
-use crate::trace::swt::cfg::{
-    REG_OFFSETS, REG64_BYTESIZE, YKB_SWT_VERBOSE, YKB_SWT_VERBOSE_ASM, dwarf_to_dynasm_reg,
-};
 use crate::trace::swt::live_vars::{copy_live_vars_to_temp_buffer, set_destination_live_vars};
 use capstone::prelude::*;
 use dynasmrt::{DynasmApi, ExecutableBuffer, dynasm, x64::Assembler};
-use std::sync::LazyLock;
 
-use std::collections::HashMap;
 use std::error::Error;
 use std::ffi::c_void;
 
@@ -320,40 +412,9 @@ fn calc_after_cp_offset(rec_offset: u64) -> Result<i64, Box<dyn Error>> {
 #[cfg(test)]
 mod swt_cp_tests {
     use super::*;
+    use crate::trace::swt::tests::asm::AsmTestHelper;
     use dynasmrt::{dynasm, x64::Assembler};
     use std::error::Error;
-
-    fn get_asm_instructions(buffer: &dynasmrt::ExecutableBuffer) -> Vec<String> {
-        if buffer.len() == 0 {
-            return vec![];
-        }
-        let code_ptr = buffer.ptr(dynasmrt::AssemblyOffset(0)) as *const u8;
-        let code_size = buffer.len();
-        // Use Capstone to disassemble and check the generated instructions
-        let capstone = Capstone::new()
-            .x86()
-            .mode(arch::x86::ArchMode::Mode64)
-            .build()
-            .unwrap();
-
-        let instructions = capstone
-            .disasm_all(
-                unsafe { std::slice::from_raw_parts(code_ptr, code_size) },
-                code_ptr as u64,
-            )
-            .expect("Failed to disassemble code");
-
-        return instructions
-            .iter()
-            .map(|inst| {
-                format!(
-                    "{} {}",
-                    inst.mnemonic().unwrap_or(""),
-                    inst.op_str().unwrap_or("")
-                )
-            })
-            .collect();
-    }
 
     #[test]
     fn test_restore_registers_rbx() {
@@ -378,7 +439,7 @@ mod swt_cp_tests {
 
         restore_registers(&mut asm, used_regs, 0);
         let buffer: dynasmrt::ExecutableBuffer = asm.finalize().unwrap();
-        let instructions = get_asm_instructions(&buffer);
+        let instructions = AsmTestHelper::disassemble(&buffer);
         assert_eq!(instructions.len(), 1);
         assert_eq!(instructions[0], "mov rbx, qword ptr [rbp + 0x50]");
     }
@@ -406,7 +467,7 @@ mod swt_cp_tests {
 
         restore_registers(&mut asm, used_regs, 0);
         let buffer: dynasmrt::ExecutableBuffer = asm.finalize().unwrap();
-        let instructions = get_asm_instructions(&buffer);
+        let instructions = AsmTestHelper::disassemble(&buffer);
         assert_eq!(instructions.len(), 0);
     }
 
@@ -432,10 +493,15 @@ mod swt_cp_tests {
         used_regs.insert(15, 8);
 
         restore_registers(&mut asm, used_regs, 0);
-        let buffer: dynasmrt::ExecutableBuffer = asm.finalize().unwrap();
-        let instructions = get_asm_instructions(&buffer);
-        assert_eq!(instructions[0], "mov r10, qword ptr [rbp + 0x28]");
-        assert_eq!(instructions[1], "mov r14, qword ptr [rbp + 8]");
+        let buffer = asm.finalize().unwrap();
+        let instructions = AsmTestHelper::disassemble(&buffer);
+
+        let expected_instructions = [
+            "mov r10, qword ptr [rbp + 0x28]",
+            "mov r14, qword ptr [rbp + 8]",
+        ];
+
+        AsmTestHelper::verify_instruction_sequence(&instructions, &expected_instructions);
     }
 
     #[test]
@@ -444,20 +510,25 @@ mod swt_cp_tests {
         let used_regs = HashMap::new();
         restore_registers(&mut asm, used_regs, 0);
         let buffer: dynasmrt::ExecutableBuffer = asm.finalize().unwrap();
-        let instructions = get_asm_instructions(&buffer);
-        assert_eq!(instructions[0], "mov rax, qword ptr [rbp + 0x60]");
-        assert_eq!(instructions[1], "mov rcx, qword ptr [rbp + 0x58]");
-        assert_eq!(instructions[2], "mov rbx, qword ptr [rbp + 0x50]");
-        assert_eq!(instructions[3], "mov rdi, qword ptr [rbp + 0x48]");
-        assert_eq!(instructions[4], "mov rsi, qword ptr [rbp + 0x40]");
-        assert_eq!(instructions[5], "mov r8, qword ptr [rbp + 0x38]");
-        assert_eq!(instructions[6], "mov r9, qword ptr [rbp + 0x30]");
-        assert_eq!(instructions[7], "mov r10, qword ptr [rbp + 0x28]");
-        assert_eq!(instructions[8], "mov r11, qword ptr [rbp + 0x20]");
-        assert_eq!(instructions[9], "mov r12, qword ptr [rbp + 0x18]");
-        assert_eq!(instructions[10], "mov r13, qword ptr [rbp + 0x10]");
-        assert_eq!(instructions[11], "mov r14, qword ptr [rbp + 8]");
-        assert_eq!(instructions[12], "mov r15, qword ptr [rbp]");
+        let instructions = AsmTestHelper::disassemble(&buffer);
+
+        let expected_instructions = [
+            "mov rax, qword ptr [rbp + 0x60]",
+            "mov rcx, qword ptr [rbp + 0x58]",
+            "mov rbx, qword ptr [rbp + 0x50]",
+            "mov rdi, qword ptr [rbp + 0x48]",
+            "mov rsi, qword ptr [rbp + 0x40]",
+            "mov r8, qword ptr [rbp + 0x38]",
+            "mov r9, qword ptr [rbp + 0x30]",
+            "mov r10, qword ptr [rbp + 0x28]",
+            "mov r11, qword ptr [rbp + 0x20]",
+            "mov r12, qword ptr [rbp + 0x18]",
+            "mov r13, qword ptr [rbp + 0x10]",
+            "mov r14, qword ptr [rbp + 8]",
+            "mov r15, qword ptr [rbp]",
+        ];
+
+        AsmTestHelper::verify_instruction_sequence(&instructions, &expected_instructions);
     }
 
     #[test]
@@ -494,5 +565,83 @@ mod swt_cp_tests {
         let offset = calc_after_cp_offset(code_ptr)?;
         assert_eq!(offset, 11, "The call offset should be 11 bytes");
         Ok(())
+    }
+
+    // Tests moved from cfg.rs
+    #[test]
+    fn test_dwarf_to_dynasm_reg_all_valid_registers() {
+        // Test all valid DWARF register numbers and their expected DynASM mappings
+        let test_cases = [
+            (0, 0),   // RAX -> RAX
+            (1, 2),   // RDX -> RDX (note: different order)
+            (2, 1),   // RCX -> RCX (note: different order)
+            (3, 3),   // RBX -> RBX
+            (4, 6),   // RSI -> RSI (note: different order)
+            (5, 7),   // RDI -> RDI (note: different order)
+            (6, 5),   // RBP -> RBP (note: different order)
+            (7, 4),   // RSP -> RSP (note: different order)
+            (8, 8),   // R8 -> R8
+            (9, 9),   // R9 -> R9
+            (10, 10), // R10 -> R10
+            (11, 11), // R11 -> R11
+            (12, 12), // R12 -> R12
+            (13, 13), // R13 -> R13
+            (14, 14), // R14 -> R14
+            (15, 15), // R15 -> R15
+        ];
+
+        for (dwarf_reg, expected_dynasm_reg) in test_cases.iter() {
+            assert_eq!(
+                dwarf_to_dynasm_reg(*dwarf_reg), 
+                *expected_dynasm_reg,
+                "DWARF register {} should map to DynASM register {}",
+                dwarf_reg,
+                expected_dynasm_reg
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Unsupported DWARF register number: 16")]
+    fn test_dwarf_to_dynasm_reg_invalid_16() {
+        let _ = dwarf_to_dynasm_reg(16);
+    }
+
+    #[test]
+    #[should_panic(expected = "Unsupported DWARF register number: 255")]
+    fn test_dwarf_to_dynasm_reg_invalid_255() {
+        let _ = dwarf_to_dynasm_reg(255);
+    }
+
+    #[test]
+    fn test_reg_offsets_contains_expected_registers() {
+        let expected_registers = [0, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15];
+        
+        for reg in expected_registers.iter() {
+            assert!(
+                REG_OFFSETS.contains_key(reg),
+                "Register {} should have an offset mapping",
+                reg
+            );
+        }
+
+        // Verify that unsaved registers are not in the mapping
+        let unsaved_registers = [1, 6, 7]; // rdx, rbp, rsp
+        for reg in unsaved_registers.iter() {
+            assert!(
+                !REG_OFFSETS.contains_key(reg),
+                "Register {} should not have an offset mapping (it's not saved)",
+                reg
+            );
+        }
+    }
+
+    #[test]
+    fn test_reg_offsets_are_properly_ordered() {
+        // Verify that register offsets follow expected stack layout
+        // Higher registers should have lower (closer to stack top) offsets
+        assert!(REG_OFFSETS[&15] < REG_OFFSETS[&14]); // r15 < r14
+        assert!(REG_OFFSETS[&14] < REG_OFFSETS[&13]); // r14 < r13
+        assert!(REG_OFFSETS[&0] > REG_OFFSETS[&2]);   // rax > rcx (rax is saved last)
     }
 }
