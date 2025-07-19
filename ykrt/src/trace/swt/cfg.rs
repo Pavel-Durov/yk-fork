@@ -36,13 +36,6 @@ pub static YKB_SWT_VERBOSE_ASM: LazyLock<bool> = LazyLock::new(|| {
         .unwrap_or(false)
 });
 
-// Flag for module cloning
-pub(crate) static YKB_SWT_MODCLONE: LazyLock<bool> = LazyLock::new(|| {
-    env::var("YKB_SWT_MODCLONE")
-        .map(|v| v == "1")
-        .unwrap_or(false)
-});
-
 // Flag for control point break
 pub(crate) static YKB_SWT_CP_BREAK: LazyLock<bool> = LazyLock::new(|| {
     env::var("YKB_SWT_CP_BREAK")

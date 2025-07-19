@@ -15,7 +15,7 @@ use std::{
 };
 
 #[cfg(tracer_swt)]
-use crate::trace::swt::cfg::{CPTransitionDirection, ControlPointStackMapId, YKB_SWT_MODCLONE};
+use crate::trace::swt::cfg::{CPTransitionDirection, ControlPointStackMapId};
 #[cfg(tracer_swt)]
 use crate::trace::swt::cp::{CPTransition, swt_module_cp_transition};
 
@@ -441,8 +441,8 @@ impl MT {
     pub fn control_point(self: &Arc<Self>, loc: &Location, frameaddr: *mut c_void, smid: usize) {
         match self.transition_control_point(loc, frameaddr, smid) {
             TransitionControlPoint::NoAction => {
-                #[cfg(tracer_swt)]
-                if *YKB_SWT_MODCLONE && smid == ControlPointStackMapId::UnOpt as usize {
+                #[cfg(swt_modclone)]
+                if smid == ControlPointStackMapId::UnOpt as usize {
                     unsafe {
                         swt_module_cp_transition(
                             CPTransition {
@@ -495,8 +495,8 @@ impl MT {
                     });
                 });
                 self.stats.timing_state(TimingState::JitExecuting);
-                #[cfg(tracer_swt)]
-                if *YKB_SWT_MODCLONE && smid == ControlPointStackMapId::Opt as usize {
+                #[cfg(swt_modclone)]
+                if smid == ControlPointStackMapId::Opt as usize {
                     unsafe {
                         swt_module_cp_transition(
                             CPTransition {
@@ -664,8 +664,8 @@ impl MT {
                 }
             }
         });
-        #[cfg(tracer_swt)]
-        if *YKB_SWT_MODCLONE && smid == ControlPointStackMapId::Opt as usize {
+        #[cfg(swt_modclone)]
+        if smid == ControlPointStackMapId::Opt as usize {
             unsafe {
                 swt_module_cp_transition(
                     CPTransition {
@@ -743,8 +743,8 @@ impl MT {
             }
         }
         self.stats.timing_state(TimingState::OutsideYk);
-        #[cfg(tracer_swt)]
-        if *YKB_SWT_MODCLONE && smid == ControlPointStackMapId::UnOpt as usize {
+        #[cfg(swt_modclone)]
+        if smid == ControlPointStackMapId::UnOpt as usize {
             unsafe {
                 swt_module_cp_transition(
                     CPTransition {

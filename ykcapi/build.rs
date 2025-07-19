@@ -2,6 +2,7 @@ use std::env;
 
 pub fn main() {
     println!("cargo::rerun-if-env-changed=YKB_TRACER");
+    println!("cargo::rerun-if-env-changed=YKB_SWT_MODCLONE");
     match env::var("YKB_TRACER") {
         Ok(ref tracer) if tracer == "swt" => println!("cargo::rustc-cfg=tracer_swt"),
         Ok(ref tracer) if tracer == "hwt" => println!("cargo::rustc-cfg=tracer_hwt"),
@@ -12,8 +13,6 @@ pub fn main() {
 
     match env::var("YKB_SWT_MODCLONE") {
         Ok(ref modclone) if modclone == "1" => println!("cargo::rustc-cfg=swt_modclone"),
-        Ok(ref modclone) if modclone == "0" => println!("cargo::rustc-cfg=!swt_modclone"),
-        Ok(x) => panic!("Invalid value for YKB_SWT_MODCLONE: {x}"),
-        Err(_) => println!("cargo::rustc-cfg=swt_modclone"),
+        _ => {},
     }
 }

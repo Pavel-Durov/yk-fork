@@ -10,6 +10,7 @@ use {
 
 pub fn main() {
     println!("cargo::rerun-if-env-changed=YKB_TRACER");
+    println!("cargo::rerun-if-env-changed=YKB_SWT_MODCLONE");
     // Always compile in yk's default JIT compiler.
     println!("cargo::rustc-cfg=jitc_yk");
     println!("cargo::rustc-check-cfg=cfg(jitc_yk)");
@@ -24,7 +25,10 @@ pub fn main() {
         Ok(x) => panic!("Unknown tracer {x}"),
         Err(_) => panic!("Invalid value for YKB_TRACER"),
     }
-
+    match env::var("YKB_SWT_MODCLONE") {
+        Ok(ref modclone) if modclone == "1" => println!("cargo::rustc-cfg=swt_modclone"),
+        _ => {},
+    }
     // We need to explicitly tell Cargo to track these files otherwise it won't rebuild when they
     // change.
     println!("cargo::rerun-if-changed=src/compile/jitc_yk/jit_ir/jit_ir.y");
