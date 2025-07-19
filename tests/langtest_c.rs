@@ -101,7 +101,7 @@ fn main() {
             let ptn_re_ignore = Regex::new(r"\{\{_}\}").unwrap();
             let text_re = Regex::new(r"[a-zA-Z0-9\._]+").unwrap();
 
-            // Custom pattern for SWT function mapping with optional __yk_unopt_ prefix
+            // Pattern for SWT MODCLONE function mapping with optional __yk_unopt_ prefix
             // E.g. use {{__yk_unopt_:function_name}} matches both "function_name" and "__yk_unopt_" prefix
             let swt_func_ptn = Regex::new(r"\{\{__yk_unopt_:([^}]+)\}\}").unwrap();
             let swt_func_text = Regex::new(r"(?:__yk_unopt_)?[a-zA-Z0-9\._]+").unwrap();
