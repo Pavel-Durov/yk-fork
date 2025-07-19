@@ -36,7 +36,6 @@
 
 // Check that ptr addition in C input leads to the expected AOT and JIT IR.
 
-// SWT Note: Signal 11 after exec trace
 
 #include <stdio.h>
 #include <stdlib.h>

@@ -1,5 +1,6 @@
-
-// ignore-if: test "$YKB_TRACER" = "swt"
+// ## YKFIXME: We don't know yet how to handle long jumps in SWT MODCLONE because
+// ## the jump might skip the block with the tracing call.
+// ignore-if: test "$YKB_SWT_MODCLONE" = "1"
 // Run-time:
 //   env-var: YKD_LOG_IR=jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
@@ -14,8 +15,7 @@
 // Tests that we can deal with setjmp/longjmp when we jump from foreign code
 // into a different place in the function that started outlining.
 
-// FIXME: We don't know yet how to handle long jumps in SWT because the
-// jump might skip the block with the tracing call.
+
 
 #include <assert.h>
 #include <setjmp.h>

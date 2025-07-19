@@ -50,6 +50,8 @@
 //     yk-execution: deoptimise ...
 //     exit
 
+// Test some binary operations.
+
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -71,11 +73,11 @@ int main(int argc, char **argv) {
     int or = i | 1;
     int lshr = (uint)i >> 1;
     int ashr = i >> 1;
-    fprintf(stderr, "and %d\nor %d\nlshr %d\nashr %d\n", and, or, lshr, ashr);
     int ashr2 = -i >> 1;
     int xor = i ^ 1;
     int xor2 = ~i;
     int shl = i << 1;
+    fprintf(stderr, "and %d\nor %d\nlshr %d\nashr %d\n", and, or, lshr, ashr);
     fprintf(stderr, "ashr2 %d\nxor %d\nxor2 %d\nshl %d\n---\n", ashr2, xor,
             xor2, shl);
     i--;

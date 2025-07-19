@@ -25,8 +25,6 @@
 // Check that return values of fucntions inlined into the trace are properly
 // mapped.
 
-// SWT Note: Signal 11 after exec trace - not reproducible with gdb
-
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
