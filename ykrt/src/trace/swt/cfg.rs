@@ -65,28 +65,13 @@ pub(crate) fn dwarf_to_dynasm_reg(dwarf_reg_num: u8) -> u8 {
     }
 }
 
-// We use the registers saved by the control point.
-// __ykrt_control_point:
-// "push rax",
-// "push rcx",
-// "push rbx",
-// "push rdi",
-// "push rsi",
-// "push r8",
-// "push r9",
-// "push r10",
-// "push r11",
-// "push r12",
-// "push r13",
-// "push r14",
-// "push r15",
+// Mapping of DWARF register numbers to offsets in the __ykrt_control_point stack frame.
 pub(crate) static REG_OFFSETS: LazyLock<HashMap<u16, i32>> = LazyLock::new(|| {
     let mut m = HashMap::new();
     m.insert(0, 0x60); // rax
     // 1 => 8,  // rdx - is not saved
     m.insert(2, 0x58); // rcx
     m.insert(3, 0x50); // rbx
-    // Question: why rsi and rdi are not at their index?
     m.insert(5, 0x48); // rdi
     m.insert(4, 0x40); // rsi
     // 6 => 0x48 - not saved
@@ -116,9 +101,30 @@ mod cfg_tests {
     use super::*;
 
     #[test]
-    #[should_panic(expected = "Unsupported DWARF register number:")]
-    fn test_dwarf_to_dynasm_reg_invalid() {
-        // Passing an invalid register number should panic.
-        let _ = dwarf_to_dynasm_reg(100);
+    fn test_dwarf_to_dynasm_reg_all_valid_registers() {
+        // Test all valid DWARF register numbers and their expected DynASM mappings
+        assert_eq!(dwarf_to_dynasm_reg(0), 0);   // RAX -> RAX
+        assert_eq!(dwarf_to_dynasm_reg(1), 2);   // RDX -> RDX (note: different order)
+        assert_eq!(dwarf_to_dynasm_reg(2), 1);   // RCX -> RCX (note: different order)
+        assert_eq!(dwarf_to_dynasm_reg(3), 3);   // RBX -> RBX
+        assert_eq!(dwarf_to_dynasm_reg(4), 6);   // RSI -> RSI (note: different order)
+        assert_eq!(dwarf_to_dynasm_reg(5), 7);   // RDI -> RDI (note: different order)
+        assert_eq!(dwarf_to_dynasm_reg(6), 5);   // RBP -> RBP (note: different order)
+        assert_eq!(dwarf_to_dynasm_reg(7), 4);   // RSP -> RSP (note: different order)
+        assert_eq!(dwarf_to_dynasm_reg(8), 8);   // R8 -> R8
+        assert_eq!(dwarf_to_dynasm_reg(9), 9);   // R9 -> R9
+        assert_eq!(dwarf_to_dynasm_reg(10), 10); // R10 -> R10
+        assert_eq!(dwarf_to_dynasm_reg(11), 11); // R11 -> R11
+        assert_eq!(dwarf_to_dynasm_reg(12), 12); // R12 -> R12
+        assert_eq!(dwarf_to_dynasm_reg(13), 13); // R13 -> R13
+        assert_eq!(dwarf_to_dynasm_reg(14), 14); // R14 -> R14
+        assert_eq!(dwarf_to_dynasm_reg(15), 15); // R15 -> R15
+    }
+
+    #[test]
+    #[should_panic(expected = "Unsupported DWARF register number: 16")]
+    fn test_dwarf_to_dynasm_reg_invalid_16() {
+    
+        let _ = dwarf_to_dynasm_reg(16);
     }
 }

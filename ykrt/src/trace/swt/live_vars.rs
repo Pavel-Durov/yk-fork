@@ -531,9 +531,6 @@ fn calculate_live_vars_buffer_size(src_rec: &Record) -> i32 {
 }
 
 // Allocates a temporary buffer for the live vars.
-// This allocation happens only once per direction.
-// The buffer is aligned to 16 bytes.
-// TODO: dealloc buffer
 fn allocate_buffer(src_rec: &Record, smid: ControlPointStackMapId) -> Option<&ThreadSafeBuffer> {
     let src_val_buffer_size = calculate_live_vars_buffer_size(src_rec);
 
