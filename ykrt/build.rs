@@ -17,6 +17,7 @@ pub fn main() {
 
     println!("cargo::rustc-check-cfg=cfg(tracer_hwt)");
     println!("cargo::rustc-check-cfg=cfg(tracer_swt)");
+    println!("cargo::rustc-check-cfg=cfg(swt_modclone)");
     match env::var("YKB_TRACER") {
         Ok(ref tracer) if tracer == "swt" => println!("cargo::rustc-cfg=tracer_swt"),
         #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
