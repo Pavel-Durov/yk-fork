@@ -12,13 +12,6 @@ pub enum ControlPointStackMapId {
     UnOpt = 1,
 }
 
-#[repr(usize)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CPTransitionDirection {
-    UnoptToOpt = 0,
-    OptToUnopt = 1,
-}
-
 /// The size of a 64-bit register in bytes.
 pub(crate) static REG64_BYTESIZE: u64 = 8;
 

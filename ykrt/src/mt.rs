@@ -15,9 +15,9 @@ use std::{
 };
 
 #[cfg(tracer_swt)]
-use crate::trace::swt::cfg::{CPTransitionDirection, ControlPointStackMapId};
+use crate::trace::swt::cfg::ControlPointStackMapId;
 #[cfg(tracer_swt)]
-use crate::trace::swt::cp::{CPTransition, swt_module_cp_transition};
+use crate::trace::swt::cp::{cp_transition_to_opt, cp_transition_to_unopt, cp_transition_to_unopt_and_exec_trace};
 
 use atomic_enum::atomic_enum;
 use parking_lot::Mutex;
@@ -440,21 +440,7 @@ impl MT {
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
     pub fn control_point(self: &Arc<Self>, loc: &Location, frameaddr: *mut c_void, smid: usize) {
         match self.transition_control_point(loc, frameaddr, smid) {
-            TransitionControlPoint::NoAction => {
-                #[cfg(swt_modclone)]
-                if smid == ControlPointStackMapId::UnOpt as usize {
-                    unsafe {
-                        swt_module_cp_transition(
-                            CPTransition {
-                                direction: CPTransitionDirection::UnoptToOpt,
-                                frameaddr,
-                                trace_addr: 0 as *const c_void,
-                            },
-                            &self.stats,
-                        );
-                    }
-                }
-            }
+            TransitionControlPoint::NoAction => {}
             TransitionControlPoint::AbortTracing(ak) => {
                 let thread_tracer = MTThread::with_borrow_mut(|mtt| match mtt.pop_tstate() {
                     MTThreadState::Tracing { thread_tracer, .. } => thread_tracer,
@@ -496,16 +482,10 @@ impl MT {
                 });
                 self.stats.timing_state(TimingState::JitExecuting);
                 #[cfg(swt_modclone)]
-                if smid == ControlPointStackMapId::Opt as usize {
-                    unsafe {
-                        swt_module_cp_transition(
-                            CPTransition {
-                                direction: CPTransitionDirection::OptToUnopt,
-                                frameaddr,
-                                trace_addr: trace_addr,
-                            },
-                            &self.stats,
-                        );
+                unsafe {
+                    // Do the transition to unopt only if we are in opt mode.
+                    if smid == ControlPointStackMapId::Opt as usize {
+                        cp_transition_to_unopt_and_exec_trace(frameaddr, trace_addr, &self.stats);
                     }
                 }
 
@@ -665,17 +645,8 @@ impl MT {
             }
         });
         #[cfg(swt_modclone)]
-        if smid == ControlPointStackMapId::Opt as usize {
-            unsafe {
-                swt_module_cp_transition(
-                    CPTransition {
-                        direction: CPTransitionDirection::OptToUnopt,
-                        frameaddr,
-                        trace_addr: 0 as *const c_void,
-                    },
-                    &self.stats,
-                );
-            }
+        unsafe {
+            cp_transition_to_unopt(frameaddr, &self.stats);
         }
     }
 
@@ -744,17 +715,8 @@ impl MT {
         }
         self.stats.timing_state(TimingState::OutsideYk);
         #[cfg(swt_modclone)]
-        if smid == ControlPointStackMapId::UnOpt as usize {
-            unsafe {
-                swt_module_cp_transition(
-                    CPTransition {
-                        direction: CPTransitionDirection::UnoptToOpt,
-                        frameaddr,
-                        trace_addr: 0 as *const c_void,
-                    },
-                    &self.stats,
-                );
-            }
+        unsafe {
+            cp_transition_to_opt(frameaddr, &self.stats);
         }
     }
 

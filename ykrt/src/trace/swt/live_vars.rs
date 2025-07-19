@@ -7,7 +7,7 @@ use yksmp::Location::{Direct, Indirect, Register};
 use yksmp::Record;
 
 use crate::trace::swt::cfg::{
-    CPTransitionDirection, LiveVarsBuffer, REG_OFFSETS, YKB_SWT_VERBOSE, dwarf_to_dynasm_reg,
+    ControlPointStackMapId, LiveVarsBuffer, REG_OFFSETS, YKB_SWT_VERBOSE, dwarf_to_dynasm_reg,
 };
 
 // Create a thread-safe wrapper for the buffer pointer
@@ -536,7 +536,7 @@ fn calculate_live_vars_buffer_size(src_rec: &Record) -> i32 {
 // TODO: dealloc buffer
 fn allocate_buffer(
     src_rec: &Record,
-    cp_direction: CPTransitionDirection,
+    smid: ControlPointStackMapId,
 ) -> Option<&ThreadSafeBuffer> {
     let src_val_buffer_size = calculate_live_vars_buffer_size(src_rec);
 
@@ -544,9 +544,9 @@ fn allocate_buffer(
         return None;
     }
 
-    let buffer_cell = match cp_direction {
-        CPTransitionDirection::UnoptToOpt => &OPT_BUFFER,
-        CPTransitionDirection::OptToUnopt => &UNOPT_BUFFER,
+    let buffer_cell = match smid {
+        ControlPointStackMapId::UnOpt => &UNOPT_BUFFER,
+        ControlPointStackMapId::Opt => &OPT_BUFFER,
     };
 
     // Get the buffer - either from the OnceLock or create it
@@ -567,9 +567,9 @@ fn allocate_buffer(
 pub(crate) fn copy_live_vars_to_temp_buffer(
     asm: &mut Assembler,
     src_rec: &Record,
-    cp_direction: CPTransitionDirection,
+    smid: ControlPointStackMapId,
 ) -> LiveVarsBuffer {
-    let thread_safe_buffer = allocate_buffer(src_rec, cp_direction);
+    let thread_safe_buffer = allocate_buffer(src_rec, smid);
     if thread_safe_buffer.is_none() {
         return LiveVarsBuffer {
             ptr: 0 as *mut u8,
@@ -581,8 +581,8 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
     if *YKB_SWT_VERBOSE {
         if let Some(buffer) = thread_safe_buffer {
             println!(
-                "Using buffer at {:p} for direction {:?}",
-                buffer.ptr, cp_direction
+                "Using buffer at {:p} for smid {:?}",
+                buffer.ptr, smid
             );
         }
     }
@@ -1312,7 +1312,7 @@ mod live_vars_tests {
 
         let mut asm = Assembler::new().unwrap();
         let lvb =
-            copy_live_vars_to_temp_buffer(&mut asm, &src_rec, CPTransitionDirection::UnoptToOpt);
+            copy_live_vars_to_temp_buffer(&mut asm, &src_rec, ControlPointStackMapId::UnOpt);
         assert_eq!(32, lvb.size);
         assert_eq!(3, lvb.variables.len());
 
