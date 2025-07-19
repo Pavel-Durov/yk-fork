@@ -368,7 +368,7 @@ impl<'a> Assemble<'a> {
                 // dynamically upon entering the control point (e.g. by subtracting the current RBP
                 // from the previous RBP).
                 if let Ok(sm) = AOT_STACKMAPS.as_ref() {
-                    // In swt modclone traces are always comming from unoptimised code.
+                    // Traces from swt modclone are always comming from unoptimised code.
                     // Unoptimised control point has a stackmap id of 1.
                     let smid = if cfg!(swt_modclone) { 1 } else { 0 };
 
