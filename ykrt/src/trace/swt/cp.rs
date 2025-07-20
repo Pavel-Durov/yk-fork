@@ -2,6 +2,16 @@ use std::collections::HashMap;
 use std::env;
 use std::sync::LazyLock;
 
+use crate::aotsmp::AOT_STACKMAPS;
+use crate::trace::swt::live_vars::{copy_live_vars_to_temp_buffer, set_destination_live_vars};
+use capstone::prelude::*;
+use dynasmrt::{DynasmApi, ExecutableBuffer, dynasm, x64::Assembler};
+
+use std::error::Error;
+use std::ffi::c_void;
+
+use crate::log::stats::Stats;
+
 #[repr(usize)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ControlPointStackMapId {
@@ -85,16 +95,6 @@ pub(crate) static REG_OFFSETS: LazyLock<HashMap<u16, i32>> = LazyLock::new(|| {
     m.insert(15, 0x0); // r15
     m
 });
-
-use crate::aotsmp::AOT_STACKMAPS;
-use crate::trace::swt::live_vars::{copy_live_vars_to_temp_buffer, set_destination_live_vars};
-use capstone::prelude::*;
-use dynasmrt::{DynasmApi, ExecutableBuffer, dynasm, x64::Assembler};
-
-use std::error::Error;
-use std::ffi::c_void;
-
-use crate::log::stats::Stats;
 
 pub struct CPTransition {
     // The stack map id that we transition from.

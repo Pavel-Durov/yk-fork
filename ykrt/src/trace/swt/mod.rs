@@ -84,6 +84,7 @@ pub extern "C" fn __yk_trace_basicblock(function_index: usize, block_index: usiz
 #[cold]
 #[unsafe(no_mangle)]
 pub extern "C" fn __yk_trace_basicblock_dummy(function_index: usize, block_index: usize) {
+    // NOTE - not sure how much affect this has on the compiler in practice.
     // Consume the parameters to prevent LLVM from treating them as unused
     std::hint::black_box(function_index);
     std::hint::black_box(block_index);

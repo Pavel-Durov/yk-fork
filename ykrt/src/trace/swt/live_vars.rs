@@ -11,10 +11,7 @@ use crate::trace::swt::cp::{
 };
 
 // Primary temporary register - used in buffer copy and destination live vars copy.
-static TEMP_REG_PRIMARY: u8 = 0; // RAX
-
-// Dwarf register number for RCX
-static TEMP_REG_SECONDARY_DYNASM: u8 = 1;
+static TEMP_REG_PRIMARY_DWARF: u8 = 0; // RAX
 
 // Dwarf register number for RCX
 static TEMP_REG_SECONDARY_DWARF: u8 = 2;
@@ -26,7 +23,6 @@ struct RestoreTempRegisters<'a> {
     src_var_indirect_index: i32,
 }
 
-// Define structs for each memory operation to make parameter ordering clear
 struct MemToRegParams {
     src_ptr: i64,
     src_offset: i32,
@@ -53,53 +49,50 @@ struct RegToRbpParams {
     size: u16,
 }
 
-// Helper function to generate assembly for memory-to-register operations
 fn emit_mem_to_reg(asm: &mut Assembler, params: MemToRegParams) {
     match params.size {
         1 => dynasm!(asm
-            ; mov Rq(TEMP_REG_PRIMARY), QWORD params.src_ptr
-            ; mov Rb(params.dst_reg), BYTE [Rq(TEMP_REG_PRIMARY) + params.src_offset]),
+            ; mov Rq(TEMP_REG_PRIMARY_DWARF), QWORD params.src_ptr
+            ; mov Rb(params.dst_reg), BYTE [Rq(TEMP_REG_PRIMARY_DWARF) + params.src_offset]),
         2 => dynasm!(asm
-            ; mov Rq(TEMP_REG_PRIMARY), QWORD params.src_ptr
-            ; mov Rw(params.dst_reg), WORD [Rq(TEMP_REG_PRIMARY) + params.src_offset]),
+            ; mov Rq(TEMP_REG_PRIMARY_DWARF), QWORD params.src_ptr
+            ; mov Rw(params.dst_reg), WORD [Rq(TEMP_REG_PRIMARY_DWARF) + params.src_offset]),
         4 => dynasm!(asm
-            ; mov Rq(TEMP_REG_PRIMARY), QWORD params.src_ptr
-            ; mov Rd(params.dst_reg), DWORD [Rq(TEMP_REG_PRIMARY) + params.src_offset]),
+            ; mov Rq(TEMP_REG_PRIMARY_DWARF), QWORD params.src_ptr
+            ; mov Rd(params.dst_reg), DWORD [Rq(TEMP_REG_PRIMARY_DWARF) + params.src_offset]),
         8 => dynasm!(asm
-            ; mov Rq(TEMP_REG_PRIMARY), QWORD params.src_ptr
-            ; mov Rq(params.dst_reg), QWORD [Rq(TEMP_REG_PRIMARY) + params.src_offset]),
+            ; mov Rq(TEMP_REG_PRIMARY_DWARF), QWORD params.src_ptr
+            ; mov Rq(params.dst_reg), QWORD [Rq(TEMP_REG_PRIMARY_DWARF) + params.src_offset]),
         _ => panic!("Unsupported value size: {}", params.size),
     }
 }
 
-// Helper function to generate assembly for memory-to-memory operations
 fn emit_mem_to_mem(asm: &mut Assembler, params: MemToMemParams) {
     match params.size {
         1 => dynasm!(asm
-            ; mov Rq(TEMP_REG_PRIMARY), QWORD params.src_ptr
-            ; mov Rb(TEMP_REG_SECONDARY_DYNASM), BYTE [Rq(TEMP_REG_PRIMARY) + params.src_offset]
-            ; mov BYTE [rbp + params.dst_offset], Rb(TEMP_REG_SECONDARY_DYNASM)
+            ; mov Rq(TEMP_REG_PRIMARY_DWARF), QWORD params.src_ptr
+            ; mov Rb(dwarf_to_dynasm_reg(TEMP_REG_SECONDARY_DWARF)), BYTE [Rq(TEMP_REG_PRIMARY_DWARF) + params.src_offset]
+            ; mov BYTE [rbp + params.dst_offset], Rb(dwarf_to_dynasm_reg(TEMP_REG_SECONDARY_DWARF))
         ),
         2 => dynasm!(asm
-            ; mov Rq(TEMP_REG_PRIMARY), QWORD params.src_ptr
-            ; mov Rw(TEMP_REG_SECONDARY_DYNASM), WORD [Rq(TEMP_REG_PRIMARY) + params.src_offset]
-            ; mov WORD [rbp + params.dst_offset], Rw(TEMP_REG_SECONDARY_DYNASM)
+            ; mov Rq(TEMP_REG_PRIMARY_DWARF), QWORD params.src_ptr
+            ; mov Rw(dwarf_to_dynasm_reg(TEMP_REG_SECONDARY_DWARF)), WORD [Rq(TEMP_REG_PRIMARY_DWARF) + params.src_offset]
+            ; mov WORD [rbp + params.dst_offset], Rw(dwarf_to_dynasm_reg(TEMP_REG_SECONDARY_DWARF))
         ),
         4 => dynasm!(asm
-            ; mov Rq(TEMP_REG_PRIMARY), QWORD params.src_ptr
-            ; mov Rd(TEMP_REG_SECONDARY_DYNASM), DWORD [Rq(TEMP_REG_PRIMARY) + params.src_offset]
-            ; mov DWORD [rbp + params.dst_offset], Rd(TEMP_REG_SECONDARY_DYNASM)
+            ; mov Rq(TEMP_REG_PRIMARY_DWARF), QWORD params.src_ptr
+            ; mov Rd(dwarf_to_dynasm_reg(TEMP_REG_SECONDARY_DWARF)), DWORD [Rq(TEMP_REG_PRIMARY_DWARF) + params.src_offset]
+            ; mov DWORD [rbp + params.dst_offset], Rd(dwarf_to_dynasm_reg(TEMP_REG_SECONDARY_DWARF))
         ),
         8 => dynasm!(asm
-            ; mov Rq(TEMP_REG_PRIMARY), QWORD params.src_ptr
-            ; mov Rq(TEMP_REG_SECONDARY_DYNASM), QWORD [Rq(TEMP_REG_PRIMARY) + params.src_offset]
-            ; mov QWORD [rbp + params.dst_offset], Rq(TEMP_REG_SECONDARY_DYNASM)
+            ; mov Rq(TEMP_REG_PRIMARY_DWARF), QWORD params.src_ptr
+            ; mov Rq(dwarf_to_dynasm_reg(TEMP_REG_SECONDARY_DWARF)), QWORD [Rq(TEMP_REG_PRIMARY_DWARF) + params.src_offset]
+            ; mov QWORD [rbp + params.dst_offset], Rq(dwarf_to_dynasm_reg(TEMP_REG_SECONDARY_DWARF))
         ),
         _ => panic!("Unsupported value size: {}", params.size),
     }
 }
 
-// Helper function to generate assembly for rbp-relative register loads
 fn emit_rbp_to_reg(asm: &mut Assembler, params: RbpToRegParams) {
     match params.size {
         1 => dynasm!(asm; mov Rb(params.dst_reg), BYTE [rbp - params.rbp_offset]),
@@ -110,7 +103,6 @@ fn emit_rbp_to_reg(asm: &mut Assembler, params: RbpToRegParams) {
     }
 }
 
-// Helper function to generate assembly for rbp-relative register stores
 fn emit_reg_to_rbp(asm: &mut Assembler, params: RegToRbpParams) {
     match params.size {
         1 => dynasm!(asm; mov BYTE [rbp + params.rbp_offset], Rb(params.src_reg)),
@@ -121,7 +113,6 @@ fn emit_reg_to_rbp(asm: &mut Assembler, params: RegToRbpParams) {
     }
 }
 
-// Handles additional locations for register-to-register.
 fn handle_register_to_register_additional_locations(
     asm: &mut dynasmrt::Assembler<dynasmrt::x64::X64Relocation>,
     reg_store_rbp_offset: i32,
@@ -150,7 +141,7 @@ fn handle_register_to_register_additional_locations(
                 asm,
                 RbpToRegParams {
                     rbp_offset: reg_store_rbp_offset,
-                    dst_reg: TEMP_REG_PRIMARY,
+                    dst_reg: TEMP_REG_PRIMARY_DWARF,
                     size: *src_val_size,
                 },
             );
@@ -158,7 +149,7 @@ fn handle_register_to_register_additional_locations(
             emit_reg_to_rbp(
                 asm,
                 RegToRbpParams {
-                    src_reg: TEMP_REG_PRIMARY,
+                    src_reg: TEMP_REG_PRIMARY_DWARF,
                     rbp_offset: i32::from(*add_loc),
                     size: *src_val_size,
                 },
@@ -262,7 +253,7 @@ pub(crate) fn set_destination_live_vars(
                     i32::try_from(rbp_offset_reg_store - *reg_store_offset as i64).unwrap();
                 match dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
-                        if *dst_reg_num == TEMP_REG_PRIMARY.into()
+                        if *dst_reg_num == TEMP_REG_PRIMARY_DWARF.into()
                             || *dst_reg_num == TEMP_REG_SECONDARY_DWARF.into()
                         {
                             used_temp_reg_dist.push(RestoreTempRegisters {
@@ -271,7 +262,6 @@ pub(crate) fn set_destination_live_vars(
                                 src_var_indirect_index: src_var_indirect_index,
                             });
                         } else {
-                            // Handle additional locations for both source and destination
                             handle_register_to_register_additional_locations(
                                 asm,
                                 reg_store_rbp_offset,
@@ -299,23 +289,20 @@ pub(crate) fn set_destination_live_vars(
                         }
                     }
                     Indirect(_dst_reg_num, dst_off, dst_val_size) => {
-                        // Handle size mismatch correctly: read full register value, write dst size
-                        // First load register value to temp register (use full source size)
                         emit_rbp_to_reg(
                             asm,
                             RbpToRegParams {
                                 rbp_offset: reg_store_rbp_offset,
-                                dst_reg: TEMP_REG_PRIMARY,
-                                size: *src_val_size, // Read full register value
+                                dst_reg: TEMP_REG_PRIMARY_DWARF,
+                                size: *src_val_size,
                             },
                         );
-                        // Then store to rbp-relative destination (use destination size)
                         emit_reg_to_rbp(
                             asm,
                             RegToRbpParams {
-                                src_reg: TEMP_REG_PRIMARY,
+                                src_reg: TEMP_REG_PRIMARY_DWARF,
                                 rbp_offset: i32::try_from(*dst_off).unwrap(),
-                                size: *dst_val_size, // Write only what fits in destination
+                                size: *dst_val_size,
                             },
                         );
                     }
@@ -327,12 +314,11 @@ pub(crate) fn set_destination_live_vars(
             }
             Indirect(src_reg_num, _src_off, src_val_size)
             | Direct(src_reg_num, _src_off, src_val_size) => {
-                // Indirect(src_reg_num, _src_off, src_val_size) => {
                 assert!(!live_vars_buffer.ptr.is_null(), "Live vars buffer is null");
                 let temp_buffer_offset = src_var_indirect_index * (*src_val_size as i32);
                 match dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
-                        if *dst_reg_num == TEMP_REG_PRIMARY.into()
+                        if *dst_reg_num == TEMP_REG_PRIMARY_DWARF.into()
                             || *dst_reg_num == TEMP_REG_SECONDARY_DWARF.into()
                         {
                             used_temp_reg_dist.push(RestoreTempRegisters {
@@ -342,19 +328,12 @@ pub(crate) fn set_destination_live_vars(
                             });
                         } else {
                             assert!(*src_reg_num == 6, "Indirect register is expected to be rbp");
-                            // Critical fix: Handle size mismatch properly for zero-extension
                             let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
-
-                            // If destination is larger than source, we need proper zero-extension
-                            if *dst_val_size > *src_val_size {
-                                // Zero out the destination register first for proper zero-extension
-                                dynasm!(asm; xor Rq(dst_reg), Rq(dst_reg));
-                            }
 
                             handle_indirect_to_register_additional_locations(
                                 asm,
                                 dst_add_locs,
-                                src_val_size, // Use source size for reading from buffer
+                                src_val_size,
                                 temp_buffer_offset,
                                 &live_vars_buffer,
                                 &mut dest_reg_nums,
@@ -367,7 +346,7 @@ pub(crate) fn set_destination_live_vars(
                                     src_ptr: live_vars_buffer.ptr as i64,
                                     src_offset: temp_buffer_offset,
                                     dst_reg,
-                                    size: *src_val_size, // Read the actual source size
+                                    size: *src_val_size,
                                 },
                             );
                         }
@@ -394,7 +373,7 @@ pub(crate) fn set_destination_live_vars(
         }
     }
 
-    // Handle restoration of temporary registers at the end
+    // Handle restoration of used temporary registers.
     for temp_reg in used_temp_reg_dist {
         match temp_reg.src_location {
             Register(src_reg_num, src_val_size, _src_add_locs) => {
@@ -404,7 +383,6 @@ pub(crate) fn set_destination_live_vars(
 
                 match temp_reg.dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
-                        // Handle additional locations for both source and destination
                         handle_register_to_register_additional_locations(
                             asm,
                             reg_store_rbp_offset,
@@ -443,19 +421,11 @@ pub(crate) fn set_destination_live_vars(
 
                 match temp_reg.dst_location {
                     Register(dst_reg_num, dst_val_size, dst_add_locs) => {
-                        // Critical fix: Handle size mismatch properly for zero-extension
                         let dst_reg = dwarf_to_dynasm_reg((*dst_reg_num).try_into().unwrap());
-
-                        // If destination is larger than source, we need proper zero-extension
-                        if *dst_val_size > *src_val_size {
-                            // Zero out the destination register first for proper zero-extension
-                            dynasm!(asm; xor Rq(dst_reg), Rq(dst_reg));
-                        }
-
                         handle_indirect_to_register_additional_locations(
                             asm,
                             dst_add_locs,
-                            src_val_size, // Use source size for reading from buffer
+                            src_val_size,
                             temp_buffer_offset,
                             &live_vars_buffer,
                             &mut dest_reg_nums,
@@ -468,7 +438,7 @@ pub(crate) fn set_destination_live_vars(
                                 src_ptr: live_vars_buffer.ptr as i64,
                                 src_offset: temp_buffer_offset,
                                 dst_reg,
-                                size: *src_val_size, // Read the actual source size
+                                size: *src_val_size,
                             },
                         );
                     }
@@ -526,11 +496,10 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
 
     let mut src_var_indirect_index = 0;
     let mut variables = HashMap::new();
-    let mut current_buffer_offset = 0i32; // Track actual buffer position
+    let mut current_buffer_offset = 0i32;
 
-    // Set up the pointer to the temporary buffer
     dynasm!(asm
-        ; mov Rq(TEMP_REG_PRIMARY), QWORD ptr as i64
+        ; mov Rq(TEMP_REG_PRIMARY_DWARF), QWORD ptr as i64
     );
 
     for (_, src_var) in src_rec.live_vals.iter().enumerate() {
@@ -541,20 +510,20 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
                 // Different handling based on size
                 match *src_val_size {
                     1 => dynasm!(asm
-                        ; mov Rb(TEMP_REG_SECONDARY_DYNASM), BYTE [rbp + src_rbp_offset]
-                        ; mov BYTE [Rq(TEMP_REG_PRIMARY) + current_buffer_offset], Rb(TEMP_REG_SECONDARY_DYNASM)
+                        ; mov Rb(dwarf_to_dynasm_reg(TEMP_REG_SECONDARY_DWARF)), BYTE [rbp + src_rbp_offset]
+                        ; mov BYTE [Rq(TEMP_REG_PRIMARY_DWARF) + current_buffer_offset], Rb(dwarf_to_dynasm_reg(TEMP_REG_SECONDARY_DWARF))
                     ),
                     2 => dynasm!(asm
-                        ; mov Rw(TEMP_REG_SECONDARY_DYNASM), WORD [rbp + src_rbp_offset]
-                        ; mov WORD [Rq(TEMP_REG_PRIMARY) + current_buffer_offset], Rw(TEMP_REG_SECONDARY_DYNASM)
+                        ; mov Rw(dwarf_to_dynasm_reg(TEMP_REG_SECONDARY_DWARF)), WORD [rbp + src_rbp_offset]
+                        ; mov WORD [Rq(TEMP_REG_PRIMARY_DWARF) + current_buffer_offset], Rw(dwarf_to_dynasm_reg(TEMP_REG_SECONDARY_DWARF))
                     ),
                     4 => dynasm!(asm
-                        ; mov Rd(TEMP_REG_SECONDARY_DYNASM), DWORD [rbp + src_rbp_offset]
-                        ; mov DWORD [Rq(TEMP_REG_PRIMARY) + current_buffer_offset], Rd(TEMP_REG_SECONDARY_DYNASM)
+                        ; mov Rd(dwarf_to_dynasm_reg(TEMP_REG_SECONDARY_DWARF)), DWORD [rbp + src_rbp_offset]
+                        ; mov DWORD [Rq(TEMP_REG_PRIMARY_DWARF) + current_buffer_offset], Rd(dwarf_to_dynasm_reg(TEMP_REG_SECONDARY_DWARF))
                     ),
                     8 => dynasm!(asm
-                        ; mov Rq(TEMP_REG_SECONDARY_DYNASM), QWORD [rbp + src_rbp_offset]
-                        ; mov QWORD [Rq(TEMP_REG_PRIMARY) + current_buffer_offset], Rq(TEMP_REG_SECONDARY_DYNASM)
+                        ; mov Rq(dwarf_to_dynasm_reg(TEMP_REG_SECONDARY_DWARF)), QWORD [rbp + src_rbp_offset]
+                        ; mov QWORD [Rq(TEMP_REG_PRIMARY_DWARF) + current_buffer_offset], Rq(dwarf_to_dynasm_reg(TEMP_REG_SECONDARY_DWARF))
                     ),
                     _ => panic!("Unsupported value size in temporary copy: {}", src_val_size),
                 }
@@ -563,18 +532,13 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
                 current_buffer_offset += *src_val_size as i32; // Move to next position
                 src_var_indirect_index += 1;
             }
-            Register(_, _, _) => {
-                // DO NOTHING - Register variables don't need buffer storage
-            }
+            Register(_, _, _) => {/* DO NOTHING */}
             _ => panic!(
                 "Unsupported source location in temporary copy: {:?}",
-                src_location
+                src_location/* DO NOTHING */
             ),
         }
     }
-
-    // Add memory barrier to ensure all stores complete before buffer is used
-    std::sync::atomic::fence(std::sync::atomic::Ordering::Release);
 
     if *YKB_SWT_VERBOSE {
         eprintln!(
