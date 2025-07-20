@@ -16,6 +16,8 @@ use std::{
 #[cfg(test)]
 pub(crate) mod asm;
 #[cfg(swt_modclone)]
+pub(crate) mod buffer;
+#[cfg(swt_modclone)]
 pub(crate) mod cp;
 #[cfg(swt_modclone)]
 pub(crate) mod live_vars;

@@ -1,37 +1,15 @@
 use dynasmrt::{DynasmApi, dynasm, x64::Assembler};
 use smallvec::SmallVec;
-use std::alloc::{Layout, alloc, handle_alloc_error};
+use std::alloc::Layout;
 use std::collections::HashMap;
-use std::sync::OnceLock;
 use yksmp::Location::{Direct, Indirect, Register};
 use yksmp::Record;
 
+use crate::trace::swt::buffer::{get_or_create_buffer, create_live_vars_buffer};
 use crate::trace::swt::cp::{
     ControlPointStackMapId, LiveVarsBuffer, REG_OFFSETS, YKB_SWT_VERBOSE, dwarf_to_dynasm_reg,
 };
 
-// Create a thread-safe wrapper for the buffer pointer
-#[derive(Debug, Clone)]
-struct ThreadSafeBuffer {
-    ptr: *mut u8,
-    layout: Layout,
-    size: i32,
-}
-
-// Explicitly mark our wrapper as thread-safe
-// This is safe because we control all access to the raw pointer and ensure there's
-// no data race (each thread uses a different buffer for optimized vs unoptimized)
-unsafe impl Sync for ThreadSafeBuffer {}
-unsafe impl Send for ThreadSafeBuffer {}
-
-impl ThreadSafeBuffer {
-    unsafe fn new(ptr: *mut u8, layout: Layout, size: i32) -> Self {
-        ThreadSafeBuffer { ptr, layout, size }
-    }
-}
-
-static OPT_BUFFER: OnceLock<ThreadSafeBuffer> = OnceLock::new();
-static UNOPT_BUFFER: OnceLock<ThreadSafeBuffer> = OnceLock::new();
 // Primary temporary register - used in buffer copy and destination live vars copy.
 static TEMP_REG_PRIMARY: u8 = 0; // RAX
 
@@ -510,82 +488,31 @@ pub(crate) fn set_destination_live_vars(
     dest_reg_nums
 }
 
-// Calculates the size of the live vars buffer.
-// The buffer is aligned to 16 bytes.
-fn calculate_live_vars_buffer_size(src_rec: &Record) -> i32 {
-    let mut src_val_buffer_size: i32 = 0;
-    for (_, src_var) in src_rec.live_vals.iter().enumerate() {
-        match src_var.get(0).unwrap() {
-            Indirect(_, _, src_val_size) | Direct(_, _, src_val_size) => {
-                src_val_buffer_size += *src_val_size as i32;
-            }
-            _ => { /* DO NOTHING */ }
-        }
-    }
-    // Align the buffer size to 16 bytes (only round up, never down)
-    if src_val_buffer_size % 16 == 0 {
-        src_val_buffer_size
-    } else {
-        ((src_val_buffer_size / 16) + 1) * 16
-    }
-}
-
-// Allocates a temporary buffer for the live vars.
-fn allocate_buffer(src_rec: &Record, smid: ControlPointStackMapId) -> Option<&ThreadSafeBuffer> {
-    let src_val_buffer_size = calculate_live_vars_buffer_size(src_rec);
-
-    if src_val_buffer_size == 0 {
-        return None;
-    }
-
-    let buffer_cell = match smid {
-        ControlPointStackMapId::UnOpt => &UNOPT_BUFFER,
-        ControlPointStackMapId::Opt => &OPT_BUFFER,
-    };
-
-    // Get the buffer - either from the OnceLock or create it
-    let thread_safe_buffer = buffer_cell.get_or_init(|| unsafe {
-        let layout = Layout::from_size_align(src_val_buffer_size as usize, 16)
-            .expect("Failed to create layout for live vars buffer");
-        let ptr = alloc(layout);
-        if ptr.is_null() {
-            handle_alloc_error(layout);
-        }
-        std::ptr::write_bytes(ptr, 0, src_val_buffer_size as usize);
-        ThreadSafeBuffer::new(ptr, layout, src_val_buffer_size)
-    });
-
-    Some(thread_safe_buffer)
-}
-
 pub(crate) fn copy_live_vars_to_temp_buffer(
     asm: &mut Assembler,
     src_rec: &Record,
     smid: ControlPointStackMapId,
 ) -> LiveVarsBuffer {
-    let thread_safe_buffer = allocate_buffer(src_rec, smid);
-    if thread_safe_buffer.is_none() {
+    let (ptr, layout, size) = get_or_create_buffer(src_rec, smid);
+    if ptr.is_null() {
         return LiveVarsBuffer {
-            ptr: 0 as *mut u8,
+            ptr: std::ptr::null_mut(),
             layout: Layout::new::<u8>(),
             variables: HashMap::new(),
             size: 0,
         };
     }
     if *YKB_SWT_VERBOSE {
-        if let Some(buffer) = thread_safe_buffer {
-            println!("Using buffer at {:p} for smid {:?}", buffer.ptr, smid);
-        }
+        println!("Using buffer at {:p} for smid {:?}", ptr, smid);
     }
 
-    let temp_live_vars_buffer = thread_safe_buffer.unwrap();
     let mut src_var_indirect_index = 0;
     let mut variables = HashMap::new();
     let mut current_buffer_offset = 0i32; // Track actual buffer position
 
     // Set up the pointer to the temporary buffer
     dynasm!(asm
-        ; mov Rq(TEMP_REG_PRIMARY), QWORD temp_live_vars_buffer.ptr as i64
+        ; mov Rq(TEMP_REG_PRIMARY), QWORD ptr as i64
     );
 
     for (_, src_var) in src_rec.live_vals.iter().enumerate() {
@@ -638,12 +565,7 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
         );
     }
 
-    LiveVarsBuffer {
-        ptr: temp_live_vars_buffer.ptr,
-        layout: temp_live_vars_buffer.layout,
-        variables,
-        size: temp_live_vars_buffer.size,
-    }
+    create_live_vars_buffer(ptr, layout, size, variables)
 }
 
 #[cfg(test)]
@@ -651,6 +573,7 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
 mod live_vars_tests {
     use super::*;
     use crate::trace::swt::asm::AsmTestHelper;
+    use crate::trace::swt::buffer::calculate_live_vars_buffer_size;
     use crate::trace::swt::cp::{REG_OFFSETS, REG64_BYTESIZE};
     use dynasmrt::x64::Assembler;
     use yksmp::{Location, Record};
@@ -1031,8 +954,7 @@ mod live_vars_tests {
         };
 
         let mut asm = Assembler::new().unwrap();
-        let layout = Layout::from_size_align(8 as usize, 16).unwrap();
-        let ptr = unsafe { alloc(layout) };
+        let (ptr, layout, _size) = get_or_create_buffer(&src_rec, ControlPointStackMapId::UnOpt);
 
         let mut variables = HashMap::new();
         variables.insert(0 as i32, REG64_BYTESIZE as i32);
