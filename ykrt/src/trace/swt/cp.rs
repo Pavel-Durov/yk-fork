@@ -1,4 +1,3 @@
-use std::alloc::Layout;
 use std::collections::HashMap;
 use std::env;
 use std::sync::LazyLock;
@@ -86,15 +85,6 @@ pub(crate) static REG_OFFSETS: LazyLock<HashMap<u16, i32>> = LazyLock::new(|| {
     m.insert(15, 0x0); // r15
     m
 });
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LiveVarsBuffer {
-    pub ptr: *mut u8,
-    pub layout: Layout,
-    // varibles are only used in tests - can eb removed
-    pub variables: HashMap<i32, i32>,
-    pub size: i32,
-}
 
 use crate::aotsmp::AOT_STACKMAPS;
 use crate::trace::swt::live_vars::{copy_live_vars_to_temp_buffer, set_destination_live_vars};
@@ -415,7 +405,6 @@ mod cp_tests {
     use super::*;
     use crate::trace::swt::asm::{disassemble, verify_instruction_sequence};
     use dynasmrt::x64::Assembler;
-    use yksmp::{Location, Record};
 
     #[test]
     fn test_restore_registers_rbx() {

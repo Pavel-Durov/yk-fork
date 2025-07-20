@@ -5,9 +5,9 @@ use std::collections::HashMap;
 use yksmp::Location::{Direct, Indirect, Register};
 use yksmp::Record;
 
-use crate::trace::swt::buffer::{create_live_vars_buffer, get_or_create_buffer};
+use crate::trace::swt::buffer::LiveVarsBuffer;
 use crate::trace::swt::cp::{
-    ControlPointStackMapId, LiveVarsBuffer, REG_OFFSETS, YKB_SWT_VERBOSE, dwarf_to_dynasm_reg,
+    ControlPointStackMapId, REG_OFFSETS, YKB_SWT_VERBOSE, dwarf_to_dynasm_reg,
 };
 
 // Primary temporary register - used in buffer copy and destination live vars copy.
@@ -488,12 +488,30 @@ pub(crate) fn set_destination_live_vars(
     dest_reg_nums
 }
 
+/// Copies live variables from source to destination locations using a temporary buffer.
+
+/// # Arguments
+/// * `asm` - The assembler to emit instructions to
+/// * `src_rec` - Source stack map record containing live variable locations
+/// * `dst_rec` - Destination stack map record
+/// * `rbp_offset_reg_store` - Offset from RBP where registers are stored
+/// * `live_vars_buffer` - Temporary buffer for intermediate storage
+///
+/// # Returns
+/// A HashMap mapping destination register numbers to their value sizes
+///
+/// # Examples
+/// ```ignore
+/// let dest_regs = set_destination_live_vars(
+///     &mut asm, &src_record, &dst_record, 0x100, buffer
+/// );
+/// ```
 pub(crate) fn copy_live_vars_to_temp_buffer(
     asm: &mut Assembler,
     src_rec: &Record,
     smid: ControlPointStackMapId,
 ) -> LiveVarsBuffer {
-    let (ptr, layout, size) = get_or_create_buffer(src_rec, smid);
+    let (ptr, layout, size) = LiveVarsBuffer::get_or_create(src_rec, smid);
     if ptr.is_null() {
         return LiveVarsBuffer {
             ptr: std::ptr::null_mut(),
@@ -565,565 +583,557 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
         );
     }
 
-    create_live_vars_buffer(ptr, layout, size, variables)
+    LiveVarsBuffer::new(ptr, layout, size, variables)
 }
 
 #[cfg(test)]
 #[cfg(swt_modclone)]
-mod live_vars_tests {
+mod tests {
     use super::*;
     use crate::trace::swt::asm::{
         disassemble, verify_instruction_at_position, verify_instruction_sequence,
     };
-    use crate::trace::swt::buffer::calculate_live_vars_buffer_size;
     use crate::trace::swt::cp::{REG_OFFSETS, REG64_BYTESIZE};
     use dynasmrt::x64::Assembler;
     use yksmp::{Location, Record};
 
-    // New tests for helper functions
-    #[test]
-    fn test_emit_mem_to_reg() {
-        for size in [1, 2, 4, 8].iter() {
-            let mut asm = Assembler::new().unwrap();
-            let test_ptr = 0x1234567890ABCDEF;
-            let test_offset = 42;
-            let test_dst_reg = 15; // r15
+    /// Tests for assembly emission helper functions
+    mod helper_functions {
+        use super::*;
 
-            emit_mem_to_reg(
-                &mut asm,
-                MemToRegParams {
-                    src_ptr: test_ptr,
-                    src_offset: test_offset,
-                    dst_reg: test_dst_reg,
-                    size: *size,
-                },
-            );
+        /// Tests for memory-to-register operations
+        mod emit_operations {
+            use super::*;
 
-            let buffer = asm.finalize().unwrap();
-            let instructions = disassemble(&buffer);
+            #[test]
+            fn test_emit_mem_to_reg() {
+                for size in [1, 2, 4, 8].iter() {
+                    let mut asm = Assembler::new().unwrap();
+                    let test_ptr = 0x1234567890ABCDEF;
+                    let test_offset = 42;
+                    let test_dst_reg = 15; // r15
 
-            assert_eq!(
-                instructions.len(),
-                2,
-                "Should have exactly 2 instructions for size {}",
-                size
-            );
+                    emit_mem_to_reg(
+                        &mut asm,
+                        MemToRegParams {
+                            src_ptr: test_ptr,
+                            src_offset: test_offset,
+                            dst_reg: test_dst_reg,
+                            size: *size,
+                        },
+                    );
 
-            assert_eq!(
-                instructions[0],
-                format!("movabs rax, 0x{:x}", test_ptr),
-                "First instruction should load the pointer for size {}",
-                size
-            );
+                    let buffer = asm.finalize().unwrap();
+                    let instructions = disassemble(&buffer);
 
-            let expected_second = match size {
-                1 => format!("mov r15b, byte ptr [rax + riz + 0x{:x}]", test_offset),
-                2 => format!("mov r15w, word ptr [rax + riz + 0x{:x}]", test_offset),
-                4 => format!("mov r15d, dword ptr [rax + riz + 0x{:x}]", test_offset),
-                8 => format!("mov r15, qword ptr [rax + riz + 0x{:x}]", test_offset),
-                _ => unreachable!(),
-            };
+                    assert_eq!(
+                        instructions.len(),
+                        2,
+                        "Should have exactly 2 instructions for size {}",
+                        size
+                    );
 
-            assert_eq!(
-                instructions[1], expected_second,
-                "Second instruction should load value of size {} into register",
-                size
-            );
+                    assert_eq!(
+                        instructions[0],
+                        format!("movabs rax, 0x{:x}", test_ptr),
+                        "First instruction should load the pointer for size {}",
+                        size
+                    );
+
+                    let expected_second = match size {
+                        1 => format!("mov r15b, byte ptr [rax + riz + 0x{:x}]", test_offset),
+                        2 => format!("mov r15w, word ptr [rax + riz + 0x{:x}]", test_offset),
+                        4 => format!("mov r15d, dword ptr [rax + riz + 0x{:x}]", test_offset),
+                        8 => format!("mov r15, qword ptr [rax + riz + 0x{:x}]", test_offset),
+                        _ => unreachable!(),
+                    };
+
+                    assert_eq!(
+                        instructions[1], expected_second,
+                        "Second instruction should load value of size {} into register",
+                        size
+                    );
+                }
+            }
+
+            #[test]
+            fn test_emit_mem_to_mem() {
+                for size in [1, 2, 4, 8].iter() {
+                    let mut asm = Assembler::new().unwrap();
+                    let test_ptr = 0x1234567890ABCDEF;
+                    let test_src_offset = 42;
+                    let test_dst_offset = 24;
+
+                    emit_mem_to_mem(
+                        &mut asm,
+                        MemToMemParams {
+                            src_ptr: test_ptr,
+                            src_offset: test_src_offset,
+                            dst_offset: test_dst_offset,
+                            size: *size,
+                        },
+                    );
+
+                    let buffer = asm.finalize().unwrap();
+                    let instructions = disassemble(&buffer);
+
+                    let expected_instructions = match size {
+                        1 => [
+                            format!("movabs rax, 0x{:x}", test_ptr),
+                            format!("mov cl, byte ptr [rax + riz + 0x{:x}]", test_src_offset),
+                            format!("mov byte ptr [rbp + 0x{:x}], cl", test_dst_offset),
+                        ],
+                        2 => [
+                            format!("movabs rax, 0x{:x}", test_ptr),
+                            format!("mov cx, word ptr [rax + riz + 0x{:x}]", test_src_offset),
+                            format!("mov word ptr [rbp + 0x{:x}], cx", test_dst_offset),
+                        ],
+                        4 => [
+                            format!("movabs rax, 0x{:x}", test_ptr),
+                            format!("mov ecx, dword ptr [rax + riz + 0x{:x}]", test_src_offset),
+                            format!("mov dword ptr [rbp + 0x{:x}], ecx", test_dst_offset),
+                        ],
+                        8 => [
+                            format!("movabs rax, 0x{:x}", test_ptr),
+                            format!("mov rcx, qword ptr [rax + riz + 0x{:x}]", test_src_offset),
+                            format!("mov qword ptr [rbp + 0x{:x}], rcx", test_dst_offset),
+                        ],
+                        _ => unreachable!(),
+                    };
+
+                    let expected_str_refs: Vec<&str> =
+                        expected_instructions.iter().map(|s| s.as_str()).collect();
+                    verify_instruction_sequence(&instructions, &expected_str_refs);
+                }
+            }
+
+            #[test]
+            fn test_emit_rbp_to_reg() {
+                for size in [1, 2, 4, 8].iter() {
+                    let mut asm = Assembler::new().unwrap();
+                    let test_rbp_offset = 64;
+                    let test_dst_reg = 15; // r15
+
+                    emit_rbp_to_reg(
+                        &mut asm,
+                        RbpToRegParams {
+                            rbp_offset: test_rbp_offset,
+                            dst_reg: test_dst_reg,
+                            size: *size,
+                        },
+                    );
+
+                    let buffer = asm.finalize().unwrap();
+                    let instructions = disassemble(&buffer);
+
+                    assert_eq!(
+                        instructions.len(),
+                        1,
+                        "Should have exactly 1 instruction for size {}",
+                        size
+                    );
+
+                    let expected = match size {
+                        1 => format!("mov r15b, byte ptr [rbp - 0x{:x}]", test_rbp_offset),
+                        2 => format!("mov r15w, word ptr [rbp - 0x{:x}]", test_rbp_offset),
+                        4 => format!("mov r15d, dword ptr [rbp - 0x{:x}]", test_rbp_offset),
+                        8 => format!("mov r15, qword ptr [rbp - 0x{:x}]", test_rbp_offset),
+                        _ => unreachable!(),
+                    };
+
+                    verify_instruction_at_position(&instructions, 0, &expected);
+                }
+            }
+
+            #[test]
+            fn test_emit_reg_to_rbp() {
+                for size in [1, 2, 4, 8].iter() {
+                    let mut asm = Assembler::new().unwrap();
+                    let test_rbp_offset = 64;
+                    let test_src_reg = 15; // r15
+
+                    emit_reg_to_rbp(
+                        &mut asm,
+                        RegToRbpParams {
+                            src_reg: test_src_reg,
+                            rbp_offset: test_rbp_offset,
+                            size: *size,
+                        },
+                    );
+
+                    let buffer = asm.finalize().unwrap();
+                    let instructions = disassemble(&buffer);
+
+                    assert_eq!(
+                        instructions.len(),
+                        1,
+                        "Should have exactly 1 instruction for size {}",
+                        size
+                    );
+
+                    let expected = match size {
+                        1 => format!("mov byte ptr [rbp + 0x{:x}], r15b", test_rbp_offset),
+                        2 => format!("mov word ptr [rbp + 0x{:x}], r15w", test_rbp_offset),
+                        4 => format!("mov dword ptr [rbp + 0x{:x}], r15d", test_rbp_offset),
+                        8 => format!("mov qword ptr [rbp + 0x{:x}], r15", test_rbp_offset),
+                        _ => unreachable!(),
+                    };
+
+                    verify_instruction_at_position(&instructions, 0, &expected);
+                }
+            }
+
+            #[test]
+            fn test_helper_functions_with_different_registers() {
+                // Test with different registers (not just r15)
+                let test_registers = [0, 1, 2, 3, 7, 8, 12]; // rax, rcx, rdx, rbx, rdi, r8, r12
+
+                for reg in test_registers.iter() {
+                    let mut asm = Assembler::new().unwrap();
+
+                    // Test rbp_to_reg with this register
+                    emit_rbp_to_reg(
+                        &mut asm,
+                        RbpToRegParams {
+                            rbp_offset: 32,
+                            dst_reg: *reg,
+                            size: 8,
+                        },
+                    );
+
+                    let buffer = asm.finalize().unwrap();
+                    let instructions = disassemble(&buffer);
+
+                    let reg_name = match reg {
+                        0 => "rax",
+                        1 => "rcx",
+                        2 => "rdx",
+                        3 => "rbx",
+                        7 => "rdi",
+                        8 => "r8",
+                        12 => "r12",
+                        _ => panic!("Test register not handled"),
+                    };
+
+                    let expected = format!("mov {}, qword ptr [rbp - 0x20]", reg_name);
+                    verify_instruction_at_position(&instructions, 0, &expected);
+                }
+            }
+
+            #[test]
+            fn test_mem_to_reg_mem_edge_cases() {
+                // Test with zero offset
+                let mut asm = Assembler::new().unwrap();
+                emit_mem_to_reg(
+                    &mut asm,
+                    MemToRegParams {
+                        src_ptr: 0x1234,
+                        src_offset: 0, // Zero offset
+                        dst_reg: 15,
+                        size: 8,
+                    },
+                );
+
+                let buffer = asm.finalize().unwrap();
+                let instructions = disassemble(&buffer);
+
+                verify_instruction_at_position(
+                    &instructions,
+                    1,
+                    "mov r15, qword ptr [rax + riz]", // Should have no explicit offset
+                );
+
+                // Test with negative offset
+                let mut asm = Assembler::new().unwrap();
+                emit_mem_to_mem(
+                    &mut asm,
+                    MemToMemParams {
+                        src_ptr: 0x1234,
+                        src_offset: -8, // Negative offset
+                        dst_offset: 16,
+                        size: 4,
+                    },
+                );
+
+                let buffer = asm.finalize().unwrap();
+                let instructions = disassemble(&buffer);
+
+                verify_instruction_at_position(
+                    &instructions,
+                    1,
+                    "mov ecx, dword ptr [rax + riz - 8]", // Should have negative offset
+                );
+            }
+        }
+
+        /// Tests for invalid input handling in helper functions
+        mod error_cases {
+            use super::*;
+
+            #[test]
+            #[should_panic(expected = "Unsupported value size")]
+            fn test_emit_mem_to_reg_invalid_size() {
+                let mut asm = Assembler::new().unwrap();
+                emit_mem_to_reg(
+                    &mut asm,
+                    MemToRegParams {
+                        src_ptr: 0x1234,
+                        src_offset: 0,
+                        dst_reg: 15,
+                        size: 3, // Invalid size
+                    },
+                );
+            }
+
+            #[test]
+            #[should_panic(expected = "Unsupported value size")]
+            fn test_emit_mem_to_mem_invalid_size() {
+                let mut asm = Assembler::new().unwrap();
+                emit_mem_to_mem(
+                    &mut asm,
+                    MemToMemParams {
+                        src_ptr: 0x1234,
+                        src_offset: 0,
+                        dst_offset: 0,
+                        size: 16, // Invalid size
+                    },
+                );
+            }
+
+            #[test]
+            #[should_panic(expected = "Unsupported value size")]
+            fn test_emit_rbp_to_reg_invalid_size() {
+                let mut asm = Assembler::new().unwrap();
+                emit_rbp_to_reg(
+                    &mut asm,
+                    RbpToRegParams {
+                        rbp_offset: 64,
+                        dst_reg: 15,
+                        size: 3, // Invalid size
+                    },
+                );
+            }
+
+            #[test]
+            #[should_panic(expected = "Unsupported value size")]
+            fn test_emit_reg_to_rbp_invalid_size() {
+                let mut asm = Assembler::new().unwrap();
+                emit_reg_to_rbp(
+                    &mut asm,
+                    RegToRbpParams {
+                        src_reg: 15,
+                        rbp_offset: 64,
+                        size: 16, // Invalid size
+                    },
+                );
+            }
         }
     }
 
-    #[test]
-    fn test_emit_mem_to_mem() {
-        for size in [1, 2, 4, 8].iter() {
-            let mut asm = Assembler::new().unwrap();
-            let test_ptr = 0x1234567890ABCDEF;
-            let test_src_offset = 42;
-            let test_dst_offset = 24;
-
-            emit_mem_to_mem(
-                &mut asm,
-                MemToMemParams {
-                    src_ptr: test_ptr,
-                    src_offset: test_src_offset,
-                    dst_offset: test_dst_offset,
-                    size: *size,
-                },
-            );
-
-            let buffer = asm.finalize().unwrap();
-            let instructions = disassemble(&buffer);
-
-            let expected_instructions = match size {
-                1 => [
-                    format!("movabs rax, 0x{:x}", test_ptr),
-                    format!("mov cl, byte ptr [rax + riz + 0x{:x}]", test_src_offset),
-                    format!("mov byte ptr [rbp + 0x{:x}], cl", test_dst_offset),
-                ],
-                2 => [
-                    format!("movabs rax, 0x{:x}", test_ptr),
-                    format!("mov cx, word ptr [rax + riz + 0x{:x}]", test_src_offset),
-                    format!("mov word ptr [rbp + 0x{:x}], cx", test_dst_offset),
-                ],
-                4 => [
-                    format!("movabs rax, 0x{:x}", test_ptr),
-                    format!("mov ecx, dword ptr [rax + riz + 0x{:x}]", test_src_offset),
-                    format!("mov dword ptr [rbp + 0x{:x}], ecx", test_dst_offset),
-                ],
-                8 => [
-                    format!("movabs rax, 0x{:x}", test_ptr),
-                    format!("mov rcx, qword ptr [rax + riz + 0x{:x}]", test_src_offset),
-                    format!("mov qword ptr [rbp + 0x{:x}], rcx", test_dst_offset),
-                ],
-                _ => unreachable!(),
-            };
-
-            let expected_str_refs: Vec<&str> =
-                expected_instructions.iter().map(|s| s.as_str()).collect();
-            verify_instruction_sequence(&instructions, &expected_str_refs);
-        }
-    }
-
-    #[test]
-    fn test_emit_rbp_to_reg() {
-        for size in [1, 2, 4, 8].iter() {
-            let mut asm = Assembler::new().unwrap();
-            let test_rbp_offset = 64;
-            let test_dst_reg = 15; // r15
-
-            emit_rbp_to_reg(
-                &mut asm,
-                RbpToRegParams {
-                    rbp_offset: test_rbp_offset,
-                    dst_reg: test_dst_reg,
-                    size: *size,
-                },
-            );
-
-            let buffer = asm.finalize().unwrap();
-            let instructions = disassemble(&buffer);
-
-            assert_eq!(
-                instructions.len(),
-                1,
-                "Should have exactly 1 instruction for size {}",
-                size
-            );
-
-            let expected = match size {
-                1 => format!("mov r15b, byte ptr [rbp - 0x{:x}]", test_rbp_offset),
-                2 => format!("mov r15w, word ptr [rbp - 0x{:x}]", test_rbp_offset),
-                4 => format!("mov r15d, dword ptr [rbp - 0x{:x}]", test_rbp_offset),
-                8 => format!("mov r15, qword ptr [rbp - 0x{:x}]", test_rbp_offset),
-                _ => unreachable!(),
-            };
-
-            verify_instruction_at_position(&instructions, 0, &expected);
-        }
-    }
-
-    #[test]
-    fn test_emit_reg_to_rbp() {
-        for size in [1, 2, 4, 8].iter() {
-            let mut asm = Assembler::new().unwrap();
-            let test_rbp_offset = 64;
-            let test_src_reg = 15; // r15
-
-            emit_reg_to_rbp(
-                &mut asm,
-                RegToRbpParams {
-                    src_reg: test_src_reg,
-                    rbp_offset: test_rbp_offset,
-                    size: *size,
-                },
-            );
-
-            let buffer = asm.finalize().unwrap();
-            let instructions = disassemble(&buffer);
-
-            assert_eq!(
-                instructions.len(),
-                1,
-                "Should have exactly 1 instruction for size {}",
-                size
-            );
-
-            let expected = match size {
-                1 => format!("mov byte ptr [rbp + 0x{:x}], r15b", test_rbp_offset),
-                2 => format!("mov word ptr [rbp + 0x{:x}], r15w", test_rbp_offset),
-                4 => format!("mov dword ptr [rbp + 0x{:x}], r15d", test_rbp_offset),
-                8 => format!("mov qword ptr [rbp + 0x{:x}], r15", test_rbp_offset),
-                _ => unreachable!(),
-            };
-
-            verify_instruction_at_position(&instructions, 0, &expected);
-        }
-    }
-
-    #[test]
-    #[should_panic(expected = "Unsupported value size")]
-    fn test_emit_mem_to_reg_invalid_size() {
-        let mut asm = Assembler::new().unwrap();
-        emit_mem_to_reg(
-            &mut asm,
-            MemToRegParams {
-                src_ptr: 0x1234,
-                src_offset: 0,
-                dst_reg: 15,
-                size: 3, // Invalid size
-            },
-        );
-    }
-
-    #[test]
-    #[should_panic(expected = "Unsupported value size")]
-    fn test_emit_mem_to_mem_invalid_size() {
-        let mut asm = Assembler::new().unwrap();
-        emit_mem_to_mem(
-            &mut asm,
-            MemToMemParams {
-                src_ptr: 0x1234,
-                src_offset: 0,
-                dst_offset: 0,
-                size: 16, // Invalid size
-            },
-        );
-    }
-
-    #[test]
-    fn test_calculate_live_vars_buffer_size() {
-        let mock_record = Record {
-            offset: 0,
-            size: 0,
-            id: 0,
-            live_vals: vec![
-                vec![Location::Indirect(0, 0, 16)].into(),
-                vec![Location::Indirect(0, 0, 8)].into(),
-                vec![Location::Indirect(0, 0, 4)].into(),
-                vec![Location::Indirect(0, 0, 8)].into(),
-            ],
-        };
-
-        let buffer_size = calculate_live_vars_buffer_size(&mock_record);
-        assert_eq!(
-            // 12 is the padding
-            16 + 8 + 4 + 8 + 12,
-            buffer_size,
-            "Buffer size should equal the sum of all live variable sizes + padding"
-        );
-    }
-
-    #[test]
-    fn calculate_live_vars_buffer_size_buffer_size_alignment() {
-        // Test cases with different initial sizes
-        let test_cases = vec![
-            (0, 0),   // 0 should remain 0
-            (1, 16),  // 1 should become 16
-            (16, 16), // 16 should remain 16
-            (17, 32), // 17 should become 32
-            (31, 32), // 31 should become 32
-            (32, 32), // 32 should remain 32
-        ];
-        for (val_size, expected_buffer_size) in test_cases {
-            // Create a mock record with the given buffer size
-            let mock_record = Record {
+    /// Tests for buffer-related operations
+    mod buffer_operations {
+        use super::*;
+        #[test]
+        fn test_copy_live_vars_to_temp_buffer() {
+            let src_rec = Record {
                 offset: 0,
                 size: 0,
                 id: 0,
-                live_vals: vec![vec![Location::Indirect(0, 0, val_size)].into()],
+                live_vals: vec![
+                    vec![Location::Indirect(6, 56, 8)].into(),
+                    vec![Location::Indirect(6, 72, 8)].into(),
+                    vec![Location::Indirect(6, 172, 8)].into(),
+                ],
             };
-            let buffer_size = calculate_live_vars_buffer_size(&mock_record);
-            assert_eq!(
-                buffer_size, expected_buffer_size,
-                "Buffer size for input {} should be {}",
-                val_size, expected_buffer_size
-            );
-        }
-    }
 
-    #[test]
-    fn test_register_to_register_with_additional_location_indirect() {
-        let src_rec = Record {
-            offset: 0,
-            size: 0,
-            id: 0,
-            live_vals: vec![
-                vec![Location::Register(14, 8, vec![].into())].into(),
-                vec![Location::Register(13, 8, vec![-80, -200].into())].into(),
-                vec![Location::Register(15, 8, vec![-72].into())].into(),
-                vec![Location::Register(12, 8, vec![-56].into())].into(),
-                vec![Location::Register(0, 8, vec![8, -16, -88].into())].into(),
-                vec![Location::Register(3, 8, vec![-64].into())].into(),
-            ],
-        };
-
-        let dst_rec = Record {
-            offset: 0,
-            size: 0,
-            id: 0,
-            live_vals: vec![
-                vec![Location::Register(13, 8, vec![].into())].into(),
-                vec![Location::Register(14, 8, vec![-80].into())].into(),
-                vec![Location::Register(12, 8, vec![-64].into())].into(),
-                vec![Location::Register(15, 8, vec![-72].into())].into(),
-                vec![Location::Register(0, 8, vec![-16].into())].into(),
-                vec![Location::Register(3, 8, vec![-88, -8].into())].into(),
-            ],
-        };
-
-        let mut asm = Assembler::new().unwrap();
-        let temp_live_vars_buffer = LiveVarsBuffer {
-            ptr: std::ptr::null_mut(),
-            layout: Layout::new::<u8>(),
-            variables: HashMap::new(),
-            size: 0,
-        };
-
-        let rbp_offset_reg_store: i32 = 200;
-        set_destination_live_vars(
-            &mut asm,
-            &src_rec,
-            &dst_rec,
-            rbp_offset_reg_store as i64,
-            temp_live_vars_buffer,
-        );
-        let buffer = asm.finalize().unwrap();
-        let instructions = disassemble(&buffer);
-        assert_eq!(instructions.len(), 18);
-
-        // Verify key instructions using the helper
-        verify_instruction_at_position(
-            &instructions,
-            0,
-            &format!(
-                "mov r13, qword ptr [rbp - 0x{:x}]",
-                rbp_offset_reg_store - REG_OFFSETS.get(&14).unwrap()
-            ),
-        );
-    }
-
-    #[test]
-    fn test_set_destination_live_vars_register_to_register() {
-        let src_rec = Record {
-            offset: 0,
-            size: 0,
-            id: 0,
-            live_vals: vec![vec![Location::Register(15, 8, vec![].into())].into()],
-        };
-        let dst_rec = Record {
-            offset: 0,
-            size: 0,
-            id: 0,
-            live_vals: vec![vec![Location::Register(1, 8, vec![].into())].into()],
-        };
-
-        let mut asm = Assembler::new().unwrap();
-        let temp_live_vars_buffer = LiveVarsBuffer {
-            ptr: 0 as *mut u8,
-            layout: Layout::new::<u8>(),
-            variables: HashMap::new(),
-            size: 0,
-        };
-        let dest_reg_nums =
-            set_destination_live_vars(&mut asm, &src_rec, &dst_rec, 0x10, temp_live_vars_buffer);
-        let buffer = asm.finalize().unwrap();
-        let instructions = disassemble(&buffer);
-
-        verify_instruction_at_position(&instructions, 0, "mov rdx, qword ptr [rbp - 0x10]");
-        assert_eq!(
-            dest_reg_nums.get(&1),
-            Some(&8),
-            "The destination register (rcx) should be recorded with its size"
-        );
-    }
-
-    #[test]
-    fn test_set_destination_live_vars_indirect_to_register() {
-        let src_rec = Record {
-            offset: 0,
-            size: 0,
-            id: 0,
-            live_vals: vec![vec![Location::Indirect(6, 0, 8)].into()],
-        };
-        let dst_rec = Record {
-            offset: 0,
-            size: 0,
-            id: 0,
-            live_vals: vec![vec![Location::Register(15, 8, vec![].into())].into()],
-        };
-
-        let mut asm = Assembler::new().unwrap();
-        let (ptr, layout, _size) = get_or_create_buffer(&src_rec, ControlPointStackMapId::UnOpt);
-
-        let mut variables = HashMap::new();
-        variables.insert(0 as i32, REG64_BYTESIZE as i32);
-        let temp_live_vars_buffer = LiveVarsBuffer {
-            ptr,
-            layout,
-            variables,
-            size: 8 as i32,
-        };
-
-        let dest_reg_nums =
-            set_destination_live_vars(&mut asm, &src_rec, &dst_rec, 0x10, temp_live_vars_buffer);
-        let buffer = asm.finalize().unwrap();
-        let instructions = disassemble(&buffer);
-
-        let expected_instructions = [
-            &format!("movabs rax, 0x{:x}", ptr as i64),
-            "mov r15, qword ptr [rax + riz]",
-        ];
-
-        verify_instruction_sequence(&instructions, &expected_instructions);
-        assert_eq!(
-            dest_reg_nums.get(&15),
-            Some(&8),
-            "The destination register (r15) should be recorded with its size"
-        );
-    }
-
-    #[test]
-    fn test_copy_live_vars_to_temp_buffer() {
-        let src_rec = Record {
-            offset: 0,
-            size: 0,
-            id: 0,
-            live_vals: vec![
-                vec![Location::Indirect(6, 56, 8)].into(),
-                vec![Location::Indirect(6, 72, 8)].into(),
-                vec![Location::Indirect(6, 172, 8)].into(),
-            ],
-        };
-
-        let mut asm = Assembler::new().unwrap();
-        let lvb = copy_live_vars_to_temp_buffer(&mut asm, &src_rec, ControlPointStackMapId::UnOpt);
-        assert_eq!(32, lvb.size);
-        assert_eq!(3, lvb.variables.len());
-
-        // Finalise and disassemble the code.
-        let buffer = asm.finalize().unwrap();
-        let instructions = disassemble(&buffer);
-
-        let expected_instructions = [
-            &format!("movabs rax, 0x{:x}", lvb.ptr as i64),
-            "mov rcx, qword ptr [rbp + 0x38]",
-            "mov qword ptr [rax + riz], rcx",
-            "mov rcx, qword ptr [rbp + 0x48]",
-            "mov qword ptr [rax + riz + 8], rcx",
-            "mov rcx, qword ptr [rbp + 0xac]",
-            "mov qword ptr [rax + riz + 0x10], rcx",
-        ];
-
-        verify_instruction_sequence(&instructions, &expected_instructions);
-    }
-
-    // Keep the remaining tests but with minimal changes since they test edge cases
-    #[test]
-    #[should_panic(expected = "Unsupported value size")]
-    fn test_emit_rbp_to_reg_invalid_size() {
-        let mut asm = Assembler::new().unwrap();
-        emit_rbp_to_reg(
-            &mut asm,
-            RbpToRegParams {
-                rbp_offset: 64,
-                dst_reg: 15,
-                size: 3, // Invalid size
-            },
-        );
-    }
-
-    #[test]
-    #[should_panic(expected = "Unsupported value size")]
-    fn test_emit_reg_to_rbp_invalid_size() {
-        let mut asm = Assembler::new().unwrap();
-        emit_reg_to_rbp(
-            &mut asm,
-            RegToRbpParams {
-                src_reg: 15,
-                rbp_offset: 64,
-                size: 16, // Invalid size
-            },
-        );
-    }
-
-    #[test]
-    fn test_helper_functions_with_different_registers() {
-        // Test with different registers (not just r15)
-        let test_registers = [0, 1, 2, 3, 7, 8, 12]; // rax, rcx, rdx, rbx, rdi, r8, r12
-
-        for reg in test_registers.iter() {
             let mut asm = Assembler::new().unwrap();
+            let lvb =
+                copy_live_vars_to_temp_buffer(&mut asm, &src_rec, ControlPointStackMapId::UnOpt);
+            assert_eq!(32, lvb.size);
+            assert_eq!(3, lvb.variables.len());
 
-            // Test rbp_to_reg with this register
-            emit_rbp_to_reg(
-                &mut asm,
-                RbpToRegParams {
-                    rbp_offset: 32,
-                    dst_reg: *reg,
-                    size: 8,
-                },
-            );
-
+            // Finalise and disassemble the code.
             let buffer = asm.finalize().unwrap();
             let instructions = disassemble(&buffer);
 
-            let reg_name = match reg {
-                0 => "rax",
-                1 => "rcx",
-                2 => "rdx",
-                3 => "rbx",
-                7 => "rdi",
-                8 => "r8",
-                12 => "r12",
-                _ => panic!("Test register not handled"),
-            };
+            let expected_instructions = [
+                &format!("movabs rax, 0x{:x}", lvb.ptr as i64),
+                "mov rcx, qword ptr [rbp + 0x38]",
+                "mov qword ptr [rax + riz], rcx",
+                "mov rcx, qword ptr [rbp + 0x48]",
+                "mov qword ptr [rax + riz + 8], rcx",
+                "mov rcx, qword ptr [rbp + 0xac]",
+                "mov qword ptr [rax + riz + 0x10], rcx",
+            ];
 
-            let expected = format!("mov {}, qword ptr [rbp - 0x20]", reg_name);
-            verify_instruction_at_position(&instructions, 0, &expected);
+            verify_instruction_sequence(&instructions, &expected_instructions);
         }
     }
 
-    #[test]
-    fn test_mem_to_reg_mem_edge_cases() {
-        // Test with zero offset
-        let mut asm = Assembler::new().unwrap();
-        emit_mem_to_reg(
-            &mut asm,
-            MemToRegParams {
-                src_ptr: 0x1234,
-                src_offset: 0, // Zero offset
-                dst_reg: 15,
-                size: 8,
-            },
-        );
+    /// Tests for live variable operations
+    mod live_variable_operations {
+        use super::*;
 
-        let buffer = asm.finalize().unwrap();
-        let instructions = disassemble(&buffer);
+        /// Tests for register-to-register operations
+        mod register_to_register {
+            use super::*;
 
-        verify_instruction_at_position(
-            &instructions,
-            1,
-            "mov r15, qword ptr [rax + riz]", // Should have no explicit offset
-        );
+            #[test]
+            fn test_basic_register_to_register() {
+                let src_rec = Record {
+                    offset: 0,
+                    size: 0,
+                    id: 0,
+                    live_vals: vec![vec![Location::Register(15, 8, vec![].into())].into()],
+                };
+                let dst_rec = Record {
+                    offset: 0,
+                    size: 0,
+                    id: 0,
+                    live_vals: vec![vec![Location::Register(1, 8, vec![].into())].into()],
+                };
 
-        // Test with negative offset
-        let mut asm = Assembler::new().unwrap();
-        emit_mem_to_mem(
-            &mut asm,
-            MemToMemParams {
-                src_ptr: 0x1234,
-                src_offset: -8, // Negative offset
-                dst_offset: 16,
-                size: 4,
-            },
-        );
+                let mut asm = Assembler::new().unwrap();
+                let temp_live_vars_buffer = LiveVarsBuffer {
+                    ptr: 0 as *mut u8,
+                    layout: Layout::new::<u8>(),
+                    variables: HashMap::new(),
+                    size: 0,
+                };
+                let dest_reg_nums = set_destination_live_vars(
+                    &mut asm,
+                    &src_rec,
+                    &dst_rec,
+                    0x10,
+                    temp_live_vars_buffer,
+                );
+                let buffer = asm.finalize().unwrap();
+                let instructions = disassemble(&buffer);
 
-        let buffer = asm.finalize().unwrap();
-        let instructions = disassemble(&buffer);
+                verify_instruction_at_position(&instructions, 0, "mov rdx, qword ptr [rbp - 0x10]");
+                assert_eq!(
+                    dest_reg_nums.get(&1),
+                    Some(&8),
+                    "The destination register (rcx) should be recorded with its size"
+                );
+            }
 
-        verify_instruction_at_position(
-            &instructions,
-            1,
-            "mov ecx, dword ptr [rax + riz - 8]", // Should have negative offset
-        );
+            #[test]
+            fn test_register_to_register_with_additional_locations() {
+                let src_rec = Record {
+                    offset: 0,
+                    size: 0,
+                    id: 0,
+                    live_vals: vec![
+                        vec![Location::Register(14, 8, vec![].into())].into(),
+                        vec![Location::Register(13, 8, vec![-80, -200].into())].into(),
+                        vec![Location::Register(15, 8, vec![-72].into())].into(),
+                        vec![Location::Register(12, 8, vec![-56].into())].into(),
+                        vec![Location::Register(0, 8, vec![8, -16, -88].into())].into(),
+                        vec![Location::Register(3, 8, vec![-64].into())].into(),
+                    ],
+                };
+
+                let dst_rec = Record {
+                    offset: 0,
+                    size: 0,
+                    id: 0,
+                    live_vals: vec![
+                        vec![Location::Register(13, 8, vec![].into())].into(),
+                        vec![Location::Register(14, 8, vec![-80].into())].into(),
+                        vec![Location::Register(12, 8, vec![-64].into())].into(),
+                        vec![Location::Register(15, 8, vec![-72].into())].into(),
+                        vec![Location::Register(0, 8, vec![-16].into())].into(),
+                        vec![Location::Register(3, 8, vec![-88, -8].into())].into(),
+                    ],
+                };
+
+                let mut asm = Assembler::new().unwrap();
+                let temp_live_vars_buffer = LiveVarsBuffer {
+                    ptr: std::ptr::null_mut(),
+                    layout: Layout::new::<u8>(),
+                    variables: HashMap::new(),
+                    size: 0,
+                };
+
+                let rbp_offset_reg_store: i32 = 200;
+                set_destination_live_vars(
+                    &mut asm,
+                    &src_rec,
+                    &dst_rec,
+                    rbp_offset_reg_store as i64,
+                    temp_live_vars_buffer,
+                );
+                let buffer = asm.finalize().unwrap();
+                let instructions = disassemble(&buffer);
+                assert_eq!(instructions.len(), 18);
+
+                // Verify key instructions using the helper
+                verify_instruction_at_position(
+                    &instructions,
+                    0,
+                    &format!(
+                        "mov r13, qword ptr [rbp - 0x{:x}]",
+                        rbp_offset_reg_store - REG_OFFSETS.get(&14).unwrap()
+                    ),
+                );
+            }
+        }
+
+        /// Tests for indirect-to-register operations
+        mod indirect_to_register {
+            use super::*;
+
+            #[test]
+            fn test_basic_indirect_to_register() {
+                let src_rec = Record {
+                    offset: 0,
+                    size: 0,
+                    id: 0,
+                    live_vals: vec![vec![Location::Indirect(6, 0, 8)].into()],
+                };
+                let dst_rec = Record {
+                    offset: 0,
+                    size: 0,
+                    id: 0,
+                    live_vals: vec![vec![Location::Register(15, 8, vec![].into())].into()],
+                };
+
+                let mut asm = Assembler::new().unwrap();
+                let (ptr, layout, _size) =
+                    LiveVarsBuffer::get_or_create(&src_rec, ControlPointStackMapId::UnOpt);
+
+                let mut variables = HashMap::new();
+                variables.insert(0 as i32, REG64_BYTESIZE as i32);
+                let temp_live_vars_buffer = LiveVarsBuffer {
+                    ptr,
+                    layout,
+                    variables,
+                    size: 8 as i32,
+                };
+
+                let dest_reg_nums = set_destination_live_vars(
+                    &mut asm,
+                    &src_rec,
+                    &dst_rec,
+                    0x10,
+                    temp_live_vars_buffer,
+                );
+                let buffer = asm.finalize().unwrap();
+                let instructions = disassemble(&buffer);
+
+                let expected_instructions = [
+                    &format!("movabs rax, 0x{:x}", ptr as i64),
+                    "mov r15, qword ptr [rax + riz]",
+                ];
+
+                verify_instruction_sequence(&instructions, &expected_instructions);
+                assert_eq!(
+                    dest_reg_nums.get(&15),
+                    Some(&8),
+                    "The destination register (r15) should be recorded with its size"
+                );
+            }
+        }
     }
 }
