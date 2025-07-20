@@ -25,22 +25,22 @@ pub enum ControlPointStackMapId {
 pub(crate) static REG64_BYTESIZE: u64 = 8;
 
 // Flag for verbose logging
-pub static YKB_SWT_VERBOSE: LazyLock<bool> = LazyLock::new(|| {
-    env::var("YKB_SWT_VERBOSE")
+pub static YKD_SWT_VERBOSE: LazyLock<bool> = LazyLock::new(|| {
+    env::var("YKD_SWT_VERBOSE")
         .map(|v| v == "1")
         .unwrap_or(false)
 });
 
 // Flag for verbose logging of asm
-pub static YKB_SWT_VERBOSE_ASM: LazyLock<bool> = LazyLock::new(|| {
-    env::var("YKB_SWT_VERBOSE_ASM")
+pub static YKD_SWT_VERBOSE_ASM: LazyLock<bool> = LazyLock::new(|| {
+    env::var("YKD_SWT_VERBOSE_ASM")
         .map(|v| v == "1")
         .unwrap_or(false)
 });
 
-// Flag for control point break
-pub(crate) static YKB_SWT_CP_BREAK: LazyLock<bool> = LazyLock::new(|| {
-    env::var("YKB_SWT_CP_BREAK")
+// Flag for control point asm break point instruction (int3)
+pub(crate) static YKD_SWT_CP_BREAK: LazyLock<bool> = LazyLock::new(|| {
+    env::var("YKD_SWT_CP_BREAK")
         .map(|v| v == "1")
         .unwrap_or(false)
 });
@@ -105,7 +105,6 @@ pub struct CPTransition {
     // If the value is 0, it means that there is no trace to execute.
     pub trace_addr: *const c_void,
 }
-
 
 /// Transitions from optimised to unoptimised execution mode at a control point.
 ///
@@ -196,7 +195,7 @@ pub(crate) unsafe fn cp_transition_to_unopt_and_exec_trace(
 /// Execute an assembled buffer with optional verbose assembly dumping
 #[unsafe(no_mangle)]
 unsafe fn execute_asm_buffer(buffer: ExecutableBuffer) {
-    if *YKB_SWT_VERBOSE_ASM {
+    if *YKD_SWT_VERBOSE_ASM {
         let cs = Capstone::new()
             .x86()
             .mode(arch::x86::ArchMode::Mode64)
@@ -250,7 +249,7 @@ fn generate_transition_asm(
     if dst_pinfo.hasfp {
         dst_frame_size -= REG64_BYTESIZE;
     }
-    if *YKB_SWT_CP_BREAK {
+    if *YKD_SWT_CP_BREAK {
         dynasm!(asm
             ; .arch x64
             ; int3
@@ -270,7 +269,7 @@ fn generate_transition_asm(
     let rbp_offset_reg_store = src_frame_size as i64 + (14 * REG64_BYTESIZE) as i64;
 
     let temp_live_vars_buffer = copy_live_vars_to_temp_buffer(&mut asm, src_rec, transition.smid);
-    if *YKB_SWT_VERBOSE {
+    if *YKD_SWT_VERBOSE {
         eprintln!(
             "Transition from {:?} to {:?}, trace: {:?}",
             src_smid, dst_smid, transition.trace_addr

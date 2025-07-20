@@ -7,7 +7,7 @@ use yksmp::Record;
 
 use crate::trace::swt::buffer::LiveVarsBuffer;
 use crate::trace::swt::cp::{
-    ControlPointStackMapId, REG_OFFSETS, YKB_SWT_VERBOSE, dwarf_to_dynasm_reg,
+    ControlPointStackMapId, REG_OFFSETS, YKD_SWT_VERBOSE, dwarf_to_dynasm_reg,
 };
 
 // Primary temporary register - used in buffer copy and destination live vars copy.
@@ -211,7 +211,7 @@ pub(crate) fn set_destination_live_vars(
     // Index of the source live variable in the temporary buffer.
     let mut src_var_indirect_index = 0;
 
-    if *YKB_SWT_VERBOSE {
+    if *YKD_SWT_VERBOSE {
         eprintln!(
             "Copying live vars: src={}, dst={}",
             src_rec.live_vals.len(),
@@ -490,7 +490,7 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
             size: 0,
         };
     }
-    if *YKB_SWT_VERBOSE {
+    if *YKD_SWT_VERBOSE {
         println!("Using buffer at {:p} for smid {:?}", ptr, smid);
     }
 
@@ -532,15 +532,15 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
                 current_buffer_offset += *src_val_size as i32; // Move to next position
                 src_var_indirect_index += 1;
             }
-            Register(_, _, _) => {/* DO NOTHING */}
+            Register(_, _, _) => { /* DO NOTHING */ }
             _ => panic!(
                 "Unsupported source location in temporary copy: {:?}",
-                src_location/* DO NOTHING */
+                src_location /* DO NOTHING */
             ),
         }
     }
 
-    if *YKB_SWT_VERBOSE {
+    if *YKD_SWT_VERBOSE {
         eprintln!(
             "Buffer population complete. Variables mapping: {:?}",
             variables
