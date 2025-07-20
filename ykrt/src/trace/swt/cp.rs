@@ -106,29 +106,6 @@ pub struct CPTransition {
     pub trace_addr: *const c_void,
 }
 
-// Lazy-loaded assembly for UnOpt -> Opt transitions
-static UNOPT_TO_OPT_ASM: LazyLock<Box<dyn Fn(CPTransition) -> ExecutableBuffer + Send + Sync>> =
-    LazyLock::new(|| {
-        Box::new(|transition: CPTransition| {
-            generate_transition_asm(
-                transition,
-                ControlPointStackMapId::UnOpt,
-                ControlPointStackMapId::Opt,
-            )
-        })
-    });
-
-// Lazy-loaded assembly for Opt -> UnOpt transitions
-static OPT_TO_UNOPT_ASM: LazyLock<Box<dyn Fn(CPTransition) -> ExecutableBuffer + Send + Sync>> =
-    LazyLock::new(|| {
-        Box::new(|transition: CPTransition| {
-            generate_transition_asm(
-                transition,
-                ControlPointStackMapId::Opt,
-                ControlPointStackMapId::UnOpt,
-            )
-        })
-    });
 
 /// Transitions from optimised to unoptimised execution mode at a control point.
 ///
@@ -141,11 +118,16 @@ static OPT_TO_UNOPT_ASM: LazyLock<Box<dyn Fn(CPTransition) -> ExecutableBuffer +
 /// * `frameaddr` - Pointer to the current frame address
 /// * `stats` - Statistics tracker for recording the transition
 pub(crate) unsafe fn cp_transition_to_unopt(frameaddr: *const c_void, stats: &Stats) {
-    let buffer = OPT_TO_UNOPT_ASM(CPTransition {
-        smid: ControlPointStackMapId::Opt,
-        frameaddr,
-        trace_addr: 0 as *const c_void,
-    });
+    // TODO: add cache for the asm code generation
+    let buffer = generate_transition_asm(
+        CPTransition {
+            smid: ControlPointStackMapId::Opt,
+            frameaddr,
+            trace_addr: 0 as *const c_void,
+        },
+        ControlPointStackMapId::Opt,
+        ControlPointStackMapId::UnOpt,
+    );
     stats.swt_transition_opt_to_unopt();
     unsafe {
         execute_asm_buffer(buffer);
@@ -163,11 +145,16 @@ pub(crate) unsafe fn cp_transition_to_unopt(frameaddr: *const c_void, stats: &St
 /// * `frameaddr` - Pointer to the current frame address  
 /// * `stats` - Statistics tracker for recording the transition
 pub(crate) unsafe fn cp_transition_to_opt(frameaddr: *const c_void, stats: &Stats) {
-    let buffer = UNOPT_TO_OPT_ASM(CPTransition {
-        smid: ControlPointStackMapId::UnOpt,
-        frameaddr,
-        trace_addr: 0 as *const c_void,
-    });
+    // TODO: add cache for the asm code generation
+    let buffer = generate_transition_asm(
+        CPTransition {
+            smid: ControlPointStackMapId::UnOpt,
+            frameaddr,
+            trace_addr: 0 as *const c_void,
+        },
+        ControlPointStackMapId::UnOpt,
+        ControlPointStackMapId::Opt,
+    );
     stats.swt_transition_unopt_to_opt();
     unsafe {
         execute_asm_buffer(buffer);
@@ -190,11 +177,16 @@ pub(crate) unsafe fn cp_transition_to_unopt_and_exec_trace(
     trace_addr: *const c_void,
     stats: &Stats,
 ) {
-    let buffer = OPT_TO_UNOPT_ASM(CPTransition {
-        smid: ControlPointStackMapId::Opt,
-        frameaddr,
-        trace_addr,
-    });
+    // TODO: add cache for the asm code generation
+    let buffer = generate_transition_asm(
+        CPTransition {
+            smid: ControlPointStackMapId::Opt,
+            frameaddr,
+            trace_addr,
+        },
+        ControlPointStackMapId::Opt,
+        ControlPointStackMapId::UnOpt,
+    );
     stats.swt_transition_opt_to_unopt();
     unsafe {
         execute_asm_buffer(buffer);
