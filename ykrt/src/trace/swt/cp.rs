@@ -410,9 +410,10 @@ fn calc_after_cp_offset(rec_offset: u64) -> Result<i64, Box<dyn Error>> {
 }
 
 #[cfg(test)]
+#[cfg(swt_modclone)]
 mod swt_cp_tests {
     use super::*;
-    use crate::trace::swt::tests::asm::AsmTestHelper;
+    use crate::trace::swt::asm::AsmTestHelper;
     use dynasmrt::{dynasm, x64::Assembler};
     use std::error::Error;
 
@@ -592,7 +593,7 @@ mod swt_cp_tests {
 
         for (dwarf_reg, expected_dynasm_reg) in test_cases.iter() {
             assert_eq!(
-                dwarf_to_dynasm_reg(*dwarf_reg), 
+                dwarf_to_dynasm_reg(*dwarf_reg),
                 *expected_dynasm_reg,
                 "DWARF register {} should map to DynASM register {}",
                 dwarf_reg,
@@ -616,7 +617,7 @@ mod swt_cp_tests {
     #[test]
     fn test_reg_offsets_contains_expected_registers() {
         let expected_registers = [0, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15];
-        
+
         for reg in expected_registers.iter() {
             assert!(
                 REG_OFFSETS.contains_key(reg),
@@ -642,6 +643,6 @@ mod swt_cp_tests {
         // Higher registers should have lower (closer to stack top) offsets
         assert!(REG_OFFSETS[&15] < REG_OFFSETS[&14]); // r15 < r14
         assert!(REG_OFFSETS[&14] < REG_OFFSETS[&13]); // r14 < r13
-        assert!(REG_OFFSETS[&0] > REG_OFFSETS[&2]);   // rax > rcx (rax is saved last)
+        assert!(REG_OFFSETS[&0] > REG_OFFSETS[&2]); // rax > rcx (rax is saved last)
     }
 }

@@ -1,21 +1,20 @@
 use capstone::prelude::*;
 use dynasmrt::ExecutableBuffer;
 
-/// Common test utilities for SWT module testing
-pub struct AsmTestHelper;
+pub(crate) struct AsmTestHelper;
 
 impl AsmTestHelper {
     /// Disassemble an executable buffer into a vector of instruction strings
-    /// 
+    ///
     /// This centralizes the disassembly logic that was duplicated across test files.
     pub fn disassemble(buffer: &ExecutableBuffer) -> Vec<String> {
         if buffer.len() == 0 {
             return vec![];
         }
-        
+
         let code_ptr = buffer.ptr(dynasmrt::AssemblyOffset(0)) as *const u8;
         let code_size = buffer.len();
-        
+
         // Use Capstone to disassemble and check the generated instructions
         let capstone = Capstone::new()
             .x86()
@@ -43,7 +42,7 @@ impl AsmTestHelper {
     }
 
     /// Verify that the actual instruction sequence matches the expected sequence
-    /// 
+    ///
     /// This provides better error messages than simple assertion comparisons
     pub fn verify_instruction_sequence(actual: &[String], expected: &[&str]) {
         assert_eq!(
@@ -58,23 +57,18 @@ impl AsmTestHelper {
 
         for (i, (actual_inst, expected_inst)) in actual.iter().zip(expected.iter()).enumerate() {
             assert_eq!(
-                actual_inst,
-                expected_inst,
+                actual_inst, expected_inst,
                 "Instruction {} mismatch.\nActual:   '{}'\nExpected: '{}'\nFull sequence:\nActual: {:?}\nExpected: {:?}",
-                i,
-                actual_inst,
-                expected_inst,
-                actual,
-                expected
+                i, actual_inst, expected_inst, actual, expected
             );
         }
     }
 
     /// Verify that a specific instruction appears at the given position
     pub fn verify_instruction_at_position(
-        instructions: &[String], 
-        position: usize, 
-        expected: &str
+        instructions: &[String],
+        position: usize,
+        expected: &str,
     ) {
         assert!(
             position < instructions.len(),
@@ -82,7 +76,7 @@ impl AsmTestHelper {
             position,
             instructions.len()
         );
-        
+
         assert_eq!(
             instructions[position], expected,
             "Instruction at position {} mismatch.\nActual:   '{}'\nExpected: '{}'\nFull sequence: {:?}",
@@ -92,6 +86,8 @@ impl AsmTestHelper {
 }
 
 /// Assert macros for common testing patterns
+#[cfg(test)]
+#[cfg(swt_modclone)]
 #[macro_export]
 macro_rules! assert_instruction_eq {
     ($actual:expr, $expected:expr) => {
@@ -103,13 +99,17 @@ macro_rules! assert_instruction_eq {
     };
 }
 
+#[cfg(test)]
+#[cfg(swt_modclone)]
 #[macro_export]
 macro_rules! assert_instruction_sequence {
     ($actual:expr, $expected:expr) => {
-        $crate::trace::swt::tests::asm::AsmTestHelper::verify_instruction_sequence($actual, $expected);
+        $crate::trace::swt::AsmTestHelper::verify_instruction_sequence($actual, $expected);
     };
 }
 
+#[cfg(test)]
+#[cfg(swt_modclone)]
 #[macro_export]
 macro_rules! assert_register_offset_instruction {
     ($actual:expr, $base:expr, $reg:expr, $offset:expr) => {

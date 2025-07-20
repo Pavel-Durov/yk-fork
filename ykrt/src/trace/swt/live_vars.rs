@@ -647,10 +647,11 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
 }
 
 #[cfg(test)]
+#[cfg(swt_modclone)]
 mod live_vars_tests {
     use super::*;
+    use crate::trace::swt::asm::AsmTestHelper;
     use crate::trace::swt::cp::{REG_OFFSETS, REG64_BYTESIZE};
-    use crate::trace::swt::tests::asm::AsmTestHelper;
     use dynasmrt::x64::Assembler;
     use yksmp::{Location, Record};
 
