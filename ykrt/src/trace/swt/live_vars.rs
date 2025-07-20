@@ -572,7 +572,7 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
 #[cfg(swt_modclone)]
 mod live_vars_tests {
     use super::*;
-    use crate::trace::swt::asm::AsmTestHelper;
+    use crate::trace::swt::asm::{disassemble, verify_instruction_sequence, verify_instruction_at_position};
     use crate::trace::swt::buffer::calculate_live_vars_buffer_size;
     use crate::trace::swt::cp::{REG_OFFSETS, REG64_BYTESIZE};
     use dynasmrt::x64::Assembler;
@@ -598,7 +598,7 @@ mod live_vars_tests {
             );
 
             let buffer = asm.finalize().unwrap();
-            let instructions = AsmTestHelper::disassemble(&buffer);
+            let instructions = disassemble(&buffer);
 
             assert_eq!(
                 instructions.len(),
@@ -649,7 +649,7 @@ mod live_vars_tests {
             );
 
             let buffer = asm.finalize().unwrap();
-            let instructions = AsmTestHelper::disassemble(&buffer);
+            let instructions = disassemble(&buffer);
 
             let expected_instructions = match size {
                 1 => [
@@ -677,7 +677,7 @@ mod live_vars_tests {
 
             let expected_str_refs: Vec<&str> =
                 expected_instructions.iter().map(|s| s.as_str()).collect();
-            AsmTestHelper::verify_instruction_sequence(&instructions, &expected_str_refs);
+            verify_instruction_sequence(&instructions, &expected_str_refs);
         }
     }
 
@@ -698,7 +698,7 @@ mod live_vars_tests {
             );
 
             let buffer = asm.finalize().unwrap();
-            let instructions = AsmTestHelper::disassemble(&buffer);
+            let instructions = disassemble(&buffer);
 
             assert_eq!(
                 instructions.len(),
@@ -715,7 +715,7 @@ mod live_vars_tests {
                 _ => unreachable!(),
             };
 
-            AsmTestHelper::verify_instruction_at_position(&instructions, 0, &expected);
+            verify_instruction_at_position(&instructions, 0, &expected);
         }
     }
 
@@ -736,7 +736,7 @@ mod live_vars_tests {
             );
 
             let buffer = asm.finalize().unwrap();
-            let instructions = AsmTestHelper::disassemble(&buffer);
+            let instructions = disassemble(&buffer);
 
             assert_eq!(
                 instructions.len(),
@@ -753,7 +753,7 @@ mod live_vars_tests {
                 _ => unreachable!(),
             };
 
-            AsmTestHelper::verify_instruction_at_position(&instructions, 0, &expected);
+            verify_instruction_at_position(&instructions, 0, &expected);
         }
     }
 
@@ -885,11 +885,11 @@ mod live_vars_tests {
             temp_live_vars_buffer,
         );
         let buffer = asm.finalize().unwrap();
-        let instructions = AsmTestHelper::disassemble(&buffer);
+        let instructions = disassemble(&buffer);
         assert_eq!(instructions.len(), 18);
 
         // Verify key instructions using the helper
-        AsmTestHelper::verify_instruction_at_position(
+        verify_instruction_at_position(
             &instructions,
             0,
             &format!(
@@ -924,9 +924,9 @@ mod live_vars_tests {
         let dest_reg_nums =
             set_destination_live_vars(&mut asm, &src_rec, &dst_rec, 0x10, temp_live_vars_buffer);
         let buffer = asm.finalize().unwrap();
-        let instructions = AsmTestHelper::disassemble(&buffer);
+        let instructions = disassemble(&buffer);
 
-        AsmTestHelper::verify_instruction_at_position(
+        verify_instruction_at_position(
             &instructions,
             0,
             "mov rdx, qword ptr [rbp - 0x10]",
@@ -968,14 +968,14 @@ mod live_vars_tests {
         let dest_reg_nums =
             set_destination_live_vars(&mut asm, &src_rec, &dst_rec, 0x10, temp_live_vars_buffer);
         let buffer = asm.finalize().unwrap();
-        let instructions = AsmTestHelper::disassemble(&buffer);
+        let instructions = disassemble(&buffer);
 
         let expected_instructions = [
             &format!("movabs rax, 0x{:x}", ptr as i64),
             "mov r15, qword ptr [rax + riz]",
         ];
 
-        AsmTestHelper::verify_instruction_sequence(&instructions, &expected_instructions);
+        verify_instruction_sequence(&instructions, &expected_instructions);
         assert_eq!(
             dest_reg_nums.get(&15),
             Some(&8),
@@ -1003,7 +1003,7 @@ mod live_vars_tests {
 
         // Finalise and disassemble the code.
         let buffer = asm.finalize().unwrap();
-        let instructions = AsmTestHelper::disassemble(&buffer);
+        let instructions = disassemble(&buffer);
 
         let expected_instructions = [
             &format!("movabs rax, 0x{:x}", lvb.ptr as i64),
@@ -1015,7 +1015,7 @@ mod live_vars_tests {
             "mov qword ptr [rax + riz + 0x10], rcx",
         ];
 
-        AsmTestHelper::verify_instruction_sequence(&instructions, &expected_instructions);
+        verify_instruction_sequence(&instructions, &expected_instructions);
     }
 
     // Keep the remaining tests but with minimal changes since they test edge cases
@@ -1066,7 +1066,7 @@ mod live_vars_tests {
             );
 
             let buffer = asm.finalize().unwrap();
-            let instructions = AsmTestHelper::disassemble(&buffer);
+            let instructions = disassemble(&buffer);
 
             let reg_name = match reg {
                 0 => "rax",
@@ -1080,7 +1080,7 @@ mod live_vars_tests {
             };
 
             let expected = format!("mov {}, qword ptr [rbp - 0x20]", reg_name);
-            AsmTestHelper::verify_instruction_at_position(&instructions, 0, &expected);
+            verify_instruction_at_position(&instructions, 0, &expected);
         }
     }
 
@@ -1099,9 +1099,9 @@ mod live_vars_tests {
         );
 
         let buffer = asm.finalize().unwrap();
-        let instructions = AsmTestHelper::disassemble(&buffer);
+        let instructions = disassemble(&buffer);
 
-        AsmTestHelper::verify_instruction_at_position(
+        verify_instruction_at_position(
             &instructions,
             1,
             "mov r15, qword ptr [rax + riz]", // Should have no explicit offset
@@ -1120,9 +1120,9 @@ mod live_vars_tests {
         );
 
         let buffer = asm.finalize().unwrap();
-        let instructions = AsmTestHelper::disassemble(&buffer);
+        let instructions = disassemble(&buffer);
 
-        AsmTestHelper::verify_instruction_at_position(
+        verify_instruction_at_position(
             &instructions,
             1,
             "mov ecx, dword ptr [rax + riz - 8]", // Should have negative offset

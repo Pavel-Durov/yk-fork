@@ -411,11 +411,11 @@ fn calc_after_cp_offset(rec_offset: u64) -> Result<i64, Box<dyn Error>> {
 
 #[cfg(test)]
 #[cfg(swt_modclone)]
-mod swt_cp_tests {
+mod cp_tests {
     use super::*;
-    use crate::trace::swt::asm::AsmTestHelper;
-    use dynasmrt::{dynasm, x64::Assembler};
-    use std::error::Error;
+    use crate::trace::swt::asm::{disassemble, verify_instruction_sequence};
+    use dynasmrt::x64::Assembler;
+    use yksmp::{Location, Record};
 
     #[test]
     fn test_restore_registers_rbx() {
@@ -440,7 +440,7 @@ mod swt_cp_tests {
 
         restore_registers(&mut asm, used_regs, 0);
         let buffer: dynasmrt::ExecutableBuffer = asm.finalize().unwrap();
-        let instructions = AsmTestHelper::disassemble(&buffer);
+        let instructions = disassemble(&buffer);
         assert_eq!(instructions.len(), 1);
         assert_eq!(instructions[0], "mov rbx, qword ptr [rbp + 0x50]");
     }
@@ -468,7 +468,7 @@ mod swt_cp_tests {
 
         restore_registers(&mut asm, used_regs, 0);
         let buffer: dynasmrt::ExecutableBuffer = asm.finalize().unwrap();
-        let instructions = AsmTestHelper::disassemble(&buffer);
+        let instructions = disassemble(&buffer);
         assert_eq!(instructions.len(), 0);
     }
 
@@ -495,14 +495,14 @@ mod swt_cp_tests {
 
         restore_registers(&mut asm, used_regs, 0);
         let buffer = asm.finalize().unwrap();
-        let instructions = AsmTestHelper::disassemble(&buffer);
+        let instructions = disassemble(&buffer);
 
         let expected_instructions = [
             "mov r10, qword ptr [rbp + 0x28]",
             "mov r14, qword ptr [rbp + 8]",
         ];
 
-        AsmTestHelper::verify_instruction_sequence(&instructions, &expected_instructions);
+        verify_instruction_sequence(&instructions, &expected_instructions);
     }
 
     #[test]
@@ -511,7 +511,7 @@ mod swt_cp_tests {
         let used_regs = HashMap::new();
         restore_registers(&mut asm, used_regs, 0);
         let buffer: dynasmrt::ExecutableBuffer = asm.finalize().unwrap();
-        let instructions = AsmTestHelper::disassemble(&buffer);
+        let instructions = disassemble(&buffer);
 
         let expected_instructions = [
             "mov rax, qword ptr [rbp + 0x60]",
@@ -529,7 +529,7 @@ mod swt_cp_tests {
             "mov r15, qword ptr [rbp]",
         ];
 
-        AsmTestHelper::verify_instruction_sequence(&instructions, &expected_instructions);
+        verify_instruction_sequence(&instructions, &expected_instructions);
     }
 
     #[test]
