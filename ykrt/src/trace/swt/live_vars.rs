@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use yksmp::Location::{Direct, Indirect, Register};
 use yksmp::Record;
 
-use crate::trace::swt::buffer::{get_or_create_buffer, create_live_vars_buffer};
+use crate::trace::swt::buffer::{create_live_vars_buffer, get_or_create_buffer};
 use crate::trace::swt::cp::{
     ControlPointStackMapId, LiveVarsBuffer, REG_OFFSETS, YKB_SWT_VERBOSE, dwarf_to_dynasm_reg,
 };
@@ -572,7 +572,9 @@ pub(crate) fn copy_live_vars_to_temp_buffer(
 #[cfg(swt_modclone)]
 mod live_vars_tests {
     use super::*;
-    use crate::trace::swt::asm::{disassemble, verify_instruction_sequence, verify_instruction_at_position};
+    use crate::trace::swt::asm::{
+        disassemble, verify_instruction_at_position, verify_instruction_sequence,
+    };
     use crate::trace::swt::buffer::calculate_live_vars_buffer_size;
     use crate::trace::swt::cp::{REG_OFFSETS, REG64_BYTESIZE};
     use dynasmrt::x64::Assembler;
@@ -926,11 +928,7 @@ mod live_vars_tests {
         let buffer = asm.finalize().unwrap();
         let instructions = disassemble(&buffer);
 
-        verify_instruction_at_position(
-            &instructions,
-            0,
-            "mov rdx, qword ptr [rbp - 0x10]",
-        );
+        verify_instruction_at_position(&instructions, 0, "mov rdx, qword ptr [rbp - 0x10]");
         assert_eq!(
             dest_reg_nums.get(&1),
             Some(&8),

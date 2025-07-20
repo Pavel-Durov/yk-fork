@@ -17,28 +17,28 @@ impl AlignedBuffer {
     pub(crate) unsafe fn new(size: usize) -> Self {
         let layout = Layout::from_size_align(size, 16)
             .expect("Failed to create layout for live vars buffer");
-        let ptr = unsafe { 
-            let ptr =  alloc(layout);
+        let ptr = unsafe {
+            let ptr = alloc(layout);
             if ptr.is_null() {
                 handle_alloc_error(layout);
             }
             std::ptr::write_bytes(ptr, 0, size);
             ptr
         };
-        
+
         AlignedBuffer { ptr, layout }
     }
-    
+
     /// Get the raw pointer to the buffer
     pub(crate) fn as_ptr(&self) -> *mut u8 {
         self.ptr
     }
-    
+
     /// Get the size of the buffer
     pub(crate) fn size(&self) -> usize {
         self.layout.size()
     }
-    
+
     /// Get the layout of the buffer  
     pub(crate) fn layout(&self) -> Layout {
         self.layout
@@ -90,7 +90,10 @@ pub(crate) fn calculate_live_vars_buffer_size(src_rec: &Record) -> i32 {
 
 /// Gets or creates a buffer for the given stack map ID.
 /// Returns (ptr, layout, size) tuple.
-pub(crate) fn get_or_create_buffer(src_rec: &Record, smid: ControlPointStackMapId) -> (*mut u8, Layout, usize) {
+pub(crate) fn get_or_create_buffer(
+    src_rec: &Record,
+    smid: ControlPointStackMapId,
+) -> (*mut u8, Layout, usize) {
     let src_val_buffer_size = calculate_live_vars_buffer_size(src_rec);
 
     if src_val_buffer_size == 0 {
@@ -104,17 +107,18 @@ pub(crate) fn get_or_create_buffer(src_rec: &Record, smid: ControlPointStackMapI
 
     buffer_cell.with(|cell| {
         let mut buffer_opt = cell.borrow_mut();
-        
+
         // Check if we need a new buffer (first use or size changed)
-        let needs_new_buffer = buffer_opt.as_ref()
+        let needs_new_buffer = buffer_opt
+            .as_ref()
             .map_or(true, |buf| buf.size() < src_val_buffer_size as usize);
-            
+
         if needs_new_buffer {
             // Create new buffer with required size
             let new_buffer = unsafe { AlignedBuffer::new(src_val_buffer_size as usize) };
             *buffer_opt = Some(new_buffer);
         }
-        
+
         let buffer = buffer_opt.as_ref().unwrap();
         (buffer.as_ptr(), buffer.layout(), buffer.size())
     })
@@ -122,10 +126,10 @@ pub(crate) fn get_or_create_buffer(src_rec: &Record, smid: ControlPointStackMapI
 
 /// Creates a LiveVarsBuffer from buffer components
 pub(crate) fn create_live_vars_buffer(
-    ptr: *mut u8, 
-    layout: Layout, 
-    size: usize, 
-    variables: HashMap<i32, i32>
+    ptr: *mut u8,
+    layout: Layout,
+    size: usize,
+    variables: HashMap<i32, i32>,
 ) -> LiveVarsBuffer {
     LiveVarsBuffer {
         ptr,
@@ -133,4 +137,4 @@ pub(crate) fn create_live_vars_buffer(
         variables,
         size: size as i32,
     }
-} 
+}
