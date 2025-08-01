@@ -731,7 +731,27 @@ impl TraceBuilder {
         if !self.frames.is_empty() {
             if let Some(val) = val {
                 let op = self.handle_operand(val)?;
-                self.local_map.insert(frame.callinst.unwrap(), op);
+                
+                // When we inline a function, the call instruction ID in the parent frame
+                // needs to be mapped to the return value from the inlined function.
+                // This is because in AOT IR, `%result = call func()` means the variable
+                // receiving the result (%result) has the same ID as the call instruction.
+                if let Some(callinst) = frame.callinst {
+                    // Check if this was an unresolved call with a placeholder
+                    if self.unresolved_calls.remove(&callinst).is_some() {
+                        // This was an unresolved call, replace the placeholder instruction
+                        if let Some(placeholder_op) = self.local_map.get(&callinst) {
+                            if let jit_ir::Operand::Var(placeholder_idx) = placeholder_op {
+                                // Replace the placeholder instruction with the actual return value
+                                self.jit_mod.replace_with_op(*placeholder_idx, op.clone());
+                                eprintln!("@@ Replaced placeholder at InstIdx({:?}) with actual return value", 
+                                         placeholder_idx);
+                            }
+                        }
+                    }
+                    // Map the call instruction to the actual return value
+                    self.local_map.insert(callinst, op);
+                }
             }
             Ok(())
         } else {
