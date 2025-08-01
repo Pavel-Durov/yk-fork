@@ -58,6 +58,9 @@ pub(crate) struct TraceBuilder {
     debug_str_idx: usize,
     /// Local variables that we have inferred to be constant.
     inferred_consts: HashMap<jit_ir::InstIdx, jit_ir::ConstIdx>,
+    /// Tracks placeholder instructions that need to be replaced when functions return.
+    /// Maps call instruction IDs to their placeholder instruction indices.
+    unresolved_calls: HashMap<aot_ir::InstId, jit_ir::InstIdx>,
     /// Did this trace end in another frame?
     endframe: TraceEndFrame,
     /// Determines if interpreter recursion was detected and we need to stop processing any
@@ -103,8 +106,9 @@ impl TraceBuilder {
             promotions,
             promote_idx: 0,
             debug_strs,
-            debug_str_idx: 0,
+            debug_str_idx: 0,  
             inferred_consts: HashMap::new(),
+            unresolved_calls: HashMap::new(),
             endframe,
             finish_early: false,
             last_interp_call: None,
@@ -731,7 +735,22 @@ impl TraceBuilder {
         if !self.frames.is_empty() {
             if let Some(val) = val {
                 let op = self.handle_operand(val)?;
-                self.local_map.insert(frame.callinst.unwrap(), op);
+                
+                // When we inline a function, the call instruction ID in the parent frame
+                // needs to be mapped to the return value from the inlined function.
+                // This is because in AOT IR, `%result = call func()` means the variable
+                // receiving the result (%result) has the same ID as the call instruction.
+                if let Some(callinst) = frame.callinst {
+                    // Check if this was an unresolved call with a placeholder
+                    if let Some(placeholder_idx) = self.unresolved_calls.remove(&callinst) {
+                        // Replace the placeholder instruction with the actual return value
+                        self.jit_mod.replace_with_op(placeholder_idx, op.clone());
+                        eprintln!("@@ Replaced placeholder at InstIdx({:?}) with actual value for AOT {:?}", 
+                                 placeholder_idx, callinst);
+                    }
+                    // Map the call instruction to the actual return value
+                    self.local_map.insert(callinst, op);
+                }
             }
             Ok(())
         } else {
@@ -952,6 +971,40 @@ impl TraceBuilder {
             // call) or the compiler annotated it with `yk_outline`.
             self.outline_until_after_call(bid, nextinst);
             let jit_func_decl_idx = self.handle_func(*callee)?;
+            
+            // Create AOT instruction ID for tracking
+            let aot_iid = aot_ir::InstId::new(
+                bid.funcidx(),
+                bid.bbidx(),
+                aot_ir::BBlockInstIdx::new(aot_inst_idx),
+            );
+            
+            // Check if this function returns a value that needs a placeholder
+            let func = self.aot_mod.func(*callee);
+            if let aot_ir::Ty::Func(fty) = self.aot_mod.type_(func.tyidx()) {
+                let ret_ty = self.aot_mod.type_(fty.ret_ty());
+                if !matches!(ret_ty, aot_ir::Ty::Void) {
+                    // Create placeholder with the correct return type to avoid type mismatches
+                    let jit_ret_ty = self.handle_type(ret_ty)?;
+                    
+                    // Create a placeholder constant that explicitly identifies itself as a placeholder
+                    let placeholder_const = jit_ir::Const::Placeholder(jit_ret_ty);
+                    let const_idx = self.jit_mod.insert_const(placeholder_const)?;
+                    let placeholder_inst = jit_ir::Inst::Const(const_idx);
+                    
+                    self.jit_mod.push(placeholder_inst)?;
+                    let placeholder_idx = self.jit_mod.last_inst_idx();
+                    let placeholder_val = jit_ir::Operand::Var(placeholder_idx);
+                    
+                    eprintln!("@@ Created placeholder at InstIdx({:?}) for AOT {:?}, type: placeholder({})", 
+                             placeholder_idx, aot_iid, self.jit_mod.type_(jit_ret_ty).display(&self.jit_mod));
+                    
+                    self.local_map.insert(aot_iid.clone(), placeholder_val);
+                    // Track this placeholder for replacement in handle_ret
+                    self.unresolved_calls.insert(aot_iid.clone(), placeholder_idx);
+                }
+            }
+            
             let inst = jit_ir::DirectCallInst::new(
                 &mut self.jit_mod,
                 jit_func_decl_idx,
