@@ -25,6 +25,7 @@ use libc::{mprotect, size_t, sysconf, PROT_EXEC, PROT_READ, PROT_WRITE, _SC_PAGE
 use std::alloc::Layout;
 use std::{ffi::c_void, sync::Once};
 use std::ptr::{addr_of_mut, addr_of};
+use std::env;
 
 // This is used to ensure that the original instructions are only saved once.
 static ORIGINAL_INSTRUCTIONS_INIT: Once = Once::new();
@@ -34,6 +35,11 @@ static mut ORIGINAL_INSTRUCTIONS: [u8; 1] = [0; 1];
 
 // 0xC3 is a `ret` instruction on x86_64.
 static mut PATCH_X86_INSTRUCTIONS: [u8; 1] = [0xC3];
+
+/// Check if patch logging is enabled via YKD_PATCH_LOG environment variable.
+fn is_patch_logging_enabled() -> bool {
+    env::var("YKD_PATCH_LOG").is_ok()
+}
 
 /// This function is used to save the original instructions of a function to .
 ///
@@ -86,26 +92,38 @@ unsafe fn patch_function(function_ptr: usize, code: *const u8, size: size_t) {
 /// This function is used to patch the `yk_trace_basicblock`
 /// function with a single `ret` (0xC3) instruction.
 pub(crate) unsafe fn patch_trace_function() {
+    if is_patch_logging_enabled() {
+        eprintln!("[YK_PATCH] Patching trace function at address: 0x{:x}", __yk_trace_basicblock as usize);
+    }
+    
     ORIGINAL_INSTRUCTIONS_INIT.call_once(|| unsafe {
+        if is_patch_logging_enabled() {
+            eprintln!("[YK_PATCH] Saving original instructions for trace function");
+        }
         save_original_instructions(
             __yk_trace_basicblock as usize,
             addr_of_mut!(ORIGINAL_INSTRUCTIONS).cast::<u8>(),
             1,
         );
     });
+
     #[cfg(target_arch = "x86_64")]
     unsafe {
         patch_function(
             __yk_trace_basicblock as usize,
             addr_of!(PATCH_X86_INSTRUCTIONS).cast::<u8>(),
             1,
-        );
+        )
     }
 }
 
 /// This function is used to restore the original behavior of a
 /// previously patched `__yk_trace_basicblock` function.
 pub(crate) unsafe fn restore_trace_function() {
+    if is_patch_logging_enabled() {
+        eprintln!("[YK_PATCH] Restoring trace function at address: 0x{:x}", __yk_trace_basicblock as usize);
+    }
+
     ORIGINAL_INSTRUCTIONS_INIT.call_once(|| unsafe {
         save_original_instructions(
             __yk_trace_basicblock as usize,
