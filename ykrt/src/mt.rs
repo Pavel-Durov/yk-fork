@@ -10,7 +10,7 @@ use std::{
     marker::PhantomData,
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU8, AtomicU16, AtomicU32, AtomicU64, Ordering},
     },
 };
 
@@ -106,6 +106,9 @@ pub struct MT {
     hot_threshold: AtomicHotThreshold,
     sidetrace_threshold: AtomicHotThreshold,
     trace_failure_threshold: AtomicTraceCompilationErrorThreshold,
+    /// The requested optimisation level, where 0 is the lowest possible level. How these levels
+    /// are interpreted is up to a given optimiser. Default: 1.
+    opt_level: AtomicU8,
     /// The queue of compiling jobs.
     job_queue: Arc<JobQueue>,
     /// The [Tracer] that should be used for creating future traces. Note that this might not be
@@ -124,6 +127,8 @@ pub struct MT {
     pub(crate) stats: Stats,
     /// The trace profiler implementation to use.
     trace_profiler: Arc<dyn PlatformTraceProfiler>,
+    /// Whether JIT compilation is enabled. Can be disabled with YK_JITC=none.
+    jit_enabled: AtomicBool,
 }
 
 impl std::fmt::Debug for MT {
@@ -141,6 +146,12 @@ impl MT {
     // are no guarantees as to whether they will share resources effectively or fairly.
     pub fn new() -> Result<Arc<Self>, Box<dyn Error>> {
         load_aot_stackmaps();
+        let opt_level = match env::var("YKD_OPT") {
+            Ok(s) => s
+                .parse::<u8>()
+                .map_err(|e| format!("Invalid optimisation level '{s}': {e}"))?,
+            Err(_) => 1,
+        };
         let hot_threshold = match env::var("YK_HOT_THRESHOLD") {
             Ok(s) => s
                 .parse::<HotThreshold>()
@@ -153,6 +164,10 @@ impl MT {
                 .map_err(|e| format!("Invalid sidetrace threshold '{s}': {e}"))?,
             Err(_) => DEFAULT_SIDETRACE_THRESHOLD,
         };
+        let jit_enabled = match env::var("YK_JITC") {
+            Ok(s) => s != "none",
+            Err(_) => true, // Default to enabled
+        };
         Ok(Arc::new(Self {
             shutdown: AtomicBool::new(false),
             hot_threshold: AtomicHotThreshold::new(hot_threshold),
@@ -160,6 +175,7 @@ impl MT {
             trace_failure_threshold: AtomicTraceCompilationErrorThreshold::new(
                 DEFAULT_TRACECOMPILATION_ERROR_THRESHOLD,
             ),
+            opt_level: AtomicU8::new(opt_level),
             job_queue: JobQueue::new(),
             tracer: Mutex::new(default_tracer()?),
             compiler: Mutex::new(default_compiler()?),
@@ -168,6 +184,7 @@ impl MT {
             log: Log::new()?,
             stats: Stats::new(),
             trace_profiler: profiler_for_current_platform(),
+            jit_enabled: AtomicBool::new(jit_enabled),
         }))
     }
 
@@ -236,6 +253,17 @@ impl MT {
         }
         self.trace_failure_threshold
             .store(trace_failure_threshold, Ordering::Relaxed);
+    }
+
+    /// Return the requested trace optimisation level, where 0 is the lowest possible level. How
+    /// these levels are interpreted is up to a given optimiser.
+    pub fn opt_level(self: &Arc<Self>) -> u8 {
+        self.opt_level.load(Ordering::Relaxed)
+    }
+
+    /// Return whether JIT compilation is enabled. Can be controlled with YK_JITC.
+    pub(crate) fn jit_enabled(self: &Arc<Self>) -> bool {
+        self.jit_enabled.load(Ordering::Relaxed)
     }
 
     /// Return the unique ID for the next trace.
@@ -744,6 +772,10 @@ impl MT {
         self: &Arc<Self>,
         loc: &Location,
     ) -> TransitionControlPoint {
+        // If JIT is disabled, don't increment the location count.
+        if !self.jit_enabled() {
+            return TransitionControlPoint::NoAction;
+        }
         match loc.hot_location() {
             Some(hl) => {
                 let mut lk;
