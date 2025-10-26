@@ -18,6 +18,7 @@ use atomic_enum::atomic_enum;
 use parking_lot::Mutex;
 #[cfg(not(all(feature = "yk_testing", not(test))))]
 use parking_lot_core::SpinWait;
+use crate::trace::swt::patch::{patch_trace_function, restore_trace_function};
 
 use crate::{
     aotsmp::{AOT_STACKMAPS, load_aot_stackmaps},
@@ -34,6 +35,17 @@ use crate::{
     profile::{PlatformTraceProfiler, profiler_for_current_platform},
     trace::{AOTTraceIterator, TraceRecorder, Tracer, default_tracer},
 };
+
+use std::sync::LazyLock;
+
+/// Global toggle to enable/disable patching of trace functions at runtime.
+/// Defaults to enabled. Set `YKD_PATCH=0` to disable.
+static YKD_PATCH: LazyLock<bool> = LazyLock::new(|| {
+    match env::var("YKD_PATCH").as_deref() {
+        Ok("0") => false,
+        _ => true,
+    }
+});
 
 // Emit a log entry with hot location debug information if present and support is compiled in.
 macro_rules! yklog {
@@ -475,6 +487,11 @@ impl MT {
                 });
                 thread_tracer.stop().ok();
                 MTThread::set_tracing(IsTracing::None);
+                if *YKD_PATCH {
+                    unsafe {
+                        patch_trace_function();
+                    }
+                }
                 yklog!(
                     self.log,
                     Verbosity::Warning,
@@ -511,9 +528,19 @@ impl MT {
                 unsafe { __yk_exec_trace(frameaddr, rsp, trace_addr) };
             }
             TransitionControlPoint::StartTracing(hl, trid) => {
+                if *YKD_PATCH {
+                    unsafe {
+                        restore_trace_function();
+                    }
+                }
                 self.start_tracing(frameaddr, loc, hl, trid);
             }
             TransitionControlPoint::StopTracing(trid, connector_tid) => {
+                if *YKD_PATCH {
+                    unsafe {
+                        patch_trace_function();
+                    }
+                }
                 self.stop_tracing(frameaddr, loc, trid, connector_tid);
             }
             TransitionControlPoint::StopSideTracing {
@@ -787,6 +814,11 @@ impl MT {
                             let hl = loc.hot_location_arc_clone().unwrap();
                             let trid = self.next_trace_id();
                             lk.kind = HotLocationKind::Tracing(trid);
+                            if *YKD_PATCH {
+                                unsafe {
+                                    restore_trace_function();
+                                }
+                            }
                             TransitionControlPoint::StartTracing(hl, trid)
                         }
                     }
@@ -803,6 +835,11 @@ impl MT {
                                 TraceFailed::KeepTrying => {
                                     let trid = self.next_trace_id();
                                     lk.kind = HotLocationKind::Tracing(trid);
+                                    if *YKD_PATCH {
+                                        unsafe {
+                                            restore_trace_function();
+                                        }
+                                    }
                                     TransitionControlPoint::StartTracing(hl, trid)
                                 }
                                 TraceFailed::DontTrace => {
@@ -833,6 +870,11 @@ impl MT {
                                 debug_str: None,
                             };
                             if let Some(hl) = loc.count_to_hot_location(x, hl) {
+                                if *YKD_PATCH {
+                                    unsafe {
+                                        restore_trace_function();
+                                    }
+                                }
                                 TransitionControlPoint::StartTracing(hl, trid)
                             } else {
                                 // We raced with another thread which has started tracing this
@@ -1108,6 +1150,11 @@ impl MT {
             if let Some(hl) = parent_ctr.hl().upgrade() {
                 // This thread should not be tracing anything.
                 debug_assert!(!MTThread::is_tracing());
+                if *YKD_PATCH {
+                    unsafe {
+                        patch_trace_function();
+                    }
+                }
                 TransitionGuardFailure::StartSideTracing(hl, self.next_trace_id())
             } else {
                 // The parent [HotLocation] has been garbage collected.
@@ -1201,6 +1248,12 @@ impl MT {
             TransitionGuardFailure::StartSideTracing(hl, trid) => {
                 self.stats
                     .timing_state(crate::log::stats::TimingState::Tracing);
+                #[cfg(tracer_swt)]
+                if *YKD_PATCH {
+                    unsafe {
+                        restore_trace_function();
+                    }
+                }
                 yklog!(
                     self.log,
                     Verbosity::Tracing,
