@@ -20,10 +20,11 @@
 //! execution flow of functions at runtime. Improper use can lead to
 //! undefined behaviour, memory corruption, or crashes.
 
-use crate::trace::swt::yk_trace_basicblock;
 use libc::{mprotect, size_t, sysconf, PROT_EXEC, PROT_READ, PROT_WRITE, _SC_PAGESIZE};
 use std::alloc::Layout;
-use std::{ffi::c_void, sync::Once};
+use std::{ffi::c_void, ptr, sync::Once};
+
+use crate::trace::swt::__yk_trace_basicblock;
 
 // This is used to ensure that the original instructions are only saved once.
 static ORIGINAL_INSTRUCTIONS_INIT: Once = Once::new();
@@ -48,7 +49,9 @@ unsafe fn save_original_instructions(
     num_of_instructions: usize,
 ) {
     let func_ptr: *const () = function_ptr as *const ();
-    std::ptr::copy_nonoverlapping(func_ptr as *const u8, instructions, num_of_instructions);
+    unsafe {
+        std::ptr::copy_nonoverlapping(func_ptr as *const u8, instructions, num_of_instructions);
+    }
 }
 
 /// This function is used to patch a function instructions at runtime.
@@ -60,7 +63,7 @@ unsafe fn save_original_instructions(
 /// * `size` - A size_t indicating the number of bytes to copy from `code`.
 ///
 unsafe fn patch_function(function_ptr: usize, code: *const u8, size: size_t) {
-    let page_size = sysconf(_SC_PAGESIZE) as usize;
+    let page_size = unsafe { sysconf(_SC_PAGESIZE) } as usize;
     // Align the function_ptr address down to the nearest page boundary.
     let page_address = (function_ptr & !(page_size - 1)) as *mut c_void;
     // Calculate the offset of function_ptr from the page start.
@@ -71,50 +74,60 @@ unsafe fn patch_function(function_ptr: usize, code: *const u8, size: size_t) {
     let layout = Layout::from_size_align(start_offset, page_size).unwrap();
 
     // Set function memory page as writable.
-    if mprotect(page_address, layout.size(), PROT_READ | PROT_WRITE) != 0 {
+    if unsafe { mprotect(page_address, layout.size(), PROT_READ | PROT_WRITE) } != 0 {
         panic!("Failed to change memory protection to be writable");
     }
     // Copy the new code over
-    std::ptr::copy_nonoverlapping(code, function_ptr as *mut u8, size);
+    unsafe {
+        std::ptr::copy_nonoverlapping(code, function_ptr as *mut u8, size);
+    }
     // Set function memory page as readable
-    if mprotect(page_address, layout.size(), PROT_READ | PROT_EXEC) != 0 {
+    if unsafe { mprotect(page_address, layout.size(), PROT_READ | PROT_EXEC) } != 0 {
         panic!("Failed to change memory protection back to executable");
     }
 }
 
-/// This function is used to patch the `yk_trace_basicblock`
+/// This function is used to patch the `__yk_trace_basicblock`
 /// function with a single `ret` (0xC3) instruction.
 pub(crate) unsafe fn patch_trace_function() {
     ORIGINAL_INSTRUCTIONS_INIT.call_once(|| {
-        save_original_instructions(
-            yk_trace_basicblock as usize,
-            ORIGINAL_INSTRUCTIONS.as_mut_ptr(),
-            1,
-        );
+        unsafe {
+            save_original_instructions(
+                __yk_trace_basicblock as *const () as usize,
+                ptr::addr_of_mut!(ORIGINAL_INSTRUCTIONS).cast::<u8>(),
+                1,
+            );
+        }
     });
     #[cfg(target_arch = "x86_64")]
-    patch_function(
-        yk_trace_basicblock as usize,
-        PATCH_X86_INSTRUCTIONS.as_ptr(),
-        1,
-    );
+    unsafe {
+        patch_function(
+            __yk_trace_basicblock as *const () as usize,
+            ptr::addr_of!(PATCH_X86_INSTRUCTIONS).cast::<u8>(),
+            1,
+        );
+    }
 }
 
 /// This function is used to restore the original behavior of a
-/// previously patched `yk_trace_basicblock` function.
+/// previously patched `__yk_trace_basicblock` function.
 pub(crate) unsafe fn restore_trace_function() {
     ORIGINAL_INSTRUCTIONS_INIT.call_once(|| {
-        save_original_instructions(
-            yk_trace_basicblock as usize,
-            ORIGINAL_INSTRUCTIONS.as_mut_ptr(),
+        unsafe {
+            save_original_instructions(
+                __yk_trace_basicblock as *const () as usize,
+                ptr::addr_of_mut!(ORIGINAL_INSTRUCTIONS).cast::<u8>(),
+                1,
+            );
+        }
+    });
+    unsafe {
+        patch_function(
+            __yk_trace_basicblock as *const () as usize,
+            ptr::addr_of!(ORIGINAL_INSTRUCTIONS).cast::<u8>(),
             1,
         );
-    });
-    patch_function(
-        yk_trace_basicblock as usize,
-        ORIGINAL_INSTRUCTIONS.as_ptr(),
-        1,
-    );
+    }
 }
 
 #[cfg(test)]
@@ -130,13 +143,21 @@ mod patch_tests {
         unsafe {
             assert_eq!(test_function(), 42);
             save_original_instructions(
-                test_function as usize,
-                ORIGINAL_INSTRUCTIONS.as_mut_ptr(),
+                test_function as *const () as usize,
+                ptr::addr_of_mut!(ORIGINAL_INSTRUCTIONS).cast::<u8>(),
                 1,
             );
-            patch_function(test_function as usize, PATCH_X86_INSTRUCTIONS.as_ptr(), 1);
+            patch_function(
+                test_function as *const () as usize,
+                ptr::addr_of!(PATCH_X86_INSTRUCTIONS).cast::<u8>(),
+                1,
+            );
             assert_eq!(test_function(), 0);
-            patch_function(test_function as usize, ORIGINAL_INSTRUCTIONS.as_ptr(), 1);
+            patch_function(
+                test_function as *const () as usize,
+                ptr::addr_of!(ORIGINAL_INSTRUCTIONS).cast::<u8>(),
+                1,
+            );
             assert_eq!(test_function(), 42);
         }
     }
