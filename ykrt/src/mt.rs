@@ -6,13 +6,14 @@ use std::{
     cell::RefCell,
     cmp,
     collections::VecDeque,
+    env,
     error::Error,
     ffi::c_void,
     marker::PhantomData,
     mem,
     sync::{
         atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicUsize, Ordering},
-        Arc,
+        Arc, OnceLock,
     },
     thread,
 };
@@ -35,6 +36,20 @@ use crate::{
     },
     trace::{default_tracer, AOTTraceIterator, TraceRecorder, Tracer},
 };
+
+/// Lazy-loaded boolean to enable/disable trace function patching.
+/// Controlled by the YK_TRACE_PATCHING environment variable.
+/// Set to "0" to disable patching (for performance comparison), any other value or unset enables it.
+#[cfg(tracer_swt)]
+#[cfg(target_arch = "x86_64")]
+fn is_trace_patching_enabled() -> bool {
+    static TRACE_PATCHING_ENABLED: OnceLock<bool> = OnceLock::new();
+    *TRACE_PATCHING_ENABLED.get_or_init(|| {
+        env::var("YK_TRACE_PATCHING")
+            .map(|v| v != "0")
+            .unwrap_or(true) // Default to enabled if not set
+    })
+}
 
 // The HotThreshold must be less than a machine word wide for [`Location::Location`] to do its
 // pointer tagging thing. We therefore choose a type which makes this statically clear to
@@ -274,8 +289,11 @@ impl MT {
             TransitionControlPoint::StartTracing(hl) => {
                 log_jit_state("start-tracing");
                 #[cfg(tracer_swt)]
-                unsafe {
-                    restore_trace_function();
+                #[cfg(target_arch = "x86_64")]
+                if is_trace_patching_enabled() {
+                    unsafe {
+                        restore_trace_function();
+                    }
                 }
                 let tracer = {
                     let lk = self.tracer.lock();
@@ -294,8 +312,11 @@ impl MT {
             }
             TransitionControlPoint::StopTracing => {
                 #[cfg(tracer_swt)]
-                unsafe {
-                    patch_trace_function();
+                #[cfg(target_arch = "x86_64")]
+                if is_trace_patching_enabled() {
+                    unsafe {
+                        patch_trace_function();
+                    }
                 }
 
                 // Assuming no bugs elsewhere, the `unwrap`s cannot fail, because `StartTracing`
@@ -344,8 +365,11 @@ impl MT {
                         self.stats.timing_state(TimingState::None);
                         log_jit_state("stop-side-tracing");
                         #[cfg(tracer_swt)]
-                        unsafe {
-                            patch_trace_function();
+                        #[cfg(target_arch = "x86_64")]
+                        if is_trace_patching_enabled() {
+                            unsafe {
+                                patch_trace_function();
+                            }
                         }
                         self.queue_compile_job(
                             (utrace, promotions.into_boxed_slice()),
@@ -565,8 +589,11 @@ impl MT {
             TransitionGuardFailure::StartSideTracing(hl) => {
                 log_jit_state("start-side-tracing");
                 #[cfg(tracer_swt)]
-                unsafe {
-                    restore_trace_function();
+                #[cfg(target_arch = "x86_64")]
+                if is_trace_patching_enabled() {
+                    unsafe {
+                        restore_trace_function();
+                    }
                 }
                 let tracer = {
                     let lk = self.tracer.lock();
