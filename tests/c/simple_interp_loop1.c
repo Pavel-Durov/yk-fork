@@ -1,18 +1,18 @@
 // Run-time:
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YKD_LOG=4
 //   env-var: YKD_LOG_STATS=/dev/null
 //   stderr:
-//     jitstate: start-tracing
+//     yk-tracing: start-tracing
 //     pc=0, mem=12
 //     pc=1, mem=11
 //     pc=2, mem=10
 //     pc=3, mem=9
-//     jitstate: stop-tracing
+//     yk-tracing: stop-tracing
 //     pc=0, mem=9
 //     pc=1, mem=8
 //     pc=2, mem=7
 //     pc=3, mem=6
-//     jitstate: enter-jit-code
+//     yk-execution: enter-jit-code
 //     pc=0, mem=6
 //     pc=1, mem=5
 //     pc=2, mem=4
@@ -21,7 +21,7 @@
 //     pc=1, mem=2
 //     pc=2, mem=1
 //     pc=3, mem=0
-//     jitstate: deoptimise
+//     yk-execution: deoptimise ...
 //     pc=4, mem=0
 //     pc=5, mem=-1
 
@@ -55,13 +55,12 @@ int main(int argc, char **argv) {
   size_t prog_len = sizeof(prog) / sizeof(prog[0]);
 
   // Create one location for each potential PC value.
-  YkLocation loop_loc = yk_location_new();
-  YkLocation **locs = calloc(prog_len, sizeof(&prog[0]));
+  YkLocation *locs = calloc(prog_len, sizeof(&prog[0]));
   for (int i = 0; i < prog_len; i++)
     if (i == 0)
-      locs[i] = &loop_loc;
+      locs[i] = yk_location_new();
     else
-      locs[i] = NULL;
+      locs[i] = yk_location_null();
 
   // The program counter.
   int pc = 0;
@@ -77,7 +76,7 @@ int main(int argc, char **argv) {
     if (pc >= prog_len) {
       exit(0);
     }
-    yk_mt_control_point(mt, locs[pc]);
+    yk_mt_control_point(mt, &locs[pc]);
     if ((pc == 0) && (mem == 9)) {
       __ykstats_wait_until(mt, test_compiled_event);
     }
@@ -102,8 +101,7 @@ int main(int argc, char **argv) {
   NOOPT_VAL(pc);
 
   free(locs);
-  yk_location_drop(loop_loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
 
   return (EXIT_SUCCESS);
 }

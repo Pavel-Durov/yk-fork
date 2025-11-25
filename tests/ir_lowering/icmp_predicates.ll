@@ -2,17 +2,19 @@
 ;   stdout:
 ;     ...
 ;       bb0:
-;         $0_0: i1 = icmp $arg0, Equal, $arg1
-;         $0_1: i1 = icmp $0_0, NotEqual, $arg1
-;         $0_2: i1 = icmp $0_0, UnsignedLess, $0_1
-;         $0_3: i1 = icmp $0_1, UnsignedLessEqual, $0_2
-;         $0_4: i1 = icmp $0_2, UnsignedGreater, $0_3
-;         $0_5: i1 = icmp $0_3, UnsignedGreaterEqual, $0_4
-;         $0_6: i1 = icmp $0_4, SignedLess, $0_5
-;         $0_7: i1 = icmp $0_5, SignedLessEqual, $0_6
-;         $0_8: i1 = icmp $0_6, SignedGreater, $0_7
-;         $0_9: i1 = icmp $0_7, SignedGreaterEqual, $0_8
-;         ret $0_9
+;         %0_0: i1 = arg(0)
+;         %0_1: i1 = arg(1)
+;         %0_2: i1 = eq %0_0, %0_1
+;         %0_3: i1 = ne %0_2, %0_1
+;         %0_4: i1 = ult %0_2, %0_3
+;         %0_5: i1 = ule %0_3, %0_4
+;         %0_6: i1 = ugt %0_4, %0_5
+;         %0_7: i1 = uge %0_5, %0_6
+;         %0_8: i1 = slt %0_6, %0_7
+;         %0_9: i1 = sle %0_7, %0_8
+;         %0_10: i1 = sgt %0_8, %0_9
+;         %0_11: i1 = sge %0_9, %0_10
+;         ret %0_11
 ;     ...
 
 ; Check that icmp predicates lower correctly.

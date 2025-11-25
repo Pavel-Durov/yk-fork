@@ -3,27 +3,30 @@
 use std::{
     mem,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
 };
 
 use crate::{
     compile::CompiledTrace,
-    mt::{HotThreshold, SideTraceInfo, TraceFailureThreshold, MT},
+    mt::{HotThreshold, MT, TraceCompilationErrorThreshold, TraceId},
 };
 use parking_lot::Mutex;
 
 #[cfg(target_pointer_width = "64")]
-const STATE_TAG: usize = 0b1; // All of the tag data must fit in this.
+const STATE_TAG_MASK: usize = 0b11; // All of the tag data must fit in this.
 #[cfg(target_pointer_width = "64")]
-const STATE_NUM_BITS: usize = 1;
+const STATE_NUM_BITS: usize = 2;
 
-/// Because hot locations will be most common, we save ourselves the effort of ANDing bits away by
-/// having `STATE_HOT` be 0, expecting that `ptr & !0` will be optimised to just `ptr`.
-const STATE_HOT: usize = 0;
-/// In the not hot state, we have to do `(inner & !1) >> STATE_NUM_BITS` to derive the count.
-const STATE_NOT_HOT: usize = 0b1;
+const STATE_NULL: usize = 0b00;
+/// The tag value for a not-yet-hot [Location]. Because null [Location]s have an inner value of 0,
+/// this value *must* be non-zero. To derive the count of a not-yet-hot [Location], we have to do
+/// `(inner & !1) >> STATE_NUM_BITS` to derive the count.
+const STATE_NOT_HOT: usize = 0b01;
+/// The tag value for a hot [Location]; its [HotLocation] address will be contained in the non-tag
+/// bits.
+const STATE_HOT: usize = 0b10;
 
 /// A `Location` stores state that the meta-tracer needs to identify hot loops and run associated
 /// machine code.
@@ -39,53 +42,72 @@ const STATE_NOT_HOT: usize = 0b1;
 #[repr(C)]
 #[derive(Debug)]
 pub struct Location {
-    // A Location is a state machine which operates as follows (where Counting is the start state):
-    //
-    //              ┌──────────────┐
-    //              │              │─────────────┐
-    //   reprofile  │   Counting   │             │
-    //  ┌──────────▶│              │◀────────────┘
-    //  │           └──────────────┘    increment
-    //  │             │                 count
-    //  │             │ start tracing
-    //  │             ▼
-    //  │           ┌──────────────┐
-    //  │           │              │ incomplete  ┌─────────────┐
-    //  │           │   Tracing    │────────────▶│  DontTrace  │
-    //  │           │              │             └─────────────┘
-    //  │           └──────────────┘
-    //  │             │ start compiling trace
-    //  │             │ in thread
-    //  │             ▼
-    //  │           ┌──────────────┐             ┌───────────┐
-    //  │           │  Compiling   │────────────▶│  Dropped  │
-    //  │           └──────────────┘             └───────────┘
-    //  │             │
-    //  │             │ trace compiled
-    //  │             ▼
-    //  │           ┌──────────────┐
-    //  └───────────│   Compiled   │◀────────────┐
-    //              └──────────────┘             │
-    //                │                          │
-    //                │ guard failed             │
-    //                ▼                          │
-    //              ┌──────────────┐             │
-    //              │  SideTracing │─────────────┘
-    //              └──────────────┘
-    //
-    // We hope that a Location soon reaches the `Compiled` state (aka "the happy state") and stays
-    // there. However, many Locations will not be used frequently enough to reach such a state, so
-    // we don't want to waste resources on them.
-    //
-    // We therefore encode a Location as a tagged integer: in the initial (Counting) state, no
-    // memory is allocated; if the location is used frequently enough it becomes hot, memory
-    // is allocated for it, and a pointer stored instead of an integer. Note that once memory for a
-    // hot location is allocated, it can only be (scheduled for) deallocation when a Location
-    // is dropped, as the Location may have handed out `&` references to that allocated memory.
-    //
-    // The layout of a Location is as follows: bit 0 = <STATE_NOT_HOT|STATE_HOT>; bits 1..<machine
-    // width> = payload. In the `STATE_NOT_HOT` state, the payload is an integer; in a `STATE_HOT`
-    // state, the payload is a pointer from `Arc::into_raw::<Mutex<HotLocation>>()`.
+    /// A Location is a state machine. "Null" locations are always "null". Non-"null" locations
+    /// operate operate as follows (where Counting is the start state):
+    ///
+    /// ```text
+    ///                                           ★
+    ///                                           │
+    ///                                           │
+    ///                                           ▼
+    ///                                         ┌──────────────────────────────────────────────────────────────────────┐   increment count
+    ///                                         │                                                                      │ ──────────────────┐
+    ///                                         │                               Counting                               │                   │
+    ///                                         │                                                                      │ ◀─────────────────┘
+    ///                                         └──────────────────────────────────────────────────────────────────────┘
+    ///                                           │                 ▲                          ▲
+    ///                                           │ start tracing   │ failed below threshold   │ failed below threshold
+    ///                                           ▼                 │                          │
+    /// ┌───────────┐  failed above threshold   ┌────────────────┐  │                          │
+    /// │ DontTrace │ ◀──────────────────────── │    Tracing     │ ─┘                          │
+    /// └───────────┘                           └────────────────┘                             │
+    ///   ▲                                       │                                            │
+    ///   │                                       │                                            │
+    ///   │                                       ▼                                            │
+    ///   │           failed above threshold    ┌────────────────┐                             │
+    ///   └──────────────────────────────────── │   Compiling    │ ────────────────────────────┘
+    ///                                         └────────────────┘
+    ///                                           │
+    ///                                           │
+    ///                                           ▼
+    ///                                         ┌────────────────┐
+    ///                                         │    Compiled    │
+    ///                                         └────────────────┘
+    /// ```
+    ///
+    /// This diagram was created with [this tool](https://dot-to-ascii.ggerganov.com/) using this
+    /// GraphViz input:
+    ///
+    /// ```text
+    /// digraph {
+    ///   init [label="", shape=point];
+    ///   init -> Counting;
+    ///   Counting -> Counting [label="increment count"];
+    ///   Counting -> Tracing [label="start tracing"];
+    ///   Tracing -> Compiling;
+    ///   Tracing -> Counting [label="failed below threshold"];
+    ///   Tracing -> DontTrace [label="failed above threshold"];
+    ///   Compiling -> Compiled;
+    ///   Compiling -> Counting [label="failed below threshold"];
+    ///   Compiling -> DontTrace [label="failed above threshold"];
+    /// }
+    /// ```
+    ///
+    /// We hope that a Location soon reaches the `Compiled` state (aka "the happy state") and stays
+    /// there. However, many Locations will not be used frequently enough to reach such a state, so
+    /// we don't want to waste resources on them.
+    ///
+    /// We therefore encode a Location as a tagged integer: when initialised, no memory is
+    /// allocated; if the location is used frequently enough it becomes hot, memory is allocated
+    /// for it, and a pointer stored instead of an integer. Note that once memory for a hot
+    /// location is allocated, it can only be (scheduled for) deallocation when a Location is
+    /// dropped, as the Location may have handed out `&` references to that allocated memory. That
+    /// means that the `Counting` state is encoded in two separate ways: both with and without
+    /// allocated memory.
+    ///
+    /// The layout of a Location is as follows: bit 0 = <STATE_NOT_HOT|STATE_HOT>; bits 1..<machine
+    /// width> = payload. In the `STATE_NOT_HOT` state, the payload is an integer; in a `STATE_HOT`
+    /// state, the payload is a pointer from `Arc::into_raw::<Mutex<HotLocation>>()`.
     inner: AtomicUsize,
 }
 
@@ -93,15 +115,33 @@ impl Location {
     /// Create a new location.
     pub fn new() -> Self {
         // Locations start in the counting state with a count of 0.
+        debug_assert_ne!(STATE_NOT_HOT, 0);
         Self {
             inner: AtomicUsize::new(STATE_NOT_HOT),
         }
     }
 
-    /// If `self` is in the `Counting` state, increment and return its count, or `None` otherwise.
+    /// Create a new "null" location, denoting a point in a program which can never contribute to a
+    /// trace.
+    pub fn null() -> Self {
+        Self {
+            inner: AtomicUsize::new(STATE_NULL),
+        }
+    }
+
+    /// Returns true if this is a "null" location.
+    pub fn is_null(&self) -> bool {
+        self.inner.load(Ordering::Relaxed) == STATE_NULL
+    }
+
+    /// If `self` is:
+    ///   1. in the `Counting` state and
+    ///   2. has not had a `HotLocation` allocated for it
+    ///
+    /// then increment and return its count, or `None` otherwise.
     pub(crate) fn inc_count(&self) -> Option<HotThreshold> {
         let x = self.inner.load(Ordering::Relaxed);
-        if x & STATE_NOT_HOT != 0 {
+        if x & STATE_TAG_MASK == STATE_NOT_HOT {
             // `HotThreshold` must be unsigned
             debug_assert_eq!(HotThreshold::MIN, 0);
             // For the `as` to be safe, `HotThreshold` can't be bigger than `usize`
@@ -109,9 +149,11 @@ impl Location {
             let old = (x >> STATE_NUM_BITS) as HotThreshold;
             // The particular value of `new` must fit in the bits we have available.
             let new = old + 1;
-            debug_assert!((new as usize)
-                .checked_shl(u32::try_from(STATE_NUM_BITS).unwrap())
-                .is_some());
+            debug_assert!(
+                (new as usize)
+                    .checked_shl(u32::try_from(STATE_NUM_BITS).unwrap())
+                    .is_some()
+            );
 
             self.inner
                 .compare_exchange_weak(
@@ -127,11 +169,14 @@ impl Location {
         }
     }
 
-    /// If `self` is in the `Counting` state, return its count, or `None` otherwise.
-    #[cfg(test)]
+    /// If `self` is:
+    ///   1. in the `Counting` state and
+    ///   2. has not had a `HotLocation` allocated for it
+    ///
+    /// return its count, or `None` otherwise
     pub(crate) fn count(&self) -> Option<HotThreshold> {
         let x = self.inner.load(Ordering::Relaxed);
-        if x & STATE_NOT_HOT != 0 {
+        if x & STATE_TAG_MASK == STATE_NOT_HOT {
             // `HotThreshold` must be unsigned
             debug_assert_eq!(HotThreshold::MIN, 0);
             Some((x >> STATE_NUM_BITS) as HotThreshold)
@@ -150,7 +195,7 @@ impl Location {
     ) -> Option<Arc<Mutex<HotLocation>>> {
         let hl = Arc::new(Mutex::new(hl));
         let cl: *const Mutex<HotLocation> = Arc::into_raw(Arc::clone(&hl));
-        debug_assert_eq!((cl as usize) & !STATE_TAG, cl as usize);
+        debug_assert_eq!((cl as usize) & !STATE_TAG_MASK, cl as usize);
         match self.inner.compare_exchange(
             ((old as usize) << STATE_NUM_BITS) | STATE_NOT_HOT,
             (cl as usize) | STATE_HOT,
@@ -167,15 +212,38 @@ impl Location {
         }
     }
 
+    pub fn set_hl_debug_str(&self, s: String) {
+        match self.hot_location() {
+            Some(hl) => {
+                hl.lock().debug_str = Some(s);
+            }
+            None => {
+                let Some(count) = self.count() else {
+                    // We clashed with another thread.
+                    todo!();
+                };
+                let hl = HotLocation {
+                    kind: HotLocationKind::Counting(count),
+                    tracecompilation_errors: 0,
+                    debug_str: Some(s),
+                };
+                if self.count_to_hot_location(count, hl).is_none() {
+                    // We clashed with another thread.
+                    todo!();
+                }
+            }
+        }
+    }
+
     /// If `self` has a [HotLocation] return a reference to the `Mutex` that directly wraps it, or
     /// `None` otherwise.
     pub(crate) fn hot_location(&self) -> Option<&Mutex<HotLocation>> {
         let x = self.inner.load(Ordering::Relaxed);
-        if x & STATE_NOT_HOT == 0 {
+        if x & STATE_TAG_MASK == STATE_HOT {
             // `Arc::into_raw::<Mutex<T>>` returns `*mut Mutex<T>` so the address we're wrapping is
             // a pointer to the `Mutex` itself. By returning a `&` reference we ensure that the
             // reference to the `Mutex` can't outlive this `Location`.
-            Some(unsafe { &*(x as *const _) })
+            Some(unsafe { &*((x & !STATE_TAG_MASK) as *const _) })
         } else {
             None
         }
@@ -185,8 +253,8 @@ impl Location {
     /// otherwise.
     pub(crate) fn hot_location_arc_clone(&self) -> Option<Arc<Mutex<HotLocation>>> {
         let x = self.inner.load(Ordering::Relaxed);
-        if x & STATE_NOT_HOT == 0 {
-            let raw = unsafe { Arc::from_raw(x as *mut _) };
+        if x & STATE_TAG_MASK == STATE_HOT {
+            let raw = unsafe { Arc::from_raw((x & !STATE_TAG_MASK) as *mut _) };
             let cl = Arc::clone(&raw);
             mem::forget(raw);
             Some(cl)
@@ -205,8 +273,8 @@ impl Default for Location {
 impl Drop for Location {
     fn drop(&mut self) {
         let x = self.inner.load(Ordering::Relaxed);
-        if x & STATE_NOT_HOT == 0 {
-            drop(unsafe { Arc::from_raw(x as *mut Mutex<HotLocation>) });
+        if x & STATE_TAG_MASK == STATE_HOT {
+            drop(unsafe { Arc::from_raw((x & !STATE_TAG_MASK) as *mut Mutex<HotLocation>) });
         }
     }
 }
@@ -214,49 +282,59 @@ impl Drop for Location {
 #[derive(Debug)]
 pub(crate) struct HotLocation {
     pub(crate) kind: HotLocationKind,
-    pub(crate) trace_failure: TraceFailureThreshold,
+    /// How often has tracing or compilation starting directly from this hot location led to an
+    /// error?
+    pub(crate) tracecompilation_errors: TraceCompilationErrorThreshold,
+    /// An optional debug string for this hot location.
+    pub(crate) debug_str: Option<String>,
 }
 
 impl HotLocation {
-    /// Mark a trace starting at this `HotLocation` as having failed. The return value indicates
-    /// whether further traces for this location should be generated or not.
-    pub(crate) fn trace_failed(&mut self, mt: &Arc<MT>) -> TraceFailed {
-        if self.trace_failure < mt.trace_failure_threshold() {
-            self.trace_failure += 1;
-            self.kind = HotLocationKind::Tracing;
+    /// A trace, or the compilation of a trace, starting at this [HotLocation] led to an error. The
+    /// return value indicates whether further traces for this location should be generated or not.
+    pub(crate) fn tracecompilation_error(&mut self, mt: &Arc<MT>) -> TraceFailed {
+        if self.tracecompilation_errors < mt.trace_failure_threshold() {
+            self.tracecompilation_errors += 1;
             TraceFailed::KeepTrying
         } else {
-            self.kind = HotLocationKind::DontTrace;
             TraceFailed::DontTrace
         }
     }
 }
 
 /// A `Location`'s non-counting states.
-#[derive(Debug)]
 pub(crate) enum HotLocationKind {
     /// Points to executable machine code that can be executed instead of the interpreter for this
     /// HotLocation.
     Compiled(Arc<dyn CompiledTrace>),
     /// A trace for this HotLocation is being compiled in another trace. When compilation is
     /// complete, the compiling thread will update the state of this HotLocation.
-    Compiling,
+    Compiling(TraceId),
+    /// Because of a failure in compiling / tracing, we have reentered the `Counting` state. This
+    /// can be seen as a way of implementing back-off in the face of errors.
+    Counting(HotThreshold),
     /// This HotLocation has encountered problems (e.g. traces which are too long) and shouldn't be
     /// traced again.
     DontTrace,
     /// This HotLocation started a trace which is ongoing.
-    Tracing,
-    /// While executing JIT compiled code, a guard failed often enough for us to want to generate a
-    /// side trace for this HotLocation.
-    SideTracing(
-        Arc<dyn CompiledTrace>,
-        SideTraceInfo,
-        Arc<dyn CompiledTrace>,
-    ),
+    Tracing(TraceId),
+}
+
+impl std::fmt::Debug for HotLocationKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Compiled(_) => write!(f, "Compiled"),
+            Self::Compiling(_) => write!(f, "Compiling"),
+            Self::Counting(_) => write!(f, "Counting"),
+            Self::DontTrace => write!(f, "DontTrace"),
+            Self::Tracing(_) => write!(f, "Tracing"),
+        }
+    }
 }
 
 /// When a [HotLocation] has failed to compile a valid trace, should the [HotLocation] be tried
 /// again or not?
+#[derive(Debug)]
 pub(crate) enum TraceFailed {
     KeepTrying,
     DontTrace,

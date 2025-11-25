@@ -3,7 +3,7 @@
 use clap::Parser;
 use std::{env, path::PathBuf, process::Command};
 use tempfile::TempDir;
-use tests::{mk_compiler, EXTRA_LINK};
+use tests::{EXTRA_LINK, mk_compiler};
 use ykbuild::ykllvm_bin;
 
 /// Run a C test under gdb.
@@ -13,25 +13,13 @@ struct Args {
     /// The test to attach gdb to.
     test_file: PathBuf,
 
-    /// Run the test with `YKD_LOG_IR` set to the specified value.
-    #[arg(short, long)]
-    log_ir: Option<String>,
-
-    /// Run the test with `YKD_LOG_JITSTATE=-`
-    #[arg(short = 'j', long)]
-    log_jitstate: bool,
-
-    /// Run the test with `YKD_SERIALISE_COMPILATION=1`
-    #[arg(short, long)]
-    serialise_compilation: bool,
-
-    /// Set breakpoints at the first `N` compiled traces.
-    #[arg(short = 'b', long)]
-    num_breaks: Option<usize>,
-
     /// Don't immediately run the program.
     #[arg(short = 'n', long)]
     wait_at_prompt: bool,
+
+    /// Pass all arguments after `--` directly to GDB.
+    #[arg(last = true, required = false)]
+    gdb_args: Vec<String>,
 }
 
 fn main() {
@@ -59,9 +47,9 @@ fn main() {
         ykllvm_bin("clang").as_path(),
         &binpath,
         &test_path,
-        "-O0",
         &extra_objs,
         true,
+        None,
     );
     if !cmd.spawn().unwrap().wait().unwrap().success() {
         panic!("compilation failed");
@@ -70,31 +58,18 @@ fn main() {
     // Now we have a test binary in a temporary directory, prepare an invocation of gdb, setting
     // environment variables as necessary.
     let mut gdb = Command::new("gdb");
-    gdb.arg(&binpath).env("YKD_TRACE_DEBUGINFO", "1");
-
-    if args.serialise_compilation {
-        gdb.env("YKD_SERIALISE_COMPILATION", "1");
-    }
-
-    if args.log_jitstate {
-        gdb.env("YKD_LOG_JITSTATE", "1");
-    }
-
-    if let Some(irs) = args.log_ir {
-        gdb.env("YKD_LOG_IR", irs);
-    }
-
-    if let Some(num_breaks) = args.num_breaks {
-        gdb.args(["-ex", "set breakpoint pending on"]); // don't prompt for pending breaks.
-        for i in 0..num_breaks {
-            gdb.args(["-ex", &format!("b __yk_compiled_trace_{i}")]);
-        }
-    }
+    gdb.arg(&binpath);
 
     if !args.wait_at_prompt {
         gdb.args(["-ex", "run"]);
     }
 
+    // Pass all GDB-specific arguments after '--'
+    if !args.gdb_args.is_empty() {
+        for gdb_arg in &args.gdb_args {
+            gdb.arg(gdb_arg);
+        }
+    }
     // Run gdb!
     gdb.spawn().expect("failed to spawn gdb").wait().unwrap();
 }

@@ -1,8 +1,7 @@
+#![cfg(all(target_arch = "x86_64", target_os = "linux"))]
 #![allow(clippy::len_without_is_empty)]
 #![allow(clippy::new_without_default)]
 #![allow(clippy::upper_case_acronyms)]
-#![feature(lazy_cell)]
-#![feature(ptr_sub_ptr)]
 
 mod block;
 pub use block::Block;
@@ -17,6 +16,7 @@ pub use errors::{HWTracerError, TemporaryErrorKind};
 #[cfg(test)]
 use std::time::SystemTime;
 use std::{fmt::Debug, sync::Arc};
+use thiserror::Error;
 
 /// A builder for [Tracer]s. By default, will attempt to use the most appropriate [Tracer] for your
 /// platform/configuration. This can be overridden with [TracerBuilder::tracer_kind] and
@@ -81,7 +81,7 @@ pub trait Tracer: Send + Sync {
 }
 
 /// Represents a thread which is currently tracing.
-pub trait ThreadTracer {
+pub trait ThreadTracer: Debug {
     /// Stop collecting a trace of the current thread.
     fn stop_collector(self: Box<Self>) -> Result<Box<dyn Trace>, HWTracerError>;
 }
@@ -93,7 +93,7 @@ pub trait Trace: Debug + Send {
     /// Iterate over the blocks of the trace.
     fn iter_blocks(
         self: Box<Self>,
-    ) -> Box<dyn Iterator<Item = Result<Block, HWTracerError>> + Send>;
+    ) -> Box<dyn Iterator<Item = Result<Block, BlockIteratorError>> + Send>;
 
     #[cfg(test)]
     fn bytes(&self) -> &[u8];
@@ -105,6 +105,15 @@ pub trait Trace: Debug + Send {
     /// Get the size of the trace in bytes.
     #[cfg(test)]
     fn len(&self) -> usize;
+}
+
+#[derive(Debug, Error)]
+pub enum BlockIteratorError {
+    #[cfg(ykpt)]
+    #[error("dladdr() cannot map vaddr")]
+    NoSuchVAddr,
+    #[error("HWTracerError: {0}")]
+    HWTracerError(HWTracerError),
 }
 
 /// A loop that does some work that we can use to build a trace.
@@ -128,13 +137,13 @@ where
     let tt = Arc::clone(tc).start_collector().unwrap();
     let res = f();
     let trace = tt.stop_collector().unwrap();
-    println!("traced closure with result: {}", res); // To avoid over-optimisation.
+    println!("traced closure with result: {res}"); // To avoid over-optimisation.
     trace
 }
 
 #[cfg(test)]
 mod test {
-    use crate::{trace_closure, work_loop, Tracer, TracerBuilder, TracerKind};
+    use crate::{Tracer, TracerBuilder, TracerKind, trace_closure, work_loop};
     use std::{sync::Arc, thread};
 
     fn all_collectors() -> Vec<Arc<dyn Tracer>> {
@@ -153,6 +162,9 @@ mod test {
 
     #[test]
     fn basic_collection() {
+        if !crate::pt::pt_supported() {
+            return;
+        }
         for c in all_collectors() {
             let trace = trace_closure(&c, || work_loop(500));
             assert_ne!(trace.len(), 0);
@@ -161,6 +173,9 @@ mod test {
 
     #[test]
     pub fn repeated_collection() {
+        if !crate::pt::pt_supported() {
+            return;
+        }
         for c in all_collectors() {
             for _ in 0..10 {
                 let trace = trace_closure(&c, || work_loop(500));
@@ -171,6 +186,9 @@ mod test {
 
     #[test]
     pub fn repeated_collection_different_collectors() {
+        if !crate::pt::pt_supported() {
+            return;
+        }
         for _ in 0..10 {
             for c in all_collectors() {
                 let trace = trace_closure(&c, || work_loop(500));
@@ -181,6 +199,9 @@ mod test {
 
     #[test]
     fn concurrent_collection() {
+        if !crate::pt::pt_supported() {
+            return;
+        }
         for c in all_collectors() {
             thread::scope(|s| {
                 let hndl = s.spawn(|| {

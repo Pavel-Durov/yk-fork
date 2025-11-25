@@ -1,27 +1,24 @@
+// ignore-if: test "$YK_JITC" = "j2"
 // Run-time:
-//   env-var: YKD_LOG_IR=-:jit-pre-opt
+//   env-var: YKD_LOG_IR=jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YKD_LOG=4
 //   stderr:
-//     jitstate: start-tracing
-//     jitstate: stop-tracing
+//     yk-tracing: start-tracing
+//     yk-tracing: stop-tracing
 //     --- Begin jit-pre-opt ---
 //     ...
-//     define ptr @__yk_compiled_trace_0(ptr %0, ptr %1...
-//        ...
-//        call void @llvm.memcpy...
-//        ...
-//     }
+//     call @llvm.memcpy.p0.p0...
 //     ...
 //     --- End jit-pre-opt ---
-//     jitstate: enter-jit-code
+//     yk-execution: enter-jit-code
 //     ...
-//     jitstate: deoptimise
+//     yk-execution: deoptimise ...
 //     ...
 //   stdout:
 //     3
 
-// Check that intrinsics that aren't inlined are handled correctly.
+// Check non-inlinable intrinsics.
 
 #include <assert.h>
 #include <stdio.h>
@@ -55,7 +52,7 @@ int main(int argc, char **argv) {
   NOOPT_VAL(res);
   printf("%d", res[0]);
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
 
   return (EXIT_SUCCESS);
 }

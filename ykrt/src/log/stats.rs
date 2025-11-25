@@ -3,6 +3,8 @@
 //! account for context switches and the like. Thus the statistics are very much in "best effort"
 //! territory -- but it's better than nothing!
 
+#[cfg(feature = "yk_testing")]
+use crate::mt::MT;
 #[cfg(not(test))]
 use std::env;
 #[cfg(feature = "yk_testing")]
@@ -71,6 +73,7 @@ impl Stats {
     pub fn new() -> Self {
         Self {
             inner: Some(Mutex::new(StatsInner::new("-".to_string()))),
+            #[cfg(feature = "yk_testing")]
             wait_until_condvar: None,
         }
     }
@@ -100,9 +103,9 @@ impl Stats {
     ///
     /// # Panics
     ///
-    /// If `YKD_LOG_STATS` is not set.
+    /// If `YKD_LOG_STATS` is not set or if a worker thread dies whilst waiting.
     #[cfg(feature = "yk_testing")]
-    fn wait_until<F>(&self, test: F)
+    fn wait_until<F>(&self, mt: &MT, test: F)
     where
         F: Fn(&mut StatsInner) -> bool,
     {
@@ -114,8 +117,10 @@ impl Stats {
                         .wait_until_condvar
                         .as_ref()
                         .expect("Can't call wait_until unless YKD_LOG_STATS is set")
-                        .wait(lk)
-                        .unwrap();
+                        .wait_timeout(lk, Duration::from_secs(1))
+                        .unwrap()
+                        .0;
+                    mt.check_job_queue_integrity();
                 }
             }
             None => panic!("Can't call wait_until unless YKD_LOG_STATS is set"),
@@ -157,6 +162,11 @@ impl Stats {
                 inner.durations[prev_state as usize].saturating_add(d);
         });
     }
+
+    /// Output these statistics to the appropriate output path.
+    pub(crate) fn output(&self) {
+        self.update_with(|inner| inner.output());
+    }
 }
 
 impl StatsInner {
@@ -169,6 +179,16 @@ impl StatsInner {
             traces_compiled_err: 0,
             trace_executions: 0,
             durations: [Duration::new(0, 0); TimingState::COUNT],
+        }
+    }
+
+    /// Output these statistics to the appropriate output path.
+    fn output(&self) {
+        let json = self.to_json();
+        if self.output_path == "-" {
+            eprintln!("{json}");
+        } else {
+            fs::write(&self.output_path, json).ok();
         }
     }
 
@@ -222,17 +242,6 @@ impl StatsInner {
     }
 }
 
-impl Drop for StatsInner {
-    fn drop(&mut self) {
-        let json = self.to_json();
-        if self.output_path == "-" {
-            eprintln!("{json}");
-        } else {
-            fs::write(&self.output_path, json).ok();
-        }
-    }
-}
-
 /// The different timing states a VM can go through.
 #[repr(u8)]
 #[derive(Copy, Clone, Display, EnumCount, EnumIter)]
@@ -249,6 +258,9 @@ pub(crate) enum TimingState {
     /// counted towards anything and is not displayed to the user.
     #[strum(to_string = "")]
     None,
+    /// This thread is tracing.
+    #[strum(to_string = "duration_tracing")]
+    Tracing,
     /// This thread is compiling a mapped trace.
     #[strum(to_string = "duration_compiling")]
     Compiling,
@@ -285,7 +297,7 @@ mod yk_testing {
         trace_executions: u64,
     }
 
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn __ykstats_wait_until(
         mt: *const MT,
         test: unsafe extern "C" fn(YkCStats) -> bool,
@@ -294,7 +306,7 @@ mod yk_testing {
         if mt.stats.inner.is_none() {
             panic!("Statistics collection not enabled");
         }
-        mt.stats.wait_until(|inner| {
+        mt.stats.wait_until(mt, |inner| {
             let cstats = YkCStats {
                 traces_recorded_ok: inner.traces_recorded_ok,
                 traces_recorded_err: inner.traces_recorded_err,

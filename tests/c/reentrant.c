@@ -1,35 +1,27 @@
-// # This test breaks in swt tracer as swt tracer is missing unmappable block so it cannot
-// # see calls from unmappable blocks to mappable blocks and vice-versa. Disable this test
-// # for swt until we fix it.
-// # Example of what hwt see:
-// # mappable block :           <---
-// #        unmappable block       |
-// #         mappable block  ------
-// ignore-if: test "$YKB_TRACER" = "swt"
+// ignore-if: test "$YK_JITC" = "j2"
 // Run-time:
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YKD_LOG_IR=-:jit-pre-opt
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YKD_LOG_IR=jit-pre-opt
+//   env-var: YKD_LOG=4
+//   stderr:
+//     yk-tracing: start-tracing
+//     4: 5
+//     yk-tracing: stop-tracing
+//     --- Begin jit-pre-opt ---
+//     ...
+//     %{{_}}: i{{_}} = call @call_callback(0x{{_}}, %{{_}}, %{{_}})
+//     ...
+//     --- End jit-pre-opt ---
+//     ...
+//     3: 4
+//     yk-execution: enter-jit-code
+//     2: 3
+//     1: 2
+//     yk-execution: deoptimise TraceId(0) GuardId(1)
+
 
 // Check that we can reliably deal with "foreign" (not compiled with ykllvm)
 // code that calls back into "native code".
-
-// FIXME:  When the trace compiler encounters a call to foreign code, it
-// simply emits a `call` into the JIT trace (not inlining it -- how could it?
-// We have no IR for the foreign code). However, in order to continue
-// building the remainder of the JIT trace after the call, the trace compiler
-// must skip over all the parts of the of "input trace" (e.g. the hardware
-// trace) that correspond with the outlined call. Currently the compiler
-// simply waits until it finds a block with IR again. This is clearly
-// incorrect if foreign code calls back to code we have IR for.
-//
-// The good news is that there is an assertion checking that the place the
-// trace compiler tries to pick up compilation again is as expected. This
-// ensures that we don't miscompile at least. This test fails that assertion:
-//
-// Assertion `std::get<1>(ResumeAfter.getValue())->getParent() == BB' failed.
-//
-// (When fixing this test, add lines to match in the output)
 
 #include <assert.h>
 #include <stdio.h>
@@ -40,26 +32,22 @@
 
 int call_callback(int (*callback)(int, int), int x, int y);
 
-__attribute((noinline)) int callback(int x, int y) { return (x + y) / 2; }
+__attribute((noinline)) int callback(int x, int y) { return (x + y) / 2 + 1; }
 
 int main(int argc, char **argv) {
   YkMT *mt = yk_mt_new(NULL);
   yk_mt_hot_threshold_set(mt, 0);
   YkLocation loc = yk_location_new();
 
-  int x = 0;
   int i = 4;
   NOOPT_VAL(loc);
-  NOOPT_VAL(x);
   NOOPT_VAL(i);
   while (i > 0) {
     yk_mt_control_point(mt, &loc);
-    fprintf(stderr, "i=%d, x=%d\n", i, x);
-    call_callback(&callback, i, i);
+    fprintf(stderr, "%d: %d\n", i,  call_callback(&callback, i, i));
     i--;
   }
-  NOOPT_VAL(x);
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }

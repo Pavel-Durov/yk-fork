@@ -1,21 +1,19 @@
-// # Shadow stack doesn't currently support dynamically sized stack.
-// ignore-if: true
 // Run-time:
-//   env-var: YKD_LOG_IR=-:aot
+//   env-var: YKD_LOG_IR=aot
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YKD_LOG=4
 //   stderr:
 //     ...
 //     --- Begin aot ---
 //     ...
-//     define i8* @trace(...
+//     func trace(...
 //       ...
-//       %{{a}} = add i64 %{{b}}, -1...
+//       %{{a}}: i64 = add %{{b}}, -1i64...
 //       ...
 //     }
 //     ...
 //     --- End aot ---
-//     jitstate: enter-jit-code
+//     yk-execution: enter-jit-code
 //     ...
 
 // Check that compiling and running traces in parallel works.
@@ -29,10 +27,7 @@
 #include <yk.h>
 #include <yk_testing.h>
 
-#ifdef linux
-#include <sys/sysinfo.h>
-#endif
-
+#define NUM_THREADS 8
 #define ITERS 100000
 
 struct thread_data {
@@ -60,15 +55,9 @@ int main() {
   YkMT *mt = yk_mt_new(NULL);
   yk_mt_hot_threshold_set(mt, 0);
 
-#ifdef linux
-  int n_thr = get_nprocs();
-#else
-#error unimplemented
-#endif
-
-  pthread_t threads[n_thr];
-  struct thread_data tds[n_thr];
-  for (int i = 0; i < n_thr; i++) {
+  pthread_t threads[NUM_THREADS];
+  struct thread_data tds[NUM_THREADS];
+  for (int i = 0; i < NUM_THREADS; i++) {
     tds[i].tnum = i;
     tds[i].loc = &loc;
     tds[i].mt = mt;
@@ -78,14 +67,14 @@ int main() {
   }
 
   void *thread_res = 0;
-  for (int i = 0; i < n_thr; i++) {
+  for (int i = 0; i < NUM_THREADS; i++) {
     if (pthread_join(threads[i], &thread_res) != 0)
       err(EXIT_FAILURE, "pthread_join");
     assert((uintptr_t)thread_res == i);
   }
 
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
 
   return (EXIT_SUCCESS);
 }

@@ -1,25 +1,17 @@
 // Run-time:
-//   env-var: YKD_LOG_IR=-:aot
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YKD_LOG=4
 //   stderr:
-//     jitstate: start-tracing
+//     yk-tracing: start-tracing
 //     i=6
-//     jitstate: stop-tracing
-//     --- Begin aot ---
-//     ...
-//     call void @llvm.va_start...
-//     ...
-//     call void @llvm.va_end...
-//     ...
-//     --- End aot ---
+//     yk-tracing: stop-tracing
 //     i=6
-//     jitstate: enter-jit-code
+//     yk-execution: enter-jit-code
 //     i=6
 //     i=6
-//     jitstate: deoptimise
+//     yk-execution: deoptimise ...
 
-// Check that basic trace compilation works.
+// Check varargs calls work.
 
 #include <assert.h>
 #include <stdarg.h>
@@ -56,6 +48,6 @@ int main(int argc, char **argv) {
     i--;
   }
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }

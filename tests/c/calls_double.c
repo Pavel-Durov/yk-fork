@@ -1,9 +1,9 @@
 // Run-time:
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YKD_LOG=4
 //   stderr:
 //     ...
-//     jitstate: enter-jit-code
+//     yk-execution: enter-jit-code
 //     res=3
 //     ...
 
@@ -34,6 +34,6 @@ int main(int argc, char **argv) {
   }
 
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }

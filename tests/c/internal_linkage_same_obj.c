@@ -1,10 +1,22 @@
+// ignore-if: test "$YK_JITC" = "j2"
 // Run-time:
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YKD_LOG=4
+//   env-var: YKD_LOG_IR=jit-pre-opt
 //   stderr:
+//     yk-tracing: start-tracing
+//     x=0
+//     yk-tracing: stop-tracing
+//     --- Begin jit-pre-opt ---
 //     ...
-//     jitstate: enter-jit-code
+//     %{{12}}: i32 = call @call_me(%{{8}})
 //     ...
+//     --- End jit-pre-opt ---
+//     ...
+//     yk-execution: enter-jit-code
+//     x=0
+//     x=0
+//     yk-execution: deoptimise ...
 
 // Check that we can call a static function with internal linkage from the same
 // compilation unit.
@@ -14,7 +26,7 @@
 #include <yk.h>
 #include <yk_testing.h>
 
-__attribute__((noinline)) static int call_me(int x) {
+__attribute__((noinline, yk_outline)) static int call_me(int x) {
   NOOPT_VAL(x);
   if (x == 5)
     return 1;
@@ -27,16 +39,17 @@ int main(int argc, char **argv) {
   yk_mt_hot_threshold_set(mt, 0);
   YkLocation loc = yk_location_new();
 
-  int res = 0, i = 4;
+  int x = 999, i = 4;
   NOOPT_VAL(i);
   while (i > 0) {
     yk_mt_control_point(mt, &loc);
-    res = call_me(argc);
+    x = call_me(argc);
+    fprintf(stderr, "x=%d\n", x);
     i--;
   }
-  assert(res == 0);
+  assert(x == 0);
 
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }

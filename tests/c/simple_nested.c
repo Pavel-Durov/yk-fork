@@ -1,50 +1,18 @@
-// ignore-if: true
 // Run-time:
-//   env-var: YKD_LOG_IR=-:jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YKD_LOG=4
 //   stderr:
-//     jitstate: start-tracing
+//     yk-tracing: start-tracing
 //     i=5
-//     jitstate: stop-tracing
-//     --- Begin jit-pre-opt ---
-//     ...
-//     define {{rtnty}} @__yk_compiled_trace_0(ptr %0, ptr %1, i64 %2, i64 %3) {
-//        ...
-//        %{{fptr}} = getelementptr %YkCtrlPointVars, ptr %0, i32 0, i32 0...
-//        %{{load}} = load...
-//        ...
-//        %{{cond}} = icmp sgt i32 %{{val}}, ...
-//        br i1 %{{cond}}, label %{{guard-succ-bb}}, label %{{guard-fail-bb}}
-//
-//     {{guard-fail-bb}}:...
-//       %{{al}} = alloca...
-//       ...
-//       %{{cprtn}} = call {{rtnty}} (...) @llvm.experimental.deoptimize.{{rtnty}}(...
-//       ret {{rtnty}} %{{cprtn}}
-//
-//     {{guard-succ-bb}}:...
-//        ...
-//        %{{fptr2}} = getelementptr %YkCtrlPointVars, ptr %0, i32 0, i32 0...
-//        store...
-//        ...
-//        ret {{rtnty}} 1
-//     }
-//     ...
-//     --- End jit-pre-opt ---
+//     yk-tracing: stop-tracing
 //     i=4
-//     jitstate: enter-jit-code
+//     yk-execution: enter-jit-code
 //     i=3
-//     jitstate: exit-jit-code
-//     jitstate: enter-jit-code
 //     i=2
-//     jitstate: deoptimise
+//     yk-execution: deoptimise ...
 //     ...
-//     jitstate: exit-jit-code
-//   stdout:
-//     exit
 
-// Check that basic trace compilation works.
+// Check that basic trace compilation works with nested calls.
 
 #include <assert.h>
 #include <stdio.h>
@@ -69,20 +37,15 @@ int main(int argc, char **argv) {
   yk_mt_hot_threshold_set(mt, 0);
   YkLocation loc = yk_location_new();
 
-  int res = 0;
   int i = 5;
   NOOPT_VAL(loc);
-  NOOPT_VAL(res);
   NOOPT_VAL(i);
   while (i > 0) {
     yk_mt_control_point(mt, &loc);
     fprintf(stderr, "i=%d\n", i);
     i = bar(i);
-    res += 1;
   }
-  printf("exit");
-  NOOPT_VAL(res);
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }

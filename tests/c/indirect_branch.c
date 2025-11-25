@@ -1,9 +1,10 @@
-// # guards for indirect branches not implemented.
+// ## crashes ykllvm's BlockDisambiguate pass.
 // ignore-if: true
 // Run-time:
-//   env-var: YKD_LOG_IR=-:jit-pre-opt
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YKD_LOG_IR=jit-pre-opt
+//   env-var: YKD_LOG=3
 //   stderr:
+//     FIXME: match some IR/output
 //     ...
 
 // Check that tracing an `indirectbr` works.

@@ -1,5 +1,3 @@
-#![feature(lazy_cell)]
-
 use lang_tester::LangTester;
 use regex::Regex;
 use std::{
@@ -9,57 +7,61 @@ use std::{
     process::Command,
 };
 use tempfile::TempDir;
-use tests::{mk_compiler, EXTRA_LINK};
+use tests::{EXTRA_LINK, mk_compiler};
 use ykbuild::{completion_wrapper::CompletionWrapper, ykllvm_bin};
 
 const COMMENT: &str = "//";
+const COMMENT_PREFIX: &str = "##";
 
-fn run_suite(opt: &'static str) {
-    println!("Running C tests with opt level {}...", opt);
+fn main() {
+    println!("Running C tests...");
 
     let tempdir = TempDir::new().unwrap();
 
     // Generate a `compile_commands.json` database for clangd.
     let ccg = CompletionWrapper::new(ykllvm_bin("clang"), "c_tests");
     for (k, v) in ccg.build_env() {
-        env::set_var(k, v);
+        // While this is unsafe, this is only for clangd and doesn't affect the tests.
+        unsafe { env::set_var(k, v) };
     }
     let wrapper_path = ccg.wrapper_path();
 
     // Set variables for tests `ignore-if`s.
+    // These env vars stay the same for the entirety of the `cargo test` run, so we don't need to
+    // worry about this being unsafe.
     #[cfg(cargo_profile = "debug")]
-    env::set_var("YK_CARGO_PROFILE", "debug");
+    unsafe {
+        env::set_var("YK_CARGO_PROFILE", "debug")
+    };
     #[cfg(cargo_profile = "release")]
-    env::set_var("YK_CARGO_PROFILE", "release");
+    unsafe {
+        env::set_var("YK_CARGO_PROFILE", "release")
+    };
 
+    // As with the above, this env var remains the same for the entire `cargo test` run.
     #[cfg(target_arch = "x86_64")]
-    env::set_var("YK_ARCH", "x86_64");
+    unsafe {
+        env::set_var("YK_ARCH", "x86_64")
+    };
     #[cfg(not(target_arch = "x86_64"))]
     panic!("Unknown target_arch");
 
-    let filter = match env::var("YKD_NEW_CODEGEN") {
-        Ok(x) if x == "1" => {
-            env::set_var("YK_JIT_COMPILER", "yk");
-            |p: &Path| {
-                // A temporary hack because at the moment virtually no tests run on the new JIT
-                // compiler.
-                p.extension().as_ref().and_then(|p| p.to_str()) == Some("c")
-                    && p.file_name().unwrap().to_str().unwrap().contains(".newcg")
-            }
-        }
-        _ => {
-            env::set_var("YK_JIT_COMPILER", "llvm");
-            |p: &Path| p.extension().as_ref().and_then(|p| p.to_str()) == Some("c")
-        }
+    // Ensure YKB_TRACER is set, so that tests don't have to consider what the default tracer is
+    // when YKB_TRACER is absent from the env.
+    #[cfg(tracer_swt)]
+    unsafe {
+        env::set_var("YKB_TRACER", "swt")
+    };
+    #[cfg(tracer_hwt)]
+    unsafe {
+        env::set_var("YKB_TRACER", "hwt")
     };
 
     LangTester::new()
-        .comment_prefix("#")
+        .comment_prefix(COMMENT_PREFIX)
         .test_dir("c")
-        .test_path_filter(filter)
+        .test_path_filter(|p: &Path| p.extension().as_ref().and_then(|p| p.to_str()) == Some("c"))
         .test_extract(move |p| {
-            let altp = p.with_extension(format!("c.{}", opt.strip_prefix('-').unwrap()));
-            let p = if altp.exists() { altp.as_path() } else { p };
             read_to_string(p)
                 .unwrap()
                 .lines()
@@ -83,7 +85,8 @@ fn run_suite(opt: &'static str) {
                 .map(|l| l.generate_obj(tempdir.path()))
                 .collect::<Vec<PathBuf>>();
 
-            let mut compiler = mk_compiler(wrapper_path.as_path(), &exe, p, opt, &extra_objs, true);
+            let mut compiler =
+                mk_compiler(wrapper_path.as_path(), &exe, p, &extra_objs, true, None);
             compiler.env("YK_COMPILER_PATH", ykllvm_bin("clang"));
             let runtime = Command::new(exe.clone());
             vec![("Compiler", compiler), ("Run-time", runtime)]
@@ -92,18 +95,11 @@ fn run_suite(opt: &'static str) {
             // Use `{{}}` to match non-literal strings in tests.
             // E.g. use `%{{var}}` to capture the name of a variable.
             let ptn_re = Regex::new(r"\{\{.+?\}\}").unwrap();
+            let ptn_re_ignore = Regex::new(r"\{\{_}\}").unwrap();
             let text_re = Regex::new(r"[a-zA-Z0-9\._]+").unwrap();
-            fmb.name_matcher(ptn_re, text_re)
+            fmb.name_matcher_ignore(ptn_re_ignore, text_re.clone())
+                .name_matcher(ptn_re, text_re)
         })
         .run();
     ccg.generate();
-}
-
-fn main() {
-    // For now we can only compile with -O0 since higher optimisation levels introduce machine code
-    // we currently don't know how to deal with, e.g. temporaries which break stackmap
-    // reconstruction. This isn't a huge problem as in the future we will keep two versions of the
-    // interpreter around and only swap to -O0 when tracing and run on higher optimisation levels
-    // otherwise.
-    run_suite("-O0");
 }

@@ -1,23 +1,23 @@
 // Run-time:
-//   env-var: YKD_LOG_IR=-:aot
+//   env-var: YKD_LOG_IR=aot
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YKD_LOG=4
 //   stderr:
-//     jitstate: start-tracing
+//     yk-tracing: start-tracing
 //     pepper
-//     jitstate: stop-tracing
+//     yk-tracing: stop-tracing
 //     --- Begin aot ---
 //     ...
-//     @.str.2 = private unnamed_addr constant [6 x i8] c"apple\00", align 1...
-//     @.str.3 = private unnamed_addr constant [7 x i8] c"banana\00", align 1...
-//     @.str.4 = private unnamed_addr constant [7 x i8] c"tomato\00", align 1...
+//     global_decl @fruits
+//     global_decl @.str
+//     global_decl @.str.1
 //     ...
 //     --- End aot ---
 //     cucumber
-//     jitstate: enter-jit-code
+//     yk-execution: enter-jit-code
 //     tomato
 //     banana
-//     jitstate: deoptimise
+//     yk-execution: deoptimise ...
 //   stdout:
 //     exit
 
@@ -53,6 +53,6 @@ int main(int argc, char **argv) {
   printf("exit");
   NOOPT_VAL(res);
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }

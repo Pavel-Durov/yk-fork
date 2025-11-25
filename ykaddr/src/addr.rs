@@ -2,7 +2,7 @@
 
 use crate::obj::{PHDR_OBJECT_CACHE, SELF_BIN_PATH};
 use cached::proc_macro::cached;
-use libc::{c_void, dlsym, Dl_info, RTLD_DEFAULT};
+use libc::{Dl_info, RTLD_DEFAULT, c_void, dlsym};
 use std::{
     error::Error,
     ffi::{CStr, CString},
@@ -83,26 +83,27 @@ pub fn dladdr(vaddr: usize) -> Option<DLInfo> {
 }
 
 /// Given a virtual address, returns a pair indicating the object in which the address originated
-/// and the byte offset.
+/// and the byte offset into that object.
 #[cached]
 pub fn vaddr_to_obj_and_off(vaddr: usize) -> Option<(PathBuf, u64)> {
-    // Find the object file from which the virtual address was loaded.
-    let info = dladdr(vaddr).unwrap();
-    let containing_obj = PathBuf::from(info.dli_fname.unwrap().to_str().unwrap());
-
-    // Find the corresponding byte offset of the virtual address in the object.
     for obj in PHDR_OBJECT_CACHE.iter() {
-        let obj_name = obj.name();
-        let obj_name: &Path = if unsafe { *obj_name.as_ptr() } == 0 {
-            SELF_BIN_PATH.as_path()
-        } else {
-            Path::new(obj_name.to_str().unwrap())
-        };
-        if obj_name != containing_obj {
-            continue;
+        for seg in obj.phdrs() {
+            let seg_start_vaddr = obj.addr() + seg.vaddr();
+            let seg_vaddr_rng = seg_start_vaddr..(seg_start_vaddr + seg.memsz());
+            if seg_vaddr_rng.contains(&u64::try_from(vaddr).unwrap()) {
+                let off_from_seg_start = vaddr - usize::try_from(seg_start_vaddr).unwrap();
+                let off = usize::try_from(seg.offset()).unwrap() + off_from_seg_start;
+                let obj_name: PathBuf = if obj.name().is_empty() {
+                    // Some systems use the empty string to denote the main executable object.
+                    SELF_BIN_PATH.clone()
+                } else {
+                    PathBuf::from(obj.name().to_str().unwrap())
+                };
+                return Some((obj_name, u64::try_from(off).unwrap()));
+            }
         }
-        return Some((containing_obj, u64::try_from(vaddr).unwrap() - obj.addr()));
     }
+    // Didn't find a on object containing that address.
     None
 }
 
@@ -119,7 +120,15 @@ pub fn off_to_vaddr(containing_obj: &Path, off: u64) -> Option<usize> {
         if Path::new(obj.name().to_str().unwrap()) != containing_obj {
             continue;
         }
-        return Some(usize::try_from(off + obj.addr()).unwrap());
+        for seg in obj.phdrs() {
+            let seg_off_range = seg.offset()..(seg.offset() + seg.filesz());
+            if seg_off_range.contains(&off) {
+                let off_from_seg_start = off - seg.offset();
+                return Some(
+                    usize::try_from(obj.addr() + seg.vaddr() + off_from_seg_start).unwrap(),
+                );
+            }
+        }
     }
     None // Not found.
 }
@@ -156,25 +165,42 @@ pub fn symbol_to_ptr(name: &str) -> Result<*const (), Box<dyn Error>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{off_to_vaddr, vaddr_to_obj_and_off, vaddr_to_sym_and_obj, MaybeUninit};
+    use super::{MaybeUninit, off_to_vaddr, vaddr_to_obj_and_off, vaddr_to_sym_and_obj};
     use crate::obj::PHDR_MAIN_OBJ;
-    use libc::{dlsym, Dl_info};
+    use libc::{Dl_info, dlsym};
     use std::{ffi::CString, ptr};
 
     #[test]
-    fn map_libc() {
+    fn vaddr_to_obj_and_off_syscall() {
         let func = CString::new("getuid").unwrap();
-        let vaddr = unsafe { dlsym(ptr::null_mut(), func.as_ptr() as *const i8) };
+        let vaddr = unsafe { dlsym(ptr::null_mut(), func.as_ptr()) };
         assert_ne!(vaddr, ptr::null_mut());
-        assert!(vaddr_to_obj_and_off(vaddr as usize).is_some());
+        let (_obj, off) = vaddr_to_obj_and_off(vaddr as usize).unwrap();
+        assert!(off < u64::try_from(vaddr as usize).unwrap());
     }
 
     #[test]
-    #[no_mangle]
-    fn map_so() {
-        let vaddr = vaddr_to_obj_and_off as *const u8;
+    fn vaddr_to_obj_and_off_libc() {
+        let func = CString::new("strdup").unwrap();
+        let vaddr = unsafe { dlsym(ptr::null_mut(), func.as_ptr()) };
         assert_ne!(vaddr, ptr::null_mut());
-        assert!(vaddr_to_obj_and_off(vaddr as usize).is_some());
+        let (_obj, off) = vaddr_to_obj_and_off(vaddr as usize).unwrap();
+        assert!(off < u64::try_from(vaddr as usize).unwrap());
+    }
+
+    #[test]
+    fn vaddr_to_obj_and_off_main_exe() {
+        let vaddr = vaddr_to_obj_and_off_main_exe as *const () as usize;
+        let (obj, off) = vaddr_to_obj_and_off(vaddr as usize).unwrap();
+        // because the loader will load the object a +ve offset from the start of the address space.
+        assert!(off < u64::try_from(vaddr as usize).unwrap());
+        assert!(
+            obj.file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .starts_with("ykaddr-")
+        );
     }
 
     /// Check that converting a virtual address (from a shared object) to a file offset and back to
@@ -182,23 +208,24 @@ mod tests {
     #[test]
     fn round_trip_so() {
         let func = CString::new("getuid").unwrap();
-        let func_vaddr = unsafe { dlsym(ptr::null_mut(), func.as_ptr() as *const i8) };
+        let func_vaddr = unsafe { dlsym(ptr::null_mut(), func.as_ptr()) };
         let mut dlinfo = MaybeUninit::<Dl_info>::uninit();
         assert_ne!(unsafe { libc::dladdr(func_vaddr, dlinfo.as_mut_ptr()) }, 0);
         let dlinfo = unsafe { dlinfo.assume_init() };
         assert_eq!(func_vaddr, dlinfo.dli_saddr);
 
         let (obj, off) = vaddr_to_obj_and_off(func_vaddr as usize).unwrap();
+        assert_ne!(off, u64::try_from(func_vaddr as usize).unwrap());
         assert_eq!(off_to_vaddr(&obj, off).unwrap(), func_vaddr as usize);
     }
 
     /// Check that converting a virtual address (from the main object) to a file offset and back to
     /// a virtual address correctly round-trips.
-    #[no_mangle]
     #[test]
     fn round_trip_main() {
         let func_vaddr = round_trip_main as *const fn();
         let (_obj, off) = vaddr_to_obj_and_off(func_vaddr as usize).unwrap();
+        assert_ne!(off, u64::try_from(func_vaddr as usize).unwrap());
         assert_eq!(
             off_to_vaddr(&PHDR_MAIN_OBJ, off).unwrap(),
             func_vaddr as usize

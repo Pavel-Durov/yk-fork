@@ -1,9 +1,6 @@
 #define _GNU_SOURCE
 
-// FIXME: This collector deals with overflow in the AUX but not the DATA
-// buffer. It would probably be better to either never handle it (for
-// simplicity) or fully handle it.
-
+#include <assert.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -32,9 +29,6 @@
 #define SYSFS_PT_TYPE "/sys/bus/event_source/devices/intel_pt/type"
 #define MAX_PT_TYPE_STR 8
 
-#define MAX_OPEN_PERF_TRIES 50000
-#define OPEN_PERF_WAIT_NSECS 10000000 // 1/100 of a second.
-
 #define AUX_BUF_WAKE_RATIO 0.5
 
 #ifndef INFTIM
@@ -44,16 +38,7 @@
 // The bit in the IA32_RTIT_CTL MSR that disables compressed returns.
 #define IA32_RTIT_CTL_DISRETC 1 << 11
 
-/*
- * The thread's perf file descriptor and its associated underlying `mmap(2)`
- * regions. The file descriptor is re-used for subsequent trace collections for
- * the same thread.
- *
- * FIXME: These leak when a thread dies.
- */
-static thread_local void *cache_base_buf = NULL;
-static thread_local void *cache_aux_buf = NULL;
-static thread_local int cache_perf_fd = -1;
+void get_tracing_extent(char **, size_t *, size_t *);
 
 enum hwt_cerror_kind {
   hwt_cerror_unused = 0,
@@ -65,7 +50,14 @@ enum hwt_cerror_kind {
 };
 
 #if defined(__x86_64__)
-enum hwt_pt_kind { hwt_pt_overflow = 0 };
+/// A mirror of PTErrorCode in the Rust code.
+///
+/// See the Rust code for descriptions of these error kinds.
+enum hwt_pt_kind {
+  hwt_pt_aux_overflow = 0,
+  hwt_pt_trace_capacity = 1,
+  hwt_pt_event_lost = 2
+};
 #endif
 
 struct hwt_cerror {
@@ -90,6 +82,21 @@ struct hwt_perf_ctx {
 };
 
 /*
+ * Setting up perf is slow, so we cache a number of things.
+ *
+ * Since we attach perf to a thread, all of this is per-thread too.
+ */
+struct hwt_perf_thread_cached {
+  int perf_fd;
+  void *aux_buf;
+  size_t aux_bufsize;
+  void *base_buf;
+  size_t base_bufsize;
+};
+
+thread_local struct hwt_perf_thread_cached thread_cached = { -1, NULL, 0, NULL, 0 };
+
+/*
  * Passed from Rust to C to configure tracing.
  * Must stay in sync with the Rust struct `PerfCollectorConfig`.
  */
@@ -97,6 +104,7 @@ struct hwt_perf_collector_config {
   size_t data_bufsize;      // Data buf size (in pages).
   size_t aux_bufsize;       // AUX buf size (in pages).
   size_t trace_result_size; // Size of the `malloc`ed return block (in bytes).
+  bool use_pt_filtering;    // When true use PT IP filtering.
 };
 
 /*
@@ -160,7 +168,7 @@ static bool read_aux(void *, struct perf_event_mmap_page *,
 static bool poll_loop(int, int, struct perf_event_mmap_page *, void *,
                       struct hwt_perf_trace *, struct hwt_cerror *);
 static void *collector_thread(void *);
-static int open_perf(size_t, struct hwt_cerror *);
+static int open_perf(size_t, bool, struct hwt_cerror *);
 void hwt_set_cerr(struct hwt_cerror *, int, int);
 
 // Exposed Prototypes.
@@ -209,9 +217,10 @@ static bool handle_sample(void *aux_buf, struct perf_event_mmap_page *hdr,
   __u64 head_monotonic = atomic_load_explicit((_Atomic __u64 *)&hdr->data_head,
                                               memory_order_acquire);
   __u64 size = hdr->data_size;        // No atomic load. Constant value.
-  __u64 head = head_monotonic % size; // Head must be manually wrapped.
-  __u64 tail = atomic_load_explicit((_Atomic __u64 *)&hdr->data_tail,
+  __u64 head = head_monotonic % size;
+  __u64 tail_monotonic = atomic_load_explicit((_Atomic __u64 *)&hdr->data_tail,
                                     memory_order_relaxed);
+  __u64 tail = tail_monotonic % size;
 
   // Copy samples out, removing wrap in the process.
   void *data_tmp_end = data_tmp;
@@ -226,11 +235,14 @@ static bool handle_sample(void *aux_buf, struct perf_event_mmap_page *hdr,
     memcpy(data_tmp + size - tail, data, head);
     data_tmp_end += head;
   }
-  atomic_store_explicit((_Atomic __u64 *)&hdr->data_tail, head,
+
+  // Inform the kernel that we've read up until the head. We write back the
+  // *unwrapped* value.
+  atomic_store_explicit((_Atomic __u64 *)&hdr->data_tail, head_monotonic,
                         memory_order_relaxed);
 
   void *next_sample = data_tmp;
-  while (next_sample != data_tmp_end) {
+  while (next_sample < data_tmp_end) {
     struct perf_event_header *sample_hdr = next_sample;
     struct perf_record_aux_sample *rec_aux_sample;
     switch (sample_hdr->type) {
@@ -241,7 +253,7 @@ static bool handle_sample(void *aux_buf, struct perf_event_mmap_page *hdr,
       // truncated. If it was, then we didn't read out of the data buffer
       // quickly/frequently enough.
       if (rec_aux_sample->flags & PERF_AUX_FLAG_TRUNCATED) {
-        hwt_set_cerr(err, hwt_cerror_pt, hwt_pt_overflow);
+        hwt_set_cerr(err, hwt_cerror_pt, hwt_pt_aux_overflow);
         return false;
       }
       if (read_aux(aux_buf, hdr, trace, err) == false) {
@@ -249,16 +261,28 @@ static bool handle_sample(void *aux_buf, struct perf_event_mmap_page *hdr,
       }
       break;
     case PERF_RECORD_LOST:
-      hwt_set_cerr(err, hwt_cerror_pt, hwt_pt_overflow);
+      hwt_set_cerr(err, hwt_cerror_pt, hwt_pt_event_lost);
       return false;
       break;
     case PERF_RECORD_LOST_SAMPLES:
       // Shouldn't happen with PT.
       errx(EXIT_FAILURE, "Unexpected PERF_RECORD_LOST_SAMPLES sample");
       break;
+    case PERF_RECORD_AUX_OUTPUT_HW_ID:
+      errx(EXIT_FAILURE, "Unimplemented PERF_RECORD_AUX_OUTPUT_HW_ID sample");
+      break;
+    case PERF_RECORD_ITRACE_START:
+      // These sample kinds are uninteresting to us.
+      break;
+    default:
+      // In the interest of exhaustive matching, catch anything we've not seen
+      // or thought about before and handle them if/when they arise.
+      errx(EXIT_FAILURE, "unhandled sample type: %d\n", sample_hdr->type);
+      break;
     }
     next_sample += sample_hdr->size;
   }
+  assert(next_sample == data_tmp_end);
 
   return true;
 }
@@ -274,9 +298,10 @@ bool read_aux(void *aux_buf, struct perf_event_mmap_page *hdr,
   __u64 head_monotonic = atomic_load_explicit((_Atomic __u64 *)&hdr->aux_head,
                                               memory_order_acquire);
   __u64 size = hdr->aux_size;         // No atomic load. Constant value.
-  __u64 head = head_monotonic % size; // Head must be manually wrapped.
-  __u64 tail = atomic_load_explicit((_Atomic __u64 *)&hdr->aux_tail,
+  __u64 head = head_monotonic % size;
+  __u64 tail_monotonic = atomic_load_explicit((_Atomic __u64 *)&hdr->aux_tail,
                                     memory_order_relaxed);
+  __u64 tail = tail_monotonic % size;
 
   // Figure out how much more space we need in the trace storage buffer.
   __u64 new_data_size;
@@ -293,7 +318,7 @@ bool read_aux(void *aux_buf, struct perf_event_mmap_page *hdr,
     // FIXME: Reallocate the trace storage buffer if more space is required.
     // Note that this requires careful synchronisation between the collection
     // thread, the main thread, and Rust code.
-    hwt_set_cerr(err, hwt_cerror_pt, hwt_pt_overflow);
+    hwt_set_cerr(err, hwt_cerror_pt, hwt_pt_trace_capacity);
     return false;
   }
 
@@ -305,9 +330,12 @@ bool read_aux(void *aux_buf, struct perf_event_mmap_page *hdr,
     memcpy(trace->buf.p + trace->len, aux_buf + tail, size - tail);
     trace->len += size - tail;
     memcpy(trace->buf.p + trace->len, aux_buf, head);
-    trace->len += size + head;
+    trace->len += head;
   }
-  atomic_store_explicit((_Atomic __u64 *)&hdr->aux_tail, head,
+
+  // Inform the kernel that we've read up until the head. We write back the
+  // *unwrapped* value.
+  atomic_store_explicit((_Atomic __u64 *)&hdr->aux_tail, head_monotonic,
                         memory_order_release);
   return true;
 }
@@ -385,7 +413,7 @@ done:
  *
  * Returns a file descriptor, or -1 on error.
  */
-static int open_perf(size_t aux_bufsize, struct hwt_cerror *err) {
+static int open_perf(size_t aux_bufsize, bool filter, struct hwt_cerror *err) {
   struct perf_event_attr attr;
   memset(&attr, 0, sizeof(attr));
   attr.size = sizeof(attr);
@@ -433,22 +461,39 @@ static int open_perf(size_t aux_bufsize, struct hwt_cerror *err) {
   attr.aux_watermark =
       (size_t)((double)aux_bufsize * getpagesize()) * AUX_BUF_WAKE_RATIO;
 
-  // Acquire file descriptor through which to talk to Intel PT. This syscall
-  // could return EBUSY, meaning another process or thread has locked the
-  // Perf device.
-  struct timespec wait_time = {0, OPEN_PERF_WAIT_NSECS};
   pid_t target_tid = syscall(__NR_gettid);
-  for (int tries = MAX_OPEN_PERF_TRIES; tries > 0; tries--) {
-    ret = syscall(SYS_perf_event_open, &attr, target_tid, -1, -1, 0);
-    if ((ret == -1) && (errno == EBUSY)) {
-      nanosleep(&wait_time, NULL); // Doesn't matter if this is interrupted.
-    } else {
-      break;
-    }
-  }
-
+  ret = syscall(SYS_perf_event_open, &attr, target_tid, -1, -1, 0);
   if (ret == -1) {
     hwt_set_cerr(err, hwt_cerror_errno, errno);
+    goto clean;
+  }
+
+  // `ret` now holds an open perf fd.
+  //
+  // If requested, now configure the address range to trace. We do this so that
+  // we don't trace (and later, map) externally compiled code that we could
+  // never build traces for anyway.
+  if (filter) {
+    char *fltr_obj = NULL;
+    size_t fltr_base_off = 0, fltr_size = 0;
+    get_tracing_extent(&fltr_obj, &fltr_base_off, &fltr_size);
+
+    char f_str[512];
+    if ((size_t) snprintf(f_str, sizeof(f_str), "filter 0x%zx/%zu@%s",
+          fltr_base_off, fltr_size, fltr_obj) >= sizeof(f_str))
+    {
+      hwt_set_cerr(err, hwt_cerror_unknown, 0);
+      close(ret);
+      ret = -1;
+      goto clean;
+    }
+
+    if (ioctl(ret, PERF_EVENT_IOC_SET_FILTER, f_str) == -1) {
+      hwt_set_cerr(err, hwt_cerror_errno, errno);
+      close(ret);
+      ret = -1;
+      goto clean;
+    }
   }
 
 clean:
@@ -530,13 +575,16 @@ hwt_perf_init_collector(struct hwt_perf_collector_config *tr_conf,
   tr_ctx->perf_fd = -1;
 
   // Obtain a file descriptor through which to speak to perf.
-  if (cache_perf_fd == -1)
-    cache_perf_fd = open_perf(tr_conf->aux_bufsize, err);
-  tr_ctx->perf_fd = cache_perf_fd;
-  if (tr_ctx->perf_fd == -1) {
-    hwt_set_cerr(err, hwt_cerror_errno, errno);
-    failing = true;
-    goto clean;
+  if (thread_cached.perf_fd == -1) {
+    tr_ctx->perf_fd = open_perf(tr_conf->aux_bufsize, tr_conf->use_pt_filtering, err);
+    if (tr_ctx->perf_fd == -1) {
+      hwt_set_cerr(err, hwt_cerror_errno, errno);
+      failing = true;
+      goto clean;
+    }
+    thread_cached.perf_fd = tr_ctx->perf_fd;
+  } else {
+    tr_ctx->perf_fd = thread_cached.perf_fd;
   }
 
   // Allocate mmap(2) buffers for speaking to perf.
@@ -561,34 +609,51 @@ hwt_perf_init_collector(struct hwt_perf_collector_config *tr_conf,
   // Data buffer is preceded by one management page (the header), hence `1 +
   // data_bufsize'.
   int page_size = getpagesize();
-  tr_ctx->base_bufsize = (1 + tr_conf->data_bufsize) * page_size;
-  if (!cache_base_buf)
-    cache_base_buf = mmap(NULL, tr_ctx->base_bufsize, PROT_WRITE, MAP_SHARED,
-                          tr_ctx->perf_fd, 0);
-  tr_ctx->base_buf = cache_base_buf;
-  if (tr_ctx->base_buf == MAP_FAILED) {
-    hwt_set_cerr(err, hwt_cerror_errno, errno);
-    failing = true;
-    goto clean;
+  size_t base_bufsize = (1 + tr_conf->data_bufsize) * page_size;
+  size_t aux_bufsize = tr_conf->aux_bufsize * page_size;
+  if (thread_cached.base_buf == NULL) {
+    tr_ctx->base_bufsize = base_bufsize;
+    tr_ctx->base_buf = mmap(NULL, tr_ctx->base_bufsize, PROT_WRITE, MAP_SHARED,
+        tr_ctx->perf_fd, 0);
+    if (tr_ctx->base_buf == MAP_FAILED) {
+      hwt_set_cerr(err, hwt_cerror_errno, errno);
+      failing = true;
+      goto clean;
+    }
+
+    // Populate the header part of the base buffer.
+    struct perf_event_mmap_page *base_header = tr_ctx->base_buf;
+    base_header->aux_offset = base_header->data_offset + base_header->data_size;
+    base_header->aux_size = tr_ctx->aux_bufsize = aux_bufsize;
+
+    thread_cached.base_bufsize = tr_ctx->base_bufsize;
+    thread_cached.base_buf = tr_ctx->base_buf;
+    thread_cached.aux_bufsize = tr_ctx->aux_bufsize;
+  } else {
+    if (base_bufsize != thread_cached.base_bufsize) {
+      errx(EXIT_FAILURE, "base buffer size mismatch");
+    }
+    if (aux_bufsize != thread_cached.aux_bufsize) {
+      errx(EXIT_FAILURE, "aux buffer size mismatch");
+    }
+    tr_ctx->base_bufsize = thread_cached.base_bufsize;
+    tr_ctx->base_buf = thread_cached.base_buf;
+    tr_ctx->aux_bufsize = thread_cached.aux_bufsize;
   }
 
-  // Populate the header part of the base buffer.
-  struct perf_event_mmap_page *base_header = tr_ctx->base_buf;
-  base_header->aux_offset = base_header->data_offset + base_header->data_size;
-  base_header->aux_size = tr_ctx->aux_bufsize =
-      tr_conf->aux_bufsize * page_size;
-
   // Allocate the AUX buffer.
-  //
-  // Mapped R/W so as to have a saturating ring buffer.
-  if (!cache_aux_buf)
-    cache_aux_buf = mmap(NULL, base_header->aux_size, PROT_READ | PROT_WRITE,
-                         MAP_SHARED, tr_ctx->perf_fd, base_header->aux_offset);
-  tr_ctx->aux_buf = cache_aux_buf;
-  if (tr_ctx->aux_buf == MAP_FAILED) {
-    hwt_set_cerr(err, hwt_cerror_errno, errno);
-    failing = true;
-    goto clean;
+  struct perf_event_mmap_page *base_header = tr_ctx->base_buf;
+  if (thread_cached.aux_buf == NULL) {
+    tr_ctx->aux_buf = mmap(NULL, base_header->aux_size, PROT_READ | PROT_WRITE,
+        MAP_SHARED, tr_ctx->perf_fd, base_header->aux_offset);
+    if (tr_ctx->aux_buf == MAP_FAILED) {
+      hwt_set_cerr(err, hwt_cerror_errno, errno);
+      failing = true;
+      goto clean;
+    }
+    thread_cached.aux_buf = tr_ctx->aux_buf;
+  } else {
+    tr_ctx->aux_buf = thread_cached.aux_buf;
   }
 
 clean:
@@ -614,6 +679,24 @@ bool hwt_perf_start_collector(struct hwt_perf_ctx *tr_ctx,
                               struct hwt_cerror *err) {
   int clean_sem = 0, clean_thread = 0;
   int ret = true;
+
+  // When a tracing session bombs out prematurely (e.g. PT overflow), it can
+  // leave the ring buffers in an inconsistent state meaning that they can't be
+  // re-used properly. Here we reset the tails to the heads thus resetting the
+  // ring buffers to the empty state.
+  //
+  // Data buffer:
+  struct perf_event_mmap_page *base_header = tr_ctx->base_buf;
+  __u64 data_head_monotonic = atomic_load_explicit(
+      (_Atomic __u64 *)&base_header->data_head,
+      memory_order_acquire);
+  atomic_store_explicit((_Atomic __u64 *) &base_header->data_tail,
+      data_head_monotonic, memory_order_relaxed);
+  // AUX buffer:
+  __u64 aux_head_monotonic = atomic_load_explicit(
+      (_Atomic __u64 *)&base_header->aux_head, memory_order_acquire);
+  atomic_store_explicit((_Atomic __u64 *) &base_header->aux_tail,
+      aux_head_monotonic, memory_order_relaxed);
 
   // A pipe to signal the trace thread to stop.
   //
@@ -747,6 +830,9 @@ bool hwt_perf_stop_collector(struct hwt_perf_ctx *tr_ctx,
  * Clean up and free a hwt_perf_ctx and its contents.
  *
  * Returns true on success or false otherwise.
+ *
+ * Note that anything which is cached is deliberately not freed. See
+ * `thread_cached` above.
  */
 bool hwt_perf_free_collector(struct hwt_perf_ctx *tr_ctx,
                              struct hwt_cerror *err) {

@@ -1,11 +1,16 @@
 // Run-time:
-//   env-var: YKD_LOG_IR=-:jit-pre-opt
+//   env-var: YKD_LOG_IR=jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YKD_LOG_JITSTATE=-
-//   status: error
+//   env-var: YKD_LOG=3
+//   stderr:
+//     ...
+//     yk-warning: trace-compilation-aborted: Unimplemented: ...
+//     ...
+//     yk-warning: trace-compilation-aborted: Unimplemented: ...
+//     ...
 
-// Check that we can handle inline asm properly (currently expectely fails
-// until we can deal with calls inside inline asm).
+// Check that we can handle inline asm properly (currently this aborts the
+// trace until we can deal with calls inside inline asm).
 
 #include <assert.h>
 #include <stdlib.h>
@@ -40,6 +45,6 @@ int main(int argc, char **argv) {
 
   assert(res == 5);
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }

@@ -1,39 +1,22 @@
+// ignore-if: test "$YK_JITC" = "j2"
 // Run-time:
-//   env-var: YKD_LOG_IR=-:jit-pre-opt
+//   env-var: YKD_LOG_IR=jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YKD_LOG=4
 //   stderr:
-//     jitstate: start-tracing
+//     yk-tracing: start-tracing
 //     i=4
-//     jitstate: stop-tracing
+//     yk-tracing: stop-tracing
 //     --- Begin jit-pre-opt ---
 //     ...
-//     define {{ty}} @__yk_compiled_trace_0(ptr %0, ptr %1) {
-//        ...
-//        %{{fptr}} = getelementptr %YkCtrlPointVars, ptr %0, i32 0, i32 0...
-//        %{{load}} = load...
-//        ...
-//        %{{a}} = add nsw i32 %{{b}}, 2...
-//        ...
-//        %{{cond}} = icmp sgt i32 %{{val}}, ...
-//        br i1 %{{cond}}, label %{{guard-succ-bb}}, label %{{guard-fail-bb}}
-//
-//     {{guard-fail-bb}}:...
-//       ...
-//       %{{cprtn}} = call {{ty}} (...) @llvm.experimental.deoptimize.p0(...
-//       ret {{ty}} %{{cprtn}}
-//
-//     {{guard-succ-bb}}:...
-//        ...
-//        br...
-//     }
+//     %{{12}}: i32 = add %{{11}}, 2i32
 //     ...
 //     --- End jit-pre-opt ---
 //     i=3
-//     jitstate: enter-jit-code
+//     yk-execution: enter-jit-code
 //     i=2
 //     i=1
-//     jitstate: deoptimise
+//     yk-execution: deoptimise ...
 //     ...
 
 // Check that using a global constant works.
@@ -63,7 +46,7 @@ int main(int argc, char **argv) {
   }
   NOOPT_VAL(res);
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
 
   return (EXIT_SUCCESS);
 }

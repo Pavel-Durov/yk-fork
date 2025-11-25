@@ -1,13 +1,16 @@
-// ignore-if: test "$YKB_TRACER" != "hwt"
+// ## FIXME: PT IP filtering means we can't reliably detect longjmp() in
+// ##        external code.
+// ## FIXME: Implement setjmp/longjmp detection for swt.
+// ignore-if: true || test "$YKB_TRACER" = "swt"
 // Run-time:
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YKD_LOG=3
 //   stderr:
-//     jitstate: start-tracing
+//     yk-tracing: start-tracing
 //     set jump point
 //     jumped!
-//     jitstate: stop-tracing
-//     jitstate: trace-compilation-aborted: Encountered longjmp
+//     yk-tracing: stop-tracing
+//     yk-warning: trace-compilation-aborted: longjmp encountered
 //     ...
 
 // Check that we bork on a call to setjmp in unmapped code.
@@ -36,6 +39,6 @@ int main(int argc, char **argv) {
   }
 
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }

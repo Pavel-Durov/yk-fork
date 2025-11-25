@@ -1,12 +1,14 @@
+// ignore-if: test "$YK_JITC" = "j2"
 // Compiler:
+//   env-var: YKB_EXTRA_CC_FLAGS=-O1
 // Run-time:
-//   env-var: YKD_LOG_IR=-:jit-pre-opt
+//   env-var: YKD_LOG_IR=jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   stderr:
 //     ...
-//     ...call i32 @putc...
+//     func_decl putc (i32, ptr) -> i32
 //     ...
-//     declare i32 @putc...
+//     %{{6}}: i32 = call @putc...
 //     ...
 //   stdout:
 //     12
@@ -33,8 +35,9 @@ int main(int argc, char **argv) {
     putchar(ch);
     ch++;
   }
+  fflush(stdout);
 
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }

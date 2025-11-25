@@ -1,17 +1,15 @@
 // Run-time:
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YKD_LOG=4
 //   env-var: YKD_LOG_STATS=/dev/null
 //   stderr:
-//     jitstate: start-tracing
+//     yk-tracing: start-tracing
 //     i=4
-//     jitstate: stop-tracing
+//     yk-tracing: stop-tracing
 //     i=3
-//     jitstate: enter-jit-code
+//     yk-execution: enter-jit-code
 //     i=2
 //     i=1
-//     jitstate: deoptimise
-//   stdout:
-//     exit
+//     yk-execution: deoptimise ...
 
 // Check that basic trace compilation in a thread works.
 
@@ -29,23 +27,18 @@ int main(int argc, char **argv) {
   yk_mt_hot_threshold_set(mt, 0);
   YkLocation loc = yk_location_new();
 
-  int res = 9998;
   int i = 4;
   NOOPT_VAL(loc);
-  NOOPT_VAL(res);
   NOOPT_VAL(i);
   while (i > 0) {
     yk_mt_control_point(mt, &loc);
     if (i == 3)
       __ykstats_wait_until(mt, test_compiled_event);
     fprintf(stderr, "i=%d\n", i);
-    res += 2;
     i--;
   }
-  printf("exit");
-  NOOPT_VAL(res);
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }
 

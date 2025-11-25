@@ -6,17 +6,26 @@
 //! The sane solution is to have only one `cdylib` crate in our workspace (this crate) and all
 //! other crates are regular `rlibs`.
 
+// FIXME: This crate was designed to contain the entire public C API surface of Yk. Over time C API
+// functions have leaked elsewhere. For example yk_debug_str() and yk_promote_*() are defined
+// elsewhere. We should either move all the C API back into this file, or maybe move all of the C
+// API into (e.g.) `ykrt::api::c` (and make ykrt a cdylib). The former means you have to `pub`
+// stuff in `ykrt`, so perhaps the latter?
+
 #![allow(clippy::missing_safety_doc)]
 
+#[cfg(feature = "ykd")]
+use std::ffi::CStr;
 use std::{
-    ffi::{c_char, c_void, CString},
+    ffi::{CString, c_char},
     mem::forget,
+    os::raw::c_void,
     ptr,
     sync::Arc,
 };
 use ykrt::{HotThreshold, Location, MT};
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn yk_mt_new(err_msg: *mut *const c_char) -> *const MT {
     match MT::new() {
         Ok(mt) => Arc::into_raw(mt),
@@ -36,61 +45,105 @@ pub unsafe extern "C" fn yk_mt_new(err_msg: *mut *const c_char) -> *const MT {
     }
 }
 
-#[no_mangle]
+/// Shutdown this MT instance. Will panic if an error is detected when doing so.
+#[unsafe(no_mangle)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn yk_mt_drop(mt: *const MT) {
-    let mt = unsafe { Arc::from_raw(mt) };
-    #[cfg(yk_llvm_sync_hack)]
-    mt.llvm_sync_hack();
+pub extern "C" fn yk_mt_shutdown(mt: *const MT) {
+    unsafe { Arc::from_raw(mt) }.shutdown();
 }
 
 // The "dummy control point" that is replaced in an LLVM pass.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn yk_mt_control_point(_mt: *mut MT, _loc: *mut Location) {
     // Intentionally empty.
 }
 
-// The "real" control point, that is called once the interpreter has been patched by ykllvm.
-// Returns the address of a reconstructed stack or null if there wasn't a guard failure.
-#[no_mangle]
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
+// The new control point called after the interpreter has been patched by ykllvm.
+#[cfg(target_arch = "x86_64")]
+#[unsafe(naked)]
+#[unsafe(no_mangle)]
 pub extern "C" fn __ykrt_control_point(
     mt: *const MT,
     loc: *mut Location,
-    ctrlp_vars: *mut c_void,
+    // Stackmap id for the control point.
+    smid: u64,
+) {
+    // FIXME: We could get rid of this entire function if we pass the frame's base pointer into the
+    // control point from the interpreter.
+    std::arch::naked_asm!(
+        // Pass the interpreter frame's base pointer via the 4th argument register.
+        "sub rsp, 8",   // Alignment
+        "mov rcx, rbp", // Pass interpreter frame's base pointer via 4th argument register.
+        "call __ykrt_control_point_real",
+        "add rsp, 8",
+        "ret",
+    );
+}
+
+// The actual control point, after we have pushed the callee-saved registers.
+#[unsafe(no_mangle)]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub extern "C" fn __ykrt_control_point_real(
+    mt: *const MT,
+    loc: *mut Location,
+    // Stackmap id for the control point.
+    smid: u64,
     // Frame address of caller.
     frameaddr: *mut c_void,
 ) {
-    debug_assert!(!ctrlp_vars.is_null());
+    let mt = unsafe { &*mt };
+    let loc = unsafe { &*loc };
     if !loc.is_null() {
-        let mt = unsafe { &*mt };
-        let loc = unsafe { &*loc };
         let arc = unsafe { Arc::from_raw(mt) };
-        arc.control_point(loc, ctrlp_vars, frameaddr);
+        arc.control_point(loc, frameaddr, smid);
         forget(arc);
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn yk_mt_hot_threshold_set(mt: *const MT, hot_threshold: HotThreshold) {
     let arc = unsafe { Arc::from_raw(mt) };
     arc.set_hot_threshold(hot_threshold);
     forget(arc);
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn yk_mt_sidetrace_threshold_set(mt: *const MT, hot_threshold: HotThreshold) {
     let arc = unsafe { Arc::from_raw(mt) };
     arc.set_sidetrace_threshold(hot_threshold);
     forget(arc);
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn yk_location_new() -> Location {
     Location::new()
 }
 
-#[no_mangle]
+#[cfg(feature = "ykd")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn yk_location_set_debug_str(loc: *mut Location, s: *const c_char) {
+    let s = unsafe { CStr::from_ptr(s) }.to_string_lossy().into_owned();
+    let loc = unsafe { &*loc };
+    assert!(!loc.is_null());
+    loc.set_hl_debug_str(s);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn yk_location_null() -> Location {
+    Location::null()
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn yk_location_drop(loc: Location) {
     drop(loc)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn yk_foreach_shadowstack(f: extern "C" fn(*mut c_void, *mut c_void)) {
+    ykrt::yk_foreach_shadowstack(f)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn yk_init() {
+    ykrt::yk_init()
 }

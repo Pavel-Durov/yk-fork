@@ -1,6 +1,8 @@
+// ## -O0 doesn't make a constant expression.
+// ignore-if: true
 // Run-time:
-//   env-var: YKD_LOG_IR=-:jit-pre-opt
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YKD_LOG_IR=jit-pre-opt
+//   env-var: YKD_LOG=4
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   stderr:
 //     ...
@@ -14,12 +16,12 @@
 //       ...
 //     --- End jit-pre-opt ---
 //     2:97
-//     jitstate: enter-jit-code
+//     yk-execution: enter-jit-code
 //     1:97
 //     ...
 
-// Check that global variables inside constant expressions are copied and
-// remapped.
+// Check that global variables inside constant expressions are handled.
+// FIXME: needs porting to Yk IR once we find out how to get a constexpr gep.
 
 #include <assert.h>
 #include <stdio.h>
@@ -51,6 +53,6 @@ int main(int argc, char **argv) {
   }
 
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }

@@ -19,19 +19,21 @@ pub enum HWTracerError {
 pub enum TemporaryErrorKind {
     /// Memory allocation failed.
     CantAllocate,
-    /// The trace buffer has overflowed. Either record a smaller trace or increase the size of the
-    /// trace buffer.
-    TraceBufferOverflow,
+    /// Something buffer-related went wrong during tracing.
+    TraceBufferOverflow(String),
     /// The trace was interrupted.
     TraceInterrupted,
+    /// Perf can't set itself up.
+    PerfBusy,
 }
 
 impl Display for TemporaryErrorKind {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        match *self {
+        match self {
             TemporaryErrorKind::CantAllocate => write!(f, "Unable to allocate memory"),
-            TemporaryErrorKind::TraceBufferOverflow => write!(f, "Trace buffer overflow"),
+            TemporaryErrorKind::TraceBufferOverflow(s) => write!(f, "{s}"),
             TemporaryErrorKind::TraceInterrupted => write!(f, "Trace interrupted"),
+            TemporaryErrorKind::PerfBusy => write!(f, "Perf busy"),
         }
     }
 }

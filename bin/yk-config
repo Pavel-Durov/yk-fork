@@ -10,24 +10,17 @@ if [ ! -d "${DIR}/../ykrt" ]; then
     exit 1
 fi
 
-# The post-link time optimisations that we can tolerate. At this moment this is
-# only the instcombine pass in the below configuration (copied over from the
-# default pipeline). Using `instcombine` on its own breaks, possibly due to the
-# missing `no-verify-fixpoint`.
-#
-# FIXME: Once we know what breaks us, allow the user to use the regular -O0,
-# -O1, -O2, etc. clang flags like normal.
-POSTLINK_PASSES_STR="instcombine<max-iterations=1;no-use-loop-info;no-verify-fixpoint>"
-
 OUTPUT=""
 
 usage() {
     echo "Generate C compiler flags for building against the yk JIT.\n"
     echo "Usage:"
-    echo "    yk-config <profile> [--prelink-pipeline <passes>] [--postlink-pipeline <passes>] <--cc|--cxx|--ar|--ranlib|--cppflags|--cflags|--ldflags>\n"
-    echo "    Where <profile> is a Rust cargo profile starting with either 'debug' or 'release'."
+    echo "    yk-config <profile> \\"
+    echo "        <--cc|--cxx|--ar|--ranlib|--cppflags|--cflags|--ldflags>\n"
+    echo "    Where <profile> is a Rust cargo profile starting with either 'debug' or 'release'.\n"
+    echo "    --cc, --cxx, --ar, --ranlib, --cppflags, --cflags and --ldflags specify "
+    echo "    what flags to output.\n\n"
 }
-
 
 handle_arg() {
     profile=$1
@@ -45,42 +38,18 @@ handle_arg() {
         --cxx) OUTPUT="${ykllvm_bin_dir}/clang++" ;;
         --ar) OUTPUT="${ykllvm_bin_dir}/llvm-ar" ;;
         --ranlib) OUTPUT="${ykllvm_bin_dir}/llvm-ranlib" ;;
-        --prelink-pipeline)
-            if [ -z "$2" ] || [ "$(echo $2 | cut -b 1,2)" = "--" ]; then
-                1>&2 echo "Error: Expected passes after --prelink-pipeline."
-                usage
-                exit 1
-            else
-                PRELINK_PASSES_STR=$2
-                shift
-            fi
-            ;;
-        --postlink-pipeline)
-            if [ -z "$2" ] || [ "$(echo $2 | cut -b 1,2)" = "--" ]; then
-                1>&2 echo "Error: Expected passes after --postlink-pipeline."
-                usage
-                exit 1
-            else
-                POSTLINK_PASSES_STR=$2
-                shift
-            fi
-            ;;
         --cflags)
             # Enable LTO.
             OUTPUT="${OUTPUT} -flto"
             # Outline functions containing loops during AOT compilation. Needed
             # for `yk_unroll_safe`.
             OUTPUT="${OUTPUT} -fyk-noinline-funcs-with-loops"
-            # Required so that our curated set of optimisation passes can run.
-            # Without this, clang will slap `optnone` attributes on every
-            # function, causing optimisations to skip them.
-            OUTPUT="${OUTPUT} -Xclang -disable-O0-optnone"
-            if [ ! -z "${PRELINK_PASSES_STR}" ]; then
-                OUTPUT="${OUTPUT} -mllvm --newpm-passes=${PRELINK_PASSES_STR}"
-            fi
-            case $profile in
-                debug*) OUTPUT="$OUTPUT -g" ;;
-            esac
+            # Don't optimise functions by changing their calling convention.
+            OUTPUT="${OUTPUT} -mllvm -yk-dont-opt-func-abi"
+            # Ensure any jump threading pass that may run at pre-link time
+            # doesn't interfere with control points that will be added at
+            # link-time (the functionalities are guarded by the same flag).
+            OUTPUT="${OUTPUT} -mllvm -yk-patch-control-point"
             ;;
         --cppflags)
             # Path to yk.h
@@ -89,39 +58,21 @@ handle_arg() {
         --ldflags)
             # Use lld.
             OUTPUT="${OUTPUT} -fuse-ld=lld"
-            # Embed LLVM bitcode as late as possible.
-            OUTPUT="${OUTPUT} -Wl,--mllvm=--embed-bitcode-final"
+            # Embed Yk's IR.
+            OUTPUT="${OUTPUT} -Wl,-mllvm=--yk-embed-ir"
             # Add pthread_create wrapper function (__wrap_pthread_create)
             OUTPUT="${OUTPUT} -Wl,--wrap=pthread_create"
-            # Embed Yk's IR.
-            if [ "${YKD_NEW_CODEGEN}" = "1" ]; then
-                OUTPUT="${OUTPUT} -Wl,-mllvm=--yk-embed-ir"
-            fi
+            # Add wrapper for `pthread_exit`.
+            OUTPUT="${OUTPUT} -Wl,--wrap=pthread_exit"
 
-            # Disable machine passes that would interfere with block mapping.
-            #
-            # If you are trying to figure out which pass is breaking the
-            # mapping, you can add "-Wl,--mllvm=--print-before-all" and/or
-            # "-Wl,--mllvm=--print-after-all" to see the MIR before/after
-            # each pass. You can make the output smaller by filtering the
-            # output by function name with
-            # "-Wl,--mllvm=--filter-print-funcs=<func>". When you have found
-            # the candidate, look in `TargetPassConfig.cpp` (in ykllvm) to
-            # find the CLI switch required to disable the pass. If you can't
-            # (or don't want to) eliminate a whole pass, then you can add
-            # (or re-use) a yk-specific flag to disable only aspects of passes.
-            OUTPUT="${OUTPUT} -Wl,--mllvm=--disable-branch-fold"
-            OUTPUT="${OUTPUT} -Wl,--mllvm=--disable-block-placement"
-            # These next two passes interfere with the BlockDisambiguate pass.
-            OUTPUT="${OUTPUT} -Wl,--mllvm=--disable-early-taildup"
-            OUTPUT="${OUTPUT} -Wl,--mllvm=--disable-tail-duplicate"
             # Interferes with the JIT's inlining stack.
             OUTPUT="${OUTPUT} -Wl,--mllvm=--yk-disable-tail-call-codegen"
-            # Fallthrough optimisations distort block mapping.
-            OUTPUT="${OUTPUT} -Wl,--mllvm=--yk-no-fallthrough"
 
             # Ensure control point is patched.
             OUTPUT="${OUTPUT} -Wl,--mllvm=--yk-patch-control-point"
+
+            # Patch in idempotent function return value recorders.
+            OUTPUT="${OUTPUT} -Wl,--mllvm=--yk-patch-idempotent"
 
             # Emit stackmaps used for JIT deoptimisation.
             OUTPUT="${OUTPUT} -Wl,--mllvm=--yk-insert-stackmaps"
@@ -135,27 +86,41 @@ handle_arg() {
             # Ensure calls never appear in the entry block of a function.
             OUTPUT="${OUTPUT} -Wl,--mllvm=--yk-no-calls-in-entryblocks"
 
-            # Use the yk extensions to the blockmap section.
-            OUTPUT="${OUTPUT} -Wl,--mllvm=--yk-extended-llvmbbaddrmap-section"
             # Enable fix for spill reloads before stackmaps.
             OUTPUT="${OUTPUT} -Wl,--mllvm=--yk-stackmap-spillreloads-fix"
             # Enable shadow stacks.
             OUTPUT="${OUTPUT} -Wl,--mllvm=--yk-shadow-stack"
             # Encode additional locations in stackmaps.
             OUTPUT="${OUTPUT} -Wl,--mllvm=--yk-stackmap-add-locs"
-            # Use software-tracer pass
-            if [ "${YKB_TRACER}" = "swt" ]; then
+            # Don't optimise functions by changing their calling convention.
+            OUTPUT="${OUTPUT} -Wl,--mllvm=--yk-dont-opt-func-abi"
+
+            # Tracer-specific flags.
+            if [ "${YKB_TRACER}" = "hwt" ]; then
+                # HWT-specific flags.
+                #
+                # Emit a basicblock map section. Used by the HWT mapper.
+                OUTPUT="${OUTPUT} -Wl,--lto-basic-block-sections=labels"
+                # Use the yk extensions to the blockmap section.
+                OUTPUT="${OUTPUT} -Wl,--mllvm=--yk-extended-llvmbbaddrmap-section"
+                # Fallthrough optimisations distort block mapping.
+                OUTPUT="${OUTPUT} -Wl,--mllvm=--yk-no-fallthrough"
+            else
+                # SWT-specific flags.
                 OUTPUT="${OUTPUT} -Wl,--mllvm=--yk-basicblock-tracer"
+                # Make optimised clones of functions.
+                OUTPUT="${OUTPUT} -Wl,--mllvm=--yk-module-clone"
             fi
-            # Add known yk-friendly optimisations.
-            #
-            # This pairs with `-Xclang -disable-O0-optnone`. See above.
-            OUTPUT="${OUTPUT} -Wl,--mllvm=--yk-optnone-after-ir-passes"
 
-            OUTPUT="${OUTPUT} -Xlinker --lto-newpm-passes=${POSTLINK_PASSES_STR}"
+            # Disable backend optimisations that Yk can't handle by adding the
+            # `optnone` attribute onto every traceable function after
+            # high-level IR optimisations have finished.
+            OUTPUT="${OUTPUT} -Wl,--mllvm=--yk-mark-traceable-optnone-after-ir-passes"
 
-            # Emit a basic block map section. Used for block mapping.
-            OUTPUT="${OUTPUT} -Wl,--lto-basic-block-sections=labels"
+            # Apply `yk_outline` to functions that can never be traced so that
+            # we don't pay the cost for unnecessary instrumentation (e.g.
+            # stackmaps, swt recording, ...).
+            OUTPUT="${OUTPUT} -Wl,--mllvm=--yk-outline-untraceable"
 
             # Ensure all symbols are exported so that the JIT can use them.
             # FIXME: https://github.com/ykjit/yk/issues/381

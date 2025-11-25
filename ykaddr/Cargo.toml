@@ -2,11 +2,11 @@
 name = "ykaddr"
 version = "0.1.0"
 authors = ["The Yk Developers"]
-edition = "2021"
+edition = "2024"
 license = "Apache-2.0 OR MIT"
 
 [dependencies]
-cached = { version = "0.49.2", features = ["proc_macro"] }
+cached = { version = "0.55.1", features = ["proc_macro"] }
 libc = "0.2"
 memmap2 = "0.9.4"
 phdrs = { git = "https://github.com/softdevteam/phdrs" }

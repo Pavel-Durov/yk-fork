@@ -2,17 +2,66 @@
 
 set -eu
 
-TRACERS="hwt swt"
+ROOT_DIR=$(realpath $(pwd))
+
+# What git commit hash of yklua & ykcbf will we test in buildbot?
+YKLUA_REPO="https://github.com/ykjit/yklua.git"
+YKLUA_COMMIT="8a288908efc4611892993a32f8ffadd08df8e8c6"
+YKCBF_REPO="https://github.com/ykjit/ykcbf.git"
+YKCBF_COMMIT="431b92593180e1e376d08ecf383c4a1ab8473b3d"
+
+TRACERS="swt"
+
+# Build yklua and run the test suite.
+#
+# Before calling this:
+#  - `yk-config` must be in PATH.
+#  - YK_BUILD_TYPE must be set.
+test_yklua() {
+    if [ ! -e "yklua" ]; then
+        git clone --depth=1 "$YKLUA_REPO"
+        cd yklua
+        git fetch --depth=1 origin "$YKLUA_COMMIT"
+        git checkout "$YKLUA_COMMIT"
+        cd ..
+    fi
+    cd yklua
+    make clean
+    make -j $(nproc)
+    cd tests
+    YKD_SERIALISE_COMPILATION=1 ../src/lua -e"_U=true" all.lua
+    ../src/lua -e"_U=true" all.lua
+    cd ../..
+}
+
+# Check that the ykllvm commit in the submodule is from the main branch.
+# Due to the way github works, this may not be the case!
+#
+# We avoid using hardcoded remote names like 'origin' so that this works with
+# TryCI (e.g. where development clones may use 'upstream' -> `ykjit/ykllvm`).
+# This will always be correct on the CI server because there will only ever be
+# a single remote.
+#
+# We need to careful with our grep regex though, ensuring we only match
+# `remote/main`, and not `remote/<other_branch>` that just so happens to have `/main`
+# in its branch name.
+cd ykllvm
+tot=$(git rev-parse HEAD)
+if ! git branch -r --contains $tot | grep -qE '^([^/]+/)?main$'; then
+    echo "Error: HEAD ($tot) did not originate from ykllvm's main branch"
+    exit 1
+fi
+cd ..
 
 # Install rustup.
-CARGO_HOME="$(pwd)/.cargo"
+CARGO_HOME="${ROOT_DIR}/.cargo"
 export CARGO_HOME
-RUSTUP_HOME="$(pwd)/.rustup"
+RUSTUP_HOME="${ROOT_DIR}/.rustup"
 export RUSTUP_HOME
 export RUSTUP_INIT_SKIP_PATH_CHECK="yes"
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > rustup.sh
 sh rustup.sh --default-host x86_64-unknown-linux-gnu \
-    --default-toolchain nightly \
+    --default-toolchain nightly-2025-08-17 \
     --no-modify-path \
     --profile default \
     -y
@@ -73,7 +122,7 @@ if [ "$cached_ykllvm" -eq 0 ]; then
     cmake --build .
     cmake --install .
 fi
-YKLLVM_BIN_DIR=$(pwd)/../inst/bin
+YKLLVM_BIN_DIR=${ROOT_DIR}/ykllvm/inst/bin
 export YKB_YKLLVM_BIN_DIR="${YKLLVM_BIN_DIR}"
 cd ../../
 
@@ -84,8 +133,18 @@ cargo install cargo-diff-tools
 if [ "$CI_RUNNER" = buildbot ] ; then
     # When running under buildbot, we need to `git fetch` data from the remote if we want
     # cargo-clippy-def to work later.
-    git fetch origin master:refs/remotes/origin/master
+    git fetch --no-recurse-submodules origin master:refs/remotes/origin/master
 fi
+
+# debug mode is very slow to run yk programs, but we don't really care about
+# the buildtime, so we force `debug` builds to be built with optimisations.
+# Note, this still keeps `debug_assert`s, overflow checks and the like!
+cat << EOF >> Cargo.toml
+[profile.dev]
+opt-level = 3
+codegen-units = 16
+EOF
+
 for tracer in ${TRACERS}; do
     export YKB_TRACER="${tracer}"
     # Check for annoying compiler warnings in each package.
@@ -105,25 +164,27 @@ for tracer in ${TRACERS}; do
     echo "$WARNING_DEFINES" | xargs cargo rustc -p xtask --profile check --bin xtask --
 
     # Error if Clippy detects any warnings introduced in lines changed in this PR.
-    cargo-clippy-diff origin/master -- --all-features -- -D warnings
+    cargo-clippy-diff origin/master -- --all-features --tests -- -D warnings
 done
 
-# Run the tests multiple times on hwt to try and catch non-deterministic
+# Run the tests multiple times on swt to try and catch non-deterministic
 # failures. But running everything so often is expensive, so run other tracers'
 # tests just once.
-export YKB_TRACER=hwt
-echo "===> Running hwt tests"
+echo "===> Running swt tests"
 for _ in $(seq 10); do
-    RUST_TEST_SHUFFLE=1 cargo test
-    YKD_NEW_CODEGEN=1 RUST_TEST_SHUFFLE=1 cargo test
+    YKB_TRACER=swt RUST_TEST_SHUFFLE=1 cargo test
 done
+
+# test yklua/swt in debug mode.
+PATH=${ROOT_DIR}/bin:${PATH} YK_BUILD_TYPE=debug YKB_TRACER=swt test_yklua
+
 for tracer in ${TRACERS}; do
-    if [ "$tracer" = "hwt" ]; then
+    if [ "$tracer" = "swt" ]; then
+        # already tested above.
         continue
     fi
     echo "===> Running ${tracer} tests"
     RUST_TEST_SHUFFLE=1 cargo test
-    YKD_NEW_CODEGEN=1 RUST_TEST_SHUFFLE=1 cargo test
 done
 
 # Test with LLVM sanitisers
@@ -169,20 +230,33 @@ cargo_deny_mdbook_pid=$!
 
 # We now want to test building with `--release`.
 
-if [ "$cached_ykllvm" -eq 0 ]; then
-    # If we don't have a cached copy of ykllvm, we also take this as an
-    # opportunity to check that yk can build ykllvm, which requires unsetting
-    # YKB_YKLLVM_BIN_DIR. In essence, we now repeat much of what we did above
-    # but with `--release`.
-    unset YKB_YKLLVM_BIN_DIR
-    export YKB_YKLLVM_BUILD_ARGS="define:CMAKE_C_COMPILER=/usr/bin/clang,define:CMAKE_CXX_COMPILER=/usr/bin/clang++"
-fi
-
 for tracer in $TRACERS; do
     export YKB_TRACER="${tracer}"
     echo "===> Running ${tracer} tests"
+
+    # The lua test harness isn't clever enough to rebuild yklua when YKB_TRACER
+    # changes, so for now just nuke any existing yklua to force a rebuild.
+    rm -rf target/release/yklua
+
     RUST_TEST_SHUFFLE=1 cargo test --release
-    YKD_NEW_CODEGEN=1 RUST_TEST_SHUFFLE=1 cargo test --release
+
+    if [ "${tracer}" = "swt" ]; then
+        # test yklua/swt in release mode.
+        PATH=${ROOT_DIR}/bin:${PATH} YK_BUILD_TYPE=release YKB_TRACER=${tracer} test_yklua
+
+        # Do a quick run of the benchmark suite as a smoke test.
+        pipx install rebench
+        git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/ykjit/yk-benchmarks
+        cd yk-benchmarks
+        ln -s ../yklua .
+        sed -e 's/executions: \[Lua, YkLua\]/executions: [YkLua]/' \
+            -e 's/executable: yklua/executable: lua/' \
+            rebench.conf > rebench2.conf
+        # Initialise extra benchmarks.
+        sh setup.sh yklua/src/lua
+        ~/.local/bin/rebench --quick --no-denoise -c rebench2.conf
+        cd ..
+    fi
 done
 
 # We want to check that the benchmarks build and run correctly, but want to
@@ -190,9 +264,20 @@ done
 #
 # Note that --profile-time doesn't work without --bench, so we have to run each
 # benchmark individually.
-for b in collect_and_decode promote; do
-    YKB_TRACER=hwt cargo bench --bench "${b}" -- --profile-time 1
-done
+#
+# Note: collect_and_decode is hwt-specific.
+#YKB_TRACER=hwt cargo bench --bench collect_and_decode -- --profile-time 1
+YKB_TRACER=swt cargo bench --bench promote -- --profile-time 1
+
+# Test some BF programs.
+git clone --depth=1 "$YKCBF_REPO"
+cd ykcbf
+git fetch --depth=1 origin "$YKCBF_COMMIT"
+git checkout "$YKCBF_COMMIT"
+PATH=${ROOT_DIR}/bin:${PATH} YK_BUILD_TYPE=debug make
+./bf_simple_yk lang_tests/bench.bf
+./bf_simple_yk lang_tests/hanoi-opt.bf
+cd ..
 
 # Check licenses.
 wait "${cargo_deny_mdbook_pid}" || ( cat "${cargo_deny_mdbook_tmp}" && exit 1 )

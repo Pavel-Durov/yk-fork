@@ -1,6 +1,9 @@
 [package]
 name = "yksmp"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 authors = ["The Yk Developers"]
 license = "Apache-2.0 OR MIT"
+
+[dependencies]
+smallvec = { version="1.15.1", features=["union"] }

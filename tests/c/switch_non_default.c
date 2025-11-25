@@ -1,23 +1,27 @@
+// ignore-if: test "$YK_JITC" = "j2"
 // Run-time:
-//   env-var: YKD_LOG_IR=-:jit-pre-opt
+//   env-var: YKD_LOG_IR=aot,jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YKD_LOG=4
 //   stderr:
-//     jitstate: start-tracing
+//     yk-tracing: start-tracing
 //     i=3
-//     jitstate: stop-tracing
+//     yk-tracing: stop-tracing
+//     --- Begin aot ---
+//     ...
+//     switch %{{10_1}}, bb{{bb14}}, [300 -> bb{{bb11}}, 299 -> bb{{bb12}}]...
+//     ...
+//     --- End aot ---
 //     --- Begin jit-pre-opt ---
 //     ...
-//       %{{cond}} = icmp...
-//       br i1 %{{cond}}, label %{{succ-bb}}, label %guardfail
-//
-//     guardfail:...
+//     %{{cond}}: i1 = eq %{{20}}, 300i32
+//     guard true, %{{cond}}, ...
 //     ...
 //     --- End jit-pre-opt ---
 //     i=2
-//     jitstate: enter-jit-code
+//     yk-execution: enter-jit-code
 //     i=1
-//     jitstate: deoptimise
+//     yk-execution: deoptimise ...
 //     ...
 
 // Check that tracing a non-default switch arm works correctly.
@@ -41,7 +45,7 @@ int main(int argc, char **argv) {
     yk_mt_control_point(mt, &loc);
     fprintf(stderr, "i=%d\n", i);
     switch (j) {
-    case 300:
+    case 300: // This case is traced.
       i--;
       break;
     case 299:
@@ -51,7 +55,7 @@ int main(int argc, char **argv) {
     }
   }
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
 
   return (EXIT_SUCCESS);
 }

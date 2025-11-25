@@ -1,15 +1,12 @@
+// ignore-if: test "$YK_JITC" = "j2"
 // Run-time:
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YKD_LOG_IR=-:jit-pre-opt
+//   env-var: YKD_LOG_IR=jit-pre-opt
 //   stderr:
 //     ...
 //     --- Begin jit-pre-opt ---
 //     ...
-//     define i8 @__yk_compiled_trace_0(ptr %0, ptr %1) {
-//       ...
-//       %{{12}} = tail call i32 @call_me(i32...
-//       ...
-//     }
+//     %{{12}}: i32 = call @call_me(%{{6}})
 //     ...
 //     --- End jit-pre-opt ---
 
@@ -45,6 +42,6 @@ int main(int argc, char **argv) {
     i--;
   }
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }

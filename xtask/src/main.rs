@@ -1,24 +1,13 @@
 use std::env;
-use std::process::{exit, Command};
-use walkdir::{DirEntry, WalkDir};
+use std::process::{Command, exit};
+use walkdir::WalkDir;
 use ykbuild::ykllvm_bin;
-
-fn ignore_dir(entry: &DirEntry) -> bool {
-    if entry.path().starts_with("./target")
-        || entry.path().starts_with("./.cargo")
-        || entry.path().starts_with("./.git")
-        || entry.path().starts_with("./ykllvm")
-    {
-        return false;
-    }
-    true
-}
 
 fn clang_format(check_only: bool) {
     let mut failed = false;
     for entry in WalkDir::new(".")
         .into_iter()
-        .filter_entry(ignore_dir)
+        .filter_entry(|x| !(x.path().starts_with("./.") || x.path().starts_with("./ykllvm")))
         .filter_map(|e| e.ok())
     {
         if !entry.file_type().is_file() {
@@ -63,8 +52,7 @@ fn clang_format(check_only: bool) {
                                             Some(format!("returned exit code {c}:\n\n{stderr}"))
                                     }
                                     None => {
-                                        err_msg =
-                                            Some("terminated by signal:\n\n{stderr}".to_owned())
+                                        err_msg = Some(format!("terminated by signal:\n\n{stderr}"))
                                     }
                                 }
                             }

@@ -1,16 +1,16 @@
 // Run-time:
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YKD_LOG_IR=-:jit-pre-opt
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YKD_LOG_IR=aot,jit-pre-opt
+//   env-var: YKD_LOG=4
 //   stderr:
 //     ...
-//     jitstate: enter-jit-code
+//     yk-execution: enter-jit-code
 //     inside f
 //     inside f
-//     jitstate: deoptimise
+//     yk-execution: deoptimise ...
 //     ...
 
-// Check that inlining a function with a void return type works.
+// Check inlining a function into the trace that has a void return type.
 
 #include <assert.h>
 #include <stdio.h>
@@ -39,6 +39,6 @@ int main(int argc, char **argv) {
 
   NOOPT_VAL(i);
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }

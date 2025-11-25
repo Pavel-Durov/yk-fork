@@ -1,25 +1,29 @@
+// ignore-if: test "$YK_JITC" = "j2"
 // Run-time:
-//   env-var: YKD_LOG_IR=-:jit-pre-opt
+//   env-var: YKD_LOG_IR=aot,jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YKD_LOG=4
 //   stderr:
-//     jitstate: start-tracing
+//     yk-tracing: start-tracing
 //     i=3
-//     jitstate: stop-tracing
+//     yk-tracing: stop-tracing
+//     --- Begin aot ---
+//     ...
+//     switch %{{10_1}}, bb{{bb15}}, [299 -> bb{{bb11}}, 298 -> bb{{bb13}}]...
+//     ...
+//     --- End aot ---
 //     --- Begin jit-pre-opt ---
 //     ...
-//       switch i32 %{{cond}}, label %{{default-bb}} [
-//         i32 299, label %guardfail...
-//         i32 298, label %guardfail...
-//       ]
-//
-//     guardfail...
+//     %{{21}}: i1 = eq %{{20}}, 299i32
+//     %{{22}}: i1 = eq %{{20}}, 298i32
+//     %{{23}}: i1 = or %{{21}}, %{{22}}
+//     guard false, %{{23}}, ...
 //     ...
 //     --- End jit-pre-opt ---
 //     i=2
-//     jitstate: enter-jit-code
+//     yk-execution: enter-jit-code
 //     i=1
-//     jitstate: deoptimise
+//     yk-execution: deoptimise ...
 //     ...
 
 // Check that tracing the default arm of a switch works correctly.
@@ -38,6 +42,7 @@ int main(int argc, char **argv) {
   int i = 3;
   int j = 300;
   NOOPT_VAL(i);
+  NOOPT_VAL(j);
   while (i > 0) {
     yk_mt_control_point(mt, &loc);
     fprintf(stderr, "i=%d\n", i);
@@ -52,7 +57,7 @@ int main(int argc, char **argv) {
     }
   }
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
 
   return (EXIT_SUCCESS);
 }

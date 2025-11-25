@@ -1,5 +1,3 @@
-#![feature(lazy_cell)]
-
 mod hwtracer_ykpt;
 
 use std::{
@@ -21,12 +19,18 @@ pub static EXTRA_LINK: LazyLock<HashMap<&'static str, Vec<ExtraLinkage>>> = Lazy
         "call_ext_in_obj.c",
         "unmapped_setjmp.c",
         "loopy_funcs_not_inlined_by_default.c",
+        "loopy_funcs_not_inlined_by_default.j2.c",
         "not_loopy_funcs_inlined_by_default.c",
+        "not_loopy_funcs_inlined_by_default.j2.c",
         "reentrant.c",
+        "reentrant.j2.c",
+        "shadow_reentrant.c",
         "indirect_external_function_call.c",
         "unroll_safe_implies_noinline.c",
         "unroll_safe_inlines.c",
+        "unroll_safe_inlines.j2.c",
         "yk_unroll_safe_vs_yk_outline.c",
+        "yk_unroll_safe_vs_yk_outline.j2.c",
     ] {
         map.insert(
             *test_file,
@@ -89,7 +93,7 @@ impl<'a> ExtraLinkage<'a> {
         }
         let out = match cmd.output() {
             Ok(x) => x,
-            Err(e) => panic!("Error when running {:?} {:?}", cmd, e),
+            Err(e) => panic!("Error when running {cmd:?} {e:?}"),
         };
         assert!(tempdir.exists());
         if !out.status.success() {
@@ -98,12 +102,25 @@ impl<'a> ExtraLinkage<'a> {
             panic!();
         }
         let mut ret = PathBuf::from(tempdir);
-        ret.push(&self.output_file.replace(TEMPDIR_SUBST, tempdir_s));
+        ret.push(self.output_file.replace(TEMPDIR_SUBST, tempdir_s));
         ret
     }
 }
 
-/// Make a compiler command that compiles `src` to `exe` using the optimisation flag `opt`.
+// Determine the "full" cargo profile name, as it appears as an argument to `--profile` (not just
+// "debug" or "release", which is all cargo's `PROFILE` environment` can report).
+pub fn full_cargo_profile() -> String {
+    let out_dir = std::env::var("OUT_DIR").unwrap();
+    Path::new(&out_dir)
+        .components()
+        .nth_back(3)
+        .map(|x| x.as_os_str().to_str().unwrap())
+        .unwrap()
+        .to_owned()
+}
+
+/// Make a compiler command that compiles `src` to `exe`.
+///
 /// `extra_objs` is a collection of other object files to link.
 ///
 /// If `patch_cp` is `false` then the argument to patch the control point is omitted.
@@ -111,9 +128,9 @@ pub fn mk_compiler(
     compiler: &Path,
     exe: &Path,
     src: &Path,
-    opt: &str,
     extra_objs: &[PathBuf],
     patch_cp: bool,
+    extra_env: Option<&HashMap<String, String>>,
 ) -> Command {
     let mut compiler = Command::new(compiler);
 
@@ -126,33 +143,13 @@ pub fn mk_compiler(
     .iter()
     .collect::<PathBuf>();
 
-    #[cfg(cargo_profile = "debug")]
-    let mode = "debug";
-    #[cfg(cargo_profile = "release")]
-    let mode = "release";
-
-    let prelink_args = env::var("PRELINK_PASSES").unwrap_or_default();
-    let postlink_args = env::var("POSTLINK_PASSES").unwrap_or_default();
-
-    let mut yk_config_args = vec![mode];
-
-    if !prelink_args.is_empty() {
-        yk_config_args.push("--prelink-pipeline");
-        yk_config_args.push(&prelink_args);
+    let profile = full_cargo_profile();
+    let mut yk_config = Command::new(yk_config);
+    yk_config.args([&profile, "--cflags", "--cppflags", "--ldflags", "--libs"]);
+    if let Some(extra_env) = extra_env {
+        yk_config.envs(extra_env);
     }
-    yk_config_args.push("--cflags");
-    yk_config_args.push("--cppflags");
-    if !postlink_args.is_empty() {
-        yk_config_args.push("--postlink-pipeline");
-        yk_config_args.push(&postlink_args);
-    }
-    yk_config_args.push("--ldflags");
-    yk_config_args.push("--libs");
-
-    let yk_config_out = Command::new(yk_config)
-        .args(&yk_config_args)
-        .output()
-        .expect("failed to execute yk-config");
+    let yk_config_out = yk_config.output().expect("failed to execute yk-config");
     if !yk_config_out.status.success() {
         io::stderr().write_all(&yk_config_out.stderr).ok();
         panic!("yk-config exited with non-zero status");
@@ -171,7 +168,6 @@ pub fn mk_compiler(
 
     compiler.args(extra_objs);
     compiler.args([
-        opt,
         // If this is a debug build, include debug info in the test binary.
         #[cfg(debug_assertions)]
         "-g",
@@ -180,6 +176,8 @@ pub fn mk_compiler(
         "-Wall",
         // Some tests are multi-threaded via the pthread API.
         "-pthread",
+        // Some tests need the maths library.
+        "-lm",
         // The input and output files.
         "-o",
         exe.to_str().unwrap(),

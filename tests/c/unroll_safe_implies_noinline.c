@@ -1,11 +1,11 @@
 // Run-time:
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YKD_LOG_IR=-:aot
+//   env-var: YKD_LOG_IR=aot
 //   stderr:
 //     ...
 //     --- Begin aot ---
 //     ...
-//     call void @never_aot_inline(i32 noundef ...
+//     call never_aot_inline(...
 //     ...
 //     --- End aot ---
 //     ...
@@ -42,6 +42,6 @@ int main(int argc, char **argv) {
     i--;
   }
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }

@@ -6,14 +6,19 @@ use crate::pt::c_errors::PerfPTCError;
 #[cfg(ykpt)]
 use crate::pt::ykpt::YkPTBlockIterator;
 use crate::{
+    Block, BlockIteratorError, ThreadTracer, Trace, Tracer,
     errors::{HWTracerError, TemporaryErrorKind},
-    Block, ThreadTracer, Trace, Tracer,
 };
-use libc::{c_void, free, geteuid, malloc, size_t};
-use std::{fs::read_to_string, sync::Arc};
+use libc::{PF_R, PF_X, PT_LOAD, c_void, free, geteuid, malloc, size_t};
+use std::{
+    ffi::CString,
+    fs::read_to_string,
+    sync::{Arc, LazyLock},
+};
+use ykaddr::obj::{PHDR_MAIN_OBJ, PHDR_OBJECT_CACHE};
 
 #[cfg(pt)]
-extern "C" {
+unsafe extern "C" {
     fn hwt_perf_init_collector(
         conf: *const PerfCollectorConfig,
         err: *mut PerfPTCError,
@@ -28,6 +33,42 @@ extern "C" {
 }
 
 const PERF_PERMS_PATH: &str = "/proc/sys/kernel/perf_event_paranoid";
+
+/// Make an eternal CString from the binary path that we can hand out pointers to without fear of
+/// it being dropped.
+pub static SELF_BIN_PATH_CSTRING: LazyLock<CString> =
+    LazyLock::new(|| CString::new(ykaddr::obj::SELF_BIN_PATH.to_str().unwrap()).unwrap());
+
+/// Determines:
+///  - The object to limit tracing to.
+///  - The base address and the length of the executable code (within the above object) to limit
+///    tracing to.
+///
+/// It is assumed that there is one contiguous range of executable code that we wish to trace.
+#[unsafe(no_mangle)]
+pub extern "C" fn get_tracing_extent(obj: *mut *const i8, base_off: *mut usize, len: *mut usize) {
+    let mut found = None;
+    // Find the main object.
+    for o in &*PHDR_OBJECT_CACHE {
+        if o.name().to_str().unwrap() == PHDR_MAIN_OBJ.to_str().unwrap() {
+            for h in o.phdrs() {
+                // Find a header that is loaded and flagged read+exec.
+                if h.type_() == PT_LOAD && (h.flags() & PF_R != 0) && (h.flags() & PF_X != 0) {
+                    // We expect only be one such entry.
+                    assert!(found.is_none());
+                    found = Some(h);
+                }
+            }
+        }
+    }
+    let Some(h) = found else {
+        panic!("couldn't find the executable range of {PHDR_MAIN_OBJ:?}");
+    };
+
+    unsafe { std::ptr::write(obj, SELF_BIN_PATH_CSTRING.as_ptr()) };
+    unsafe { std::ptr::write(base_off, usize::try_from(h.offset()).unwrap()) };
+    unsafe { std::ptr::write(len, usize::try_from(h.filesz()).unwrap()) };
+}
 
 /// The configuration for a Linux Perf collector.
 #[derive(Clone, Debug)]
@@ -47,15 +88,12 @@ impl PerfTracer {
         Self: Sized,
     {
         // Check for inavlid configuration.
-        fn power_of_2(v: size_t) -> bool {
-            (v & (v - 1)) == 0
-        }
-        if !power_of_2(config.data_bufsize) {
+        if !config.data_bufsize.is_power_of_two() {
             return Err(HWTracerError::ConfigError(
                 "data_bufsize must be a positive power of 2".into(),
             ));
         }
-        if !power_of_2(config.aux_bufsize) {
+        if !config.aux_bufsize.is_power_of_two() {
             return Err(HWTracerError::ConfigError(
                 "aux_bufsize must be a positive power of 2".into(),
             ));
@@ -71,7 +109,9 @@ impl PerfTracer {
             match read_to_string(PERF_PERMS_PATH) {
                 Ok(x) if x.trim() == "-1" => (),
                 _ => {
-                    return Err(HWTracerError::ConfigError(format!("Tracing not permitted: you must be root or {PERF_PERMS_PATH} must contain -1")));
+                    return Err(HWTracerError::ConfigError(format!(
+                        "Tracing not permitted: you must be root or {PERF_PERMS_PATH} must contain -1"
+                    )));
                 }
             }
         }
@@ -81,6 +121,7 @@ impl PerfTracer {
 }
 
 /// A collector that uses the Linux Perf interface to Intel Processor Trace.
+#[derive(Debug)]
 pub struct PerfThreadTracer {
     // Opaque C pointer representing the collector context.
     ctx: *mut c_void,
@@ -91,18 +132,24 @@ pub struct PerfThreadTracer {
 impl ThreadTracer for PerfThreadTracer {
     #[cfg(pt)]
     fn stop_collector(self: Box<Self>) -> Result<Box<dyn Trace>, HWTracerError> {
-        let mut cerr = PerfPTCError::new();
-        let rc = unsafe { hwt_perf_stop_collector(self.ctx, &mut cerr) };
-        if !rc {
-            return Err(cerr.into());
-        }
+        let mut stop_cerr = PerfPTCError::new();
+        let stop_rc = unsafe { hwt_perf_stop_collector(self.ctx, &mut stop_cerr) };
 
-        let mut cerr = PerfPTCError::new();
-        if !unsafe { hwt_perf_free_collector(self.ctx, &mut cerr) } {
-            return Err(cerr.into());
-        }
+        // Even if stopping the collecor fails, we still have to free the collector to ensure that
+        // no resources leak.
+        let mut free_cerr = PerfPTCError::new();
+        let free_rc = unsafe { hwt_perf_free_collector(self.ctx, &mut free_cerr) };
 
-        Ok(self.trace)
+        // Now we decide how to deal with these two fallable operations.
+        //
+        // For now we a let the `hwt_perf_stop_collector()` error take precedence.
+        if !stop_rc {
+            Err(stop_cerr.into())
+        } else if !free_rc {
+            Err(free_cerr.into())
+        } else {
+            Ok(self.trace)
+        }
     }
 }
 
@@ -184,7 +231,7 @@ impl Trace for PerfTrace {
     #[cfg(ykpt)]
     fn iter_blocks(
         mut self: Box<Self>,
-    ) -> Box<dyn Iterator<Item = Result<Block, HWTracerError>> + Send> {
+    ) -> Box<dyn Iterator<Item = Result<Block, BlockIteratorError>> + Send> {
         // We hand ownership for self.buf over to `YkPTBlockIterator` so we need to make sure that
         // we don't try and free it.
         let buf = std::mem::replace(&mut self.buf, PerfTraceBuf(std::ptr::null_mut()));
@@ -239,7 +286,7 @@ mod tests {
         let res = work_loop(10000);
         let trace = tt.stop_collector().unwrap();
 
-        println!("res: {}", res); // Stop over-optimisation.
+        println!("res: {res}"); // Stop over-optimisation.
         assert!(trace.capacity() > start_bufsize);
     }
 

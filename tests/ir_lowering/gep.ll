@@ -3,40 +3,49 @@
 ;     ...
 ;     func main(...
 ;       bb0:
-;         $0_0: ptr = PtrAdd @arr0, 3
-;         $0_1: ptr = PtrAdd @arr1, 16
-;         $0_2: ptr = PtrAdd @arr2, 32
-;         $0_3: ptr = PtrAdd @arr3, 96
-;         $0_4: ptr = PtrAdd @arr4, 12
+;         %0_0: i32 = arg(0)
+;         %0_1: i32 = arg(1)
+;         %0_2: ptr = arg(2)
+;         %0_3: ptr = ptr_add @arr0, 3
+;         %0_4: ptr = ptr_add @arr1, 16
+;         %0_5: ptr = ptr_add @arr2, 32
+;         %0_6: ptr = ptr_add @arr3, 96
+;         %0_7: ptr = ptr_add @arr4, 12
 ;	    ...
 ;       bb1:
-;         $1_0: ptr = PtrAdd @arr0, 1
-;         $1_1: ptr = PtrAdd @arr1, 4
-;         $1_2: ptr = PtrAdd @arr2, 8
-;         $1_3: ptr = PtrAdd @arr3, 24
-;         $1_4: ptr = PtrAdd @arr4, 3
+;         %1_0: ptr = ptr_add @arr0, 1
+;         %1_1: ptr = ptr_add @arr1, 4
+;         %1_2: ptr = ptr_add @arr2, 8
+;         %1_3: ptr = ptr_add @arr3, 24
+;         %1_4: ptr = ptr_add @arr4, 3
 ;	    ...
 ;       bb2:
-;         $2_0: ptr = PtrAdd @mdarr0, 3
-;         $2_1: ptr = PtrAdd @mdarr1, 320
+;         %2_0: ptr = ptr_add @mdarr0, 3
+;         %2_1: ptr = ptr_add @mdarr1, 320
 ;       ...
 ;       bb3:
-;         $3_0: ptr = PtrAdd @arr0, 0 + ($arg0 * 3)
-;         $3_1: ptr = PtrAdd @arr0, 0 + ($arg0 * 3) + ($arg1 * 1)
-;         $3_2: ptr = PtrAdd @mdarr0, 1 + ($arg0 * 2)
+;         %3_0: ptr = ptr_add @arr0, 0 + (%0_0 * 3)
+;         %3_1: ptr = ptr_add @arr0, 0 + (%0_0 * 3) + (%0_1 * 1)
+;         %3_2: ptr = ptr_add @mdarr0, 1 + (%0_0 * 2)
 ;       ...
 ;       bb4:
-;         $4_0: ptr = PtrAdd @struct0, 8
-;         $4_1: ptr = PtrAdd @struct0, 4
-;         $4_2: ptr = PtrAdd @struct1, 24
-;         $4_3: ptr = PtrAdd @struct1, 16
+;         %4_0: ptr = ptr_add @struct0, 8
+;         %4_1: ptr = ptr_add @struct0, 4
+;         %4_2: ptr = ptr_add @struct1, 24
+;         %4_3: ptr = ptr_add @struct1, 16
 ;       ...
 ;       bb5:
-;         $5_0: ptr = PtrAdd @mixed0, 12
-;         $5_1: ptr = PtrAdd @mixed0, 13
-;         $5_2: ptr = PtrAdd @mixed0, 5 + ($arg0 * 8)
-;         $5_3: ptr = PtrAdd @mixed1, 10
-;         $5_4: ptr = PtrAdd @mixed1, 8 + ($arg0 * 8) + ($arg1 * 1)
+;         %5_0: ptr = ptr_add @mixed0, 12
+;         %5_1: ptr = ptr_add @mixed0, 13
+;         %5_2: ptr = ptr_add @mixed0, 5 + (%0_0 * 8)
+;         %5_3: ptr = ptr_add @mixed1, 10
+;         %5_4: ptr = ptr_add @mixed1, 8 + (%0_0 * 8) + (%0_1 * 1)
+;         br bb6
+;       bb6:
+;         %6_0: ptr = ptr_add 0x0, 0
+;         br bb7
+;       bb7:
+;         %7_0: ptr = ptr_add 0x0, -8
 ;         ret
 ;     }
 ;     ...
@@ -73,7 +82,7 @@ entry:
   %4 = getelementptr [4 x i7], ptr @arr4, i32 3
   br label %bb1
 bb1:
-  ; >1 index array indexing.
+  ; array indexing with more than a single index.
   ;
   ; When the first array index is 0, you index into the elements of the array.
   %5 = getelementptr [3 x i8], ptr @arr0, i32 0, i32 1
@@ -107,5 +116,13 @@ bb5:
   %21 = getelementptr [4 x {i32, i8, i8, i8, i8}], ptr @mixed0, i32 0, i32 %arg0, i32 2
   %22 = getelementptr {[4 x i8], [2 x {i32, [4 x i8]}]}, ptr @mixed1, i32 0, i32 1, i32 0, i32 1, i32 2
   %23 = getelementptr {[4 x i8], [2 x {i32, [4 x i8]}]}, ptr @mixed1, i32 0, i32 1, i32 %arg0, i32 1, i32 %arg1
+  br label %bb6
+bb6:
+  ; truncated index types.
+  %trunc = getelementptr [1 x [1 x i8]], ptr zeroinitializer, i512 0, i512 -1, i8 1
+  br label %bb7
+bb7:
+  ; negative indices
+  %neg = getelementptr [10 x i8], ptr zeroinitializer, i32 0, i64 -8
   ret void
 }

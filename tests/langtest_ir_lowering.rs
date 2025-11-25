@@ -4,6 +4,7 @@ use lang_tester::LangTester;
 use regex::Regex;
 use std::{env, fs::read_to_string, path::PathBuf, process::Command};
 use tempfile::TempDir;
+use tests::full_cargo_profile;
 use ykbuild::ykllvm_bin;
 
 const COMMENT: &str = ";";
@@ -33,7 +34,7 @@ fn main() {
             // We don't use yk-config here, as we are testing one very specific functionality that
             // requires only one special flag.
             let mut compiler = Command::new(ykllvm_bin("clang"));
-            compiler.args(&[
+            compiler.args([
                 "-flto",
                 "-fuse-ld=lld",
                 "-O0",
@@ -44,11 +45,8 @@ fn main() {
             ]);
 
             let md = env::var("CARGO_MANIFEST_DIR").unwrap();
-            #[cfg(cargo_profile = "debug")]
-            let build_kind = "debug";
-            #[cfg(cargo_profile = "release")]
-            let build_kind = "release";
-            let dumper_path = [&md, "..", "target", build_kind, "dump_ir"]
+            let profile = full_cargo_profile();
+            let dumper_path = [&md, "..", "target", &profile, "dump_ir"]
                 .iter()
                 .collect::<PathBuf>();
             let mut dumper = Command::new(dumper_path);
@@ -59,9 +57,11 @@ fn main() {
         .fm_options(|_, _, fmb| {
             // Use `{{}}` to match non-literal strings in tests.
             // E.g. use `%{{var}}` to capture the name of a variable.
+            let ptn_re_ignore = Regex::new(r"\{\{_}\}").unwrap();
             let ptn_re = Regex::new(r"\{\{.+?\}\}").unwrap();
             let text_re = Regex::new(r"[a-zA-Z0-9\._]+").unwrap();
-            fmb.name_matcher(ptn_re, text_re)
+            fmb.name_matcher_ignore(ptn_re_ignore, text_re.clone())
+                .name_matcher(ptn_re, text_re)
         })
         .run();
 }

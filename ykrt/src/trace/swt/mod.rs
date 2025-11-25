@@ -3,17 +3,8 @@
 use super::{
     AOTTraceIterator, AOTTraceIteratorError, TraceAction, TraceRecorder, TraceRecorderError, Tracer,
 };
-use crate::{
-    compile::jitc_llvm::frame::BitcodeSection,
-    mt::{MTThread, DEFAULT_TRACE_TOO_LONG},
-};
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    error::Error,
-    ffi::CString,
-    sync::{Arc, LazyLock},
-};
+use crate::mt::MTThread;
+use std::{cell::RefCell, error::Error, sync::Arc};
 
 #[cfg(target_arch = "x86_64")]
 pub(crate) mod patch;
@@ -24,64 +15,30 @@ struct TracingBBlock {
     block_index: usize,
 }
 
-// Mapping of function indexes to function names.
-static FUNC_NAMES: LazyLock<HashMap<usize, CString>> = LazyLock::new(|| {
-    let mut fnames = HashMap::new();
-    let mut functions: *mut IRFunctionNameIndex = std::ptr::null_mut();
-    let bc_section = crate::compile::jitc_llvm::llvmbc_section();
-    let mut functions_len: usize = 0;
-    let bs = &BitcodeSection {
-        data: bc_section.as_ptr(),
-        len: u64::try_from(bc_section.len()).unwrap(),
-    };
-    unsafe { get_function_names(bs, &mut functions, &mut functions_len) };
-    for entry in unsafe { std::slice::from_raw_parts(functions, functions_len) } {
-        fnames.insert(
-            entry.index,
-            unsafe { std::ffi::CStr::from_ptr(entry.name) }.to_owned(),
-        );
-    }
-    fnames
-});
-
 thread_local! {
     // Collection of traced basic blocks.
     static BASIC_BLOCKS: RefCell<Vec<TracingBBlock>> = const { RefCell::new(vec![]) };
 }
 
-/// Inserts LLVM IR basicblock metadata into a thread-local BASIC_BLOCKS vector.
+/// If the current thread is tracing, records the specified basicblock into the software tracing
+/// buffer.
+///
+/// If the current thread is not tracing, it does nothing.
 ///
 /// # Arguments
 /// * `function_index` - The index of the function to which the basic block belongs.
 /// * `block_index` - The index of the basic block within the function.
 #[cfg(tracer_swt)]
-#[no_mangle]
-pub extern "C" fn yk_trace_basicblock(function_index: usize, block_index: usize) {
-    MTThread::with(|mtt| {
-        if mtt.is_tracing() {
-            BASIC_BLOCKS.with(|v| {
-                v.borrow_mut().push(TracingBBlock {
-                    function_index,
-                    block_index,
-                });
-            })
-        }
-    });
-}
-
-extern "C" {
-    fn get_function_names(
-        section: *const BitcodeSection,
-        result: *mut *mut IRFunctionNameIndex,
-        len: *mut usize,
-    );
-}
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct IRFunctionNameIndex {
-    pub index: usize,
-    pub name: *const libc::c_char,
+#[unsafe(no_mangle)]
+pub extern "C" fn __yk_trace_basicblock(function_index: usize, block_index: usize) {
+    if MTThread::is_tracing() {
+        BASIC_BLOCKS.with(|v| {
+            v.borrow_mut().push(TracingBBlock {
+                function_index,
+                block_index,
+            });
+        })
+    }
 }
 
 pub(crate) struct SWTracer {}
@@ -99,14 +56,13 @@ impl Tracer for SWTracer {
     }
 }
 
+#[derive(Debug)]
 struct SWTTraceRecorder {}
 
 impl TraceRecorder for SWTTraceRecorder {
     fn stop(self: Box<Self>) -> Result<Box<dyn AOTTraceIterator>, TraceRecorderError> {
         let bbs = BASIC_BLOCKS.with(|tb| tb.replace(Vec::new()));
-        if bbs.len() > DEFAULT_TRACE_TOO_LONG {
-            Err(TraceRecorderError::TraceTooLong)
-        } else if bbs.is_empty() {
+        if bbs.is_empty() {
             // FIXME: who should handle an empty trace?
             panic!("swt encountered an empty trace!");
         } else {
@@ -131,18 +87,12 @@ impl Iterator for SWTraceIterator {
     type Item = Result<TraceAction, AOTTraceIteratorError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.bbs
-            .next()
-            .map(|tb| match FUNC_NAMES.get(&tb.function_index) {
-                Some(name) => Ok(TraceAction::MappedAOTBBlock {
-                    func_name: name.to_owned(),
-                    bb: tb.block_index,
-                }),
-                _ => panic!(
-                    "Failed to get function name by index {:?}",
-                    tb.function_index
-                ),
+        self.bbs.next().map(|tb| {
+            Ok(TraceAction::MappedAOTBBlock {
+                funcidx: tb.function_index,
+                bbidx: tb.block_index,
             })
+        })
     }
 }
 

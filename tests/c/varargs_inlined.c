@@ -1,25 +1,27 @@
+// ## trace-compilation-aborted: dlsym("llvm.va_start") returned NULL
+// ignore-if: true
 // Run-time:
-//   env-var: YKD_LOG_IR=-:aot
+//   env-var: YKD_LOG_IR=aot
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YKD_LOG=4
 //   stderr:
-//     jitstate: start-tracing
+//     yk-tracing: start-tracing
 //     i=1
-//     jitstate: stop-tracing
+//     yk-tracing: stop-tracing
 //     --- Begin aot ---
 //     ...
-//     call void @llvm.va_start...
+//     call llvm.va_start...
 //     ...
-//     call void @llvm.va_end...
+//     call llvm.va_end...
 //     ...
 //     --- End aot ---
 //     i=1
-//     jitstate: enter-jit-code
+//     yk-execution: enter-jit-code
 //     i=1
 //     i=1
-//     jitstate: deoptimise
+//     yk-execution: deoptimise ...
 
-// Check that basic trace compilation works.
+// Check that inlining works when the function is vararg.
 
 #include <assert.h>
 #include <stdarg.h>
@@ -56,6 +58,6 @@ int main(int argc, char **argv) {
     i--;
   }
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }

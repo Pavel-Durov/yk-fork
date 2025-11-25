@@ -1,4 +1,4 @@
-// # Shadow stack not supported on non-main threads.
+// ## Shadow stack not supported on non-main threads.
 // ignore-if: true
 // Run-time:
 //   env-var: YKD_SERIALISE_COMPILATION=1
@@ -68,6 +68,6 @@ int main(int argc, char **argv) {
   pthread_join(t2, NULL);
 
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }

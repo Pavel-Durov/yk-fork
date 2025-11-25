@@ -1,20 +1,18 @@
+// Compiler:
+//   env-var: YKB_EXTRA_CC_FLAGS=-O0 -Xclang -disable-O0-optnone -Xlinker --lto-newpm-passes=instcombine<max-iterations=1;no-use-loop-info;no-verify-fixpoint>
 // Run-time:
-//   env-var: YKD_LOG_IR=-:jit-pre-opt
+//   env-var: YKD_LOG_IR=jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YKD_LOG=4
 //   stderr:
-//     jitstate: start-tracing
-//     jitstate: stop-tracing
+//     yk-tracing: start-tracing
+//     yk-tracing: stop-tracing
 //     --- Begin jit-pre-opt ---
 //     ...
-//     define ptr @__yk_compiled_trace_0(ptr %0, ptr %1...
-//        ...
-//     }
-//     ...
 //     --- End jit-pre-opt ---
-//     jitstate: enter-jit-code
+//     yk-execution: enter-jit-code
 //     ...
-//     jitstate: deoptimise
+//     yk-execution: deoptimise ...
 //     ...
 //   stdout:
 //     998
@@ -47,7 +45,7 @@ int main(int argc, char **argv) {
   NOOPT_VAL(res);
   printf("%d", res);
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
 
   return (EXIT_SUCCESS);
 }

@@ -1,11 +1,11 @@
 // Compiler:
 // Run-time:
-//   env-var: YKD_LOG_JITSTATE=-
-//   env-var: YKD_LOG_IR=-:jit-pre-opt
+//   env-var: YKD_LOG=4
+//   env-var: YKD_LOG_IR=jit-pre-opt,jit-asm
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   stderr:
 //     ...
-//     jitstate: enter-jit-code
+//     yk-execution: enter-jit-code
 //     ...
 
 // Check that running a traced binary via a relative path works.
@@ -49,6 +49,6 @@ int main(int argc, char **argv) {
 
   assert(i == 0);
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }

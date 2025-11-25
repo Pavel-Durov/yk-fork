@@ -1,20 +1,20 @@
 // Compiler:
 // Run-time:
-//   env-var: YKD_LOG_JITSTATE=-
-//   env-var: YKD_LOG_IR=-:jit-pre-opt
+//   env-var: YKD_LOG=4
+//   env-var: YKD_LOG_IR=jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   stderr:
 //     ...
-//     jitstate: start-tracing
+//     yk-tracing: start-tracing
 //     3: 47
-//     jitstate: stop-tracing
+//     yk-tracing: stop-tracing
 //     --- Begin jit-pre-opt ---
 //     ...
 //     --- End jit-pre-opt ---
 //     2: 47
-//     jitstate: enter-jit-code
+//     yk-execution: enter-jit-code
 //     1: 47
-//     jitstate: deoptimise
+//     yk-execution: deoptimise ...
 //     ...
 
 // Check that tracing a cascading "if...else if...else" works.
@@ -48,6 +48,6 @@ int main(int argc, char **argv) {
   }
 
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }

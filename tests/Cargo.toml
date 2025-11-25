@@ -2,7 +2,7 @@
 name = "tests"
 version = "0.1.0"
 authors = ["The Yk Developers"]
-edition = "2021"
+edition = "2024"
 license = "Apache-2.0 OR MIT"
 
 [lib]
@@ -15,24 +15,30 @@ path = "langtest_c.rs"
 harness = false
 
 [[test]]
+name = "lua_tests"
+path = "langtest_lua.rs"
+harness = false
+
+[[test]]
 name = "ir_lowering_tests"
 path = "langtest_ir_lowering.rs"
 harness = false
 
 [dependencies]
 clap = { features = ["derive"], version = "4.4" }
+fs4 = { version="0.13.1", features=["sync"] }
 hwtracer = { path = "../hwtracer" }
 memmap2 = "0.9.4"
+num_cpus = "1.13.1"
 regex = "1.9"
 tempfile = "3.9.0"
 ykbuild = { path = "../ykbuild" }
 ykrt = { path = "../ykrt", features = ["yk_testing", "ykd"] }
+ykcapi = { path = "../ykcapi", features = ["yk_testing", "ykd"] }
 
 [dev-dependencies]
-criterion = { version = "0.5.1", features = ["html_reports"] }
-lang_tester = "0.8"
-ykcapi = { path = "../ykcapi", features = ["yk_testing"] }
-ykrt = { path = "../ykrt", features = ["yk_testing", "ykd"] }
+criterion = { version = "0.6.0", features = ["html_reports"] }
+lang_tester = "0.9"
 
 [build-dependencies]
 rerun_except = "1.0.0"

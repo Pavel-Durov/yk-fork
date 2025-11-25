@@ -1,7 +1,13 @@
 //! The mapper translates a hwtracer trace into an IR trace.
 
-use crate::trace::{AOTTraceIterator, AOTTraceIteratorError, TraceAction, TraceRecorderError};
-use hwtracer::{llvm_blockmap::LLVM_BLOCK_MAP, Block, HWTracerError, TemporaryErrorKind, Trace};
+use crate::{
+    compile::jitc_yk::AOT_MOD,
+    trace::{AOTTraceIterator, AOTTraceIteratorError, TraceAction, TraceRecorderError},
+};
+use hwtracer::{
+    Block, BlockIteratorError, HWTracerError, TemporaryErrorKind, Trace,
+    llvm_blockmap::LLVM_BLOCK_MAP,
+};
 use ykaddr::{
     addr::{vaddr_to_obj_and_off, vaddr_to_sym_and_obj},
     obj::SELF_BIN_PATH,
@@ -13,7 +19,7 @@ use ykaddr::{
 /// mapped LLVM IR block, or an unsuccessfully mapped "unmappable block" (an unknown region of
 /// code spanning at least one machine block).
 pub(crate) struct HWTTraceIterator {
-    hwt_iter: Box<dyn Iterator<Item = Result<Block, HWTracerError>> + Send>,
+    hwt_iter: Box<dyn Iterator<Item = Result<Block, BlockIteratorError>> + Send>,
     /// The next [TraceAction]`s we will produce when `next` is called. We need this intermediary
     /// to allow us to deduplicate mapped/unmapped basic blocks. This will be empty on the first
     /// iteration and from then on will always have at least one [TraceAction] in it at all times,
@@ -27,80 +33,13 @@ pub(crate) struct HWTTraceIterator {
 
 impl AOTTraceIterator for HWTTraceIterator {}
 
-impl Iterator for HWTTraceIterator {
-    type Item = Result<TraceAction, AOTTraceIteratorError>;
-    fn next(&mut self) -> Option<Self::Item> {
-        // Unless we've exhausted `self.hwt_iter`, we need to have at least 1 element in
-        // `self.upcoming` in order to deduplicate, but there's no use in having more than 1
-        // element.
-        while self.upcoming.len() < 2 {
-            match self.hwt_iter.next() {
-                Some(Ok(x)) => {
-                    self.map_block(&x);
-                }
-                Some(Err(HWTracerError::Unrecoverable(x)))
-                    if x == "longjmp within traces currently unsupported" =>
-                {
-                    return Some(Err(AOTTraceIteratorError::LongJmpEncountered));
-                }
-                Some(Err(HWTracerError::Temporary(TemporaryErrorKind::TraceBufferOverflow))) => {
-                    return Some(Err(AOTTraceIteratorError::TraceTooLong));
-                }
-                Some(Err(e)) => todo!("{e:?}"),
-                None => {
-                    // The last block contains pointless unmappable code (the stop tracing call).
-                    match self.upcoming.pop() {
-                        Some(x) => {
-                            // This is a rough proxy for "check that we removed only the thing we want to
-                            // remove".
-                            assert!(matches!(x, TraceAction::UnmappableBBlock));
-                        }
-                        _ => unreachable!(),
-                    }
-                    return None;
-                }
-            }
-        }
-
-        if self.tas_generated > crate::mt::DEFAULT_TRACE_TOO_LONG {
-            return Some(Err(AOTTraceIteratorError::TraceTooLong));
-        }
-
-        // The `remove` cannot panic because upcoming.len > 1 is guaranteed by the `while` loop
-        // above.
-        Some(Ok(self.upcoming.remove(0)))
-    }
-}
-
 impl HWTTraceIterator {
     pub fn new(trace: Box<dyn Trace>) -> Result<Self, TraceRecorderError> {
-        let mut hwti = HWTTraceIterator {
+        Ok(Self {
             hwt_iter: trace.iter_blocks(),
             upcoming: Vec::new(),
             tas_generated: 0,
-        };
-        // The first block contains the control point, which we need to remove.
-        // As a rough proxy for "check that we removed only the thing we want to remove", we know
-        // that the control point will be contained in a single mappable block. The `unwrap` can
-        // only fail if our assumption about the block is incorrect (i.e. some part of the system
-        // doesn't work as expected).
-        match hwti.hwt_iter.next() {
-            Some(Ok(x)) => {
-                hwti.map_block(&x);
-                match hwti.upcoming.as_slice() {
-                    &[TraceAction::MappedAOTBBlock { .. }] => {
-                        hwti.upcoming.pop();
-                        Ok(hwti)
-                    }
-                    _ => panic!(),
-                }
-            }
-            Some(Err(HWTracerError::Temporary(TemporaryErrorKind::TraceBufferOverflow))) => {
-                Err(TraceRecorderError::TraceTooLong)
-            }
-            Some(Err(e)) => todo!("{e:?}"),
-            None => Err(TraceRecorderError::TraceEmpty),
-        }
+        })
     }
 
     /// Maps one hwtracer block to one or more AOT LLVM IR basic blocks.
@@ -149,9 +88,9 @@ impl HWTTraceIterator {
             self.push_upcoming(TraceAction::new_unmappable_block());
             return;
         }
-        let (block_vaddr, block_last_instr) = b_rng.unwrap();
+        let (block_vaddr, block_last_inst) = b_rng.unwrap();
 
-        let (obj_name, block_off) = vaddr_to_obj_and_off(block_vaddr as usize).unwrap();
+        let (obj_name, _block_off) = vaddr_to_obj_and_off(block_vaddr).unwrap();
 
         // Currently we only read in a block map and IR for the currently running binary (and not
         // for dynamically linked shared objects). Thus, if we see code from another object, we
@@ -165,9 +104,9 @@ impl HWTTraceIterator {
             return;
         }
 
-        let block_len = block_last_instr - block_vaddr;
+        let block_len = block_last_inst - block_vaddr;
         let mut ents = LLVM_BLOCK_MAP
-            .query(block_off, block_off + block_len)
+            .query(block_vaddr, block_vaddr + block_len)
             .collect::<Vec<_>>();
 
         // In the case that an hwtracer block maps to multiple machine basic blocks, it may be
@@ -185,16 +124,16 @@ impl HWTTraceIterator {
                 // same function, and a block X has a start address between basic blocks A and B,
                 // then X must also belong to the same function and there's no need to query the
                 // linker.
-                // FIXME: Is this `unwrap` safe?
-                let sio = vaddr_to_sym_and_obj(usize::try_from(block_vaddr).unwrap()).unwrap();
+                let sio = vaddr_to_sym_and_obj(block_vaddr).unwrap();
                 debug_assert_eq!(
                     obj_name.to_str().unwrap(),
                     sio.dli_fname().unwrap().to_str().unwrap()
                 );
                 if let Some(sym_name) = sio.dli_sname() {
+                    let func_idx = AOT_MOD.funcidx(sym_name);
                     for bb in ent.value.corr_bbs() {
                         self.push_upcoming(TraceAction::new_mapped_aot_block(
-                            sym_name.to_owned(),
+                            func_idx.into(),
                             usize::try_from(*bb).unwrap(),
                         ));
                     }
@@ -229,5 +168,79 @@ impl HWTTraceIterator {
             self.upcoming.push(new);
             self.tas_generated += 1;
         }
+    }
+}
+
+impl Iterator for HWTTraceIterator {
+    type Item = Result<TraceAction, AOTTraceIteratorError>;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.tas_generated == 0 {
+            // Remove the first block.
+            //
+            // If we are collecting a top-level trace, this removes the remainder of the block
+            // containing the control point.
+            //
+            // If we are side-tracing then this attempts to remove the block containing the failed
+            // guard, which is captured by the hardware tracer, but which we have already executed
+            // in the parent trace. Note though, that some conditionals (e.g. switches) can span
+            // multiple machine blocks, which are not all removed here. Since we don't have enough
+            // information at this level to remove all of them, there's a workaround in the trace
+            // builder.
+            match self.hwt_iter.next() {
+                Some(Ok(x)) => {
+                    self.map_block(&x);
+                    self.upcoming.pop();
+                }
+                Some(Err(BlockIteratorError::HWTracerError(HWTracerError::Temporary(
+                    TemporaryErrorKind::TraceBufferOverflow(s),
+                )))) => {
+                    return Some(Err(AOTTraceIteratorError::RecorderOverflow(s)));
+                }
+                Some(Err(e)) => return Some(Err(AOTTraceIteratorError::Other(e.to_string()))),
+                None => return Some(Err(AOTTraceIteratorError::PrematureEnd)),
+            }
+            debug_assert!(self.tas_generated > 0);
+        }
+
+        // Unless we've exhausted `self.hwt_iter`, we need to have at least 1 element in
+        // `self.upcoming` in order to deduplicate, but there's no use in having more than 1
+        // element.
+        while self.upcoming.len() < 2 {
+            match self.hwt_iter.next() {
+                Some(Ok(x)) => {
+                    self.map_block(&x);
+                }
+                Some(Err(BlockIteratorError::HWTracerError(HWTracerError::Unrecoverable(x))))
+                    if x == "longjmp within traces currently unsupported" =>
+                {
+                    return Some(Err(AOTTraceIteratorError::LongJmpEncountered));
+                }
+                Some(Err(BlockIteratorError::HWTracerError(HWTracerError::Temporary(
+                    TemporaryErrorKind::TraceBufferOverflow(s),
+                )))) => {
+                    return Some(Err(AOTTraceIteratorError::RecorderOverflow(s)));
+                }
+                Some(Err(e)) => return Some(Err(AOTTraceIteratorError::Other(e.to_string()))),
+                None => {
+                    // The last block should contains pointless unmappable code (the stop tracing call).
+                    match self.upcoming.pop() {
+                        Some(x) => {
+                            // This is a rough proxy for "check that we removed only the thing we want to
+                            // remove".
+                            if matches!(x, TraceAction::UnmappableBBlock) {
+                                return None;
+                            } else {
+                                return Some(Err(AOTTraceIteratorError::PrematureEnd));
+                            }
+                        }
+                        None => return Some(Err(AOTTraceIteratorError::PrematureEnd)),
+                    }
+                }
+            }
+        }
+
+        // The `remove` cannot panic because upcoming.len > 1 is guaranteed by the `while` loop
+        // above.
+        Some(Ok(self.upcoming.remove(0)))
     }
 }

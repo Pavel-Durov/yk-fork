@@ -2,6 +2,11 @@
 
 use deku::prelude::*;
 
+/// A byte representing a PAD packet.
+///
+/// We ignore PAD packets, since they don't carry any useful information.
+pub(super) const PAD_BYTE: u8 = 0;
+
 /// The `IPBytes` field common to all IP packets.
 ///
 /// This tells us what kind of compression was used for a `TargetIP`.
@@ -131,11 +136,6 @@ pub(super) struct CBRPacket {
 #[deku(magic = b"\x02\x23")]
 pub(super) struct PSBENDPacket {}
 
-/// Padding (PAD) packet.
-#[derive(Debug, DekuRead)]
-#[deku(magic = b"\x00")]
-pub(super) struct PADPacket {}
-
 #[derive(Debug, Eq, PartialEq)]
 pub enum Bitness {
     Bits16,
@@ -227,7 +227,7 @@ impl ShortTNTPacket {
         let mut push = false;
         let mut tnts = Vec::new();
         for i in (0..7).rev() {
-            let bit = self.branches >> i & 0x1;
+            let bit = (self.branches >> i) & 0x1;
             if !push && bit == 1 {
                 // We are witnessing the stop bit. Push from now on.
                 push = true;
@@ -235,7 +235,8 @@ impl ShortTNTPacket {
                 tnts.push(bit == 1)
             }
         }
-        debug_assert!(push); // or we didn't see a stop bit!
+        assert!(push); // or we didn't see a stop bit!
+        assert_ne!(tnts.len(), 0); // No such thing as an empty TNT packet.
         tnts
     }
 }
@@ -370,7 +371,6 @@ pub(super) enum PacketKind {
     PSB,
     CBR,
     PSBEND,
-    PAD,
     MODEExec,
     MODETSX,
     TIPPGE,
@@ -393,7 +393,6 @@ impl PacketKind {
             Self::PSB
             | Self::CBR
             | Self::PSBEND
-            | Self::PAD
             | Self::MODEExec
             | Self::MODETSX
             | Self::ShortTNT
@@ -413,7 +412,6 @@ impl PacketKind {
             | Self::CYC
             | Self::FUP
             | Self::LongTNT
-            | Self::PAD
             | Self::PSB
             | Self::PSBEND
             | Self::ShortTNT
@@ -436,7 +434,6 @@ pub(super) enum Packet {
     PSB(PSBPacket),
     CBR(CBRPacket),
     PSBEND(PSBENDPacket),
-    PAD(PADPacket),
     MODEExec(MODEExecPacket),
     MODETSX(MODETSXPacket),
     TIPPGE(TIPPGEPacket, Option<usize>),
@@ -462,7 +459,6 @@ impl Packet {
             Self::PSB(_)
             | Self::CBR(_)
             | Self::PSBEND(_)
-            | Self::PAD(_)
             | Self::MODEExec(_)
             | Self::MODETSX(_)
             | Self::ShortTNT(_)
@@ -479,7 +475,6 @@ impl Packet {
             Self::PSB(_) => PacketKind::PSB,
             Self::CBR(_) => PacketKind::CBR,
             Self::PSBEND(_) => PacketKind::PSBEND,
-            Self::PAD(_) => PacketKind::PAD,
             Self::MODEExec(_) => PacketKind::MODEExec,
             Self::MODETSX(_) => PacketKind::MODETSX,
             Self::TIPPGE(..) => PacketKind::TIPPGE,
@@ -507,7 +502,6 @@ impl Packet {
             Self::PSB(_)
             | Self::CBR(_)
             | Self::PSBEND(_)
-            | Self::PAD(_)
             | Self::MODEExec(_)
             | Self::MODETSX(_)
             | Self::TIPPGE(_, _)

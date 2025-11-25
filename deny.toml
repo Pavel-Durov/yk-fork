@@ -2,10 +2,10 @@
 confidence-threshold = 1.0
 allow = [
     "Apache-2.0",
+    "BSD-3-Clause",
     "MIT",
     "MPL-2.0",
-    "BSD-3-Clause",
-    "Unicode-DFS-2016",
+    "Unicode-3.0"
 ]
 
 [sources.allow-org]

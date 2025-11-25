@@ -1,7 +1,9 @@
+// ## not yet implemented: ran out of gp regs
+// ignore-if: true
 // Run-time:
-//   env-var: YKD_LOG_IR=-:aot
+//   env-var: YKD_LOG_IR=aot
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YKD_LOG=3
 //   stdout:
 //     1 2 3 4 5 6
 //     1 2 3 4 5 6
@@ -72,6 +74,6 @@ int main(int argc, char **argv) {
   printf("exit");
   NOOPT_VAL(res);
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }

@@ -1,16 +1,17 @@
+// ignore-if: test "$YK_JITC" = "j2"
 // Run-time:
-//   env-var: YKD_LOG_IR=-:jit-pre-opt
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YKD_LOG_IR=jit-pre-opt
+//   env-var: YKD_LOG=4
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   stderr:
-//     jitstate: start-tracing
+//     yk-tracing: start-tracing
 //     1
-//     jitstate: stop-tracing
+//     yk-tracing: stop-tracing
 //     --- Begin jit-pre-opt ---
 //     ...
 //     --- End jit-pre-opt ---
 //     2
-//     jitstate: enter-jit-code
+//     yk-execution: enter-jit-code
 //     3
 //     4
 //     5
@@ -19,61 +20,54 @@
 //     8
 //     9
 //     10
-//     jitstate: deoptimise
+//     yk-execution: deoptimise ...
 //     12
-//     jitstate: enter-jit-code
-//     jitstate: deoptimise
+//     yk-execution: enter-jit-code
+//     yk-execution: deoptimise ...
 //     14
-//     jitstate: enter-jit-code
-//     jitstate: deoptimise
+//     yk-execution: enter-jit-code
+//     yk-execution: deoptimise ...
 //     16
-//     jitstate: enter-jit-code
-//     jitstate: deoptimise
+//     yk-execution: enter-jit-code
+//     yk-execution: deoptimise ...
 //     18
-//     jitstate: enter-jit-code
-//     jitstate: deoptimise
-//     jitstate: start-side-tracing
+//     yk-execution: enter-jit-code
+//     yk-execution: deoptimise ...
 //     20
-//     jitstate: stop-side-tracing
+//     yk-execution: enter-jit-code
+//     yk-execution: deoptimise ...
+//     yk-tracing: start-side-tracing
+//     22
+//     yk-tracing: stop-tracing
 //     --- Begin jit-pre-opt ---
 //     ...
 //     --- End jit-pre-opt ---
-//     22
-//     jitstate: enter-jit-code
-//     jitstate: execute-side-trace
 //     24
-//     jitstate: deoptimise
+//     yk-execution: enter-jit-code
 //     26
-//     jitstate: enter-jit-code
-//     jitstate: execute-side-trace
 //     28
-//     jitstate: deoptimise
 //     30
 //     ...
+//     36
+//     yk-execution: enter-jit-code
+//     yk-execution: deoptimise ...
+//     ...
 //     42
-//     jitstate: enter-jit-code
-//     jitstate: execute-side-trace
-//     jitstate: deoptimise
-//     jitstate: start-side-tracing
+//     yk-execution: enter-jit-code
+//     yk-execution: deoptimise ...
+//     yk-tracing: start-side-tracing
 //     45
-//     jitstate: stop-side-tracing
+//     yk-tracing: stop-tracing
 //     --- Begin jit-pre-opt ---
 //     ...
 //     --- End jit-pre-opt ---
 //     48
-//     jitstate: enter-jit-code
-//     jitstate: execute-side-trace
-//     jitstate: execute-side-trace
+//     yk-execution: enter-jit-code
 //     51
-//     jitstate: deoptimise
 //     54
-//     jitstate: enter-jit-code
-//     jitstate: execute-side-trace
-//     jitstate: execute-side-trace
 //     57
-//     jitstate: deoptimise
 //     60
-//   stdout:
+//     yk-execution: deoptimise ...
 //     exit
 
 // Tests that side-traces can be compiled from within other side-traces. In
@@ -117,9 +111,9 @@ int main(int argc, char **argv) {
     fprintf(stderr, "%d\n", res);
     i--;
   }
-  printf("exit");
+  fprintf(stderr, "exit");
   NOOPT_VAL(res);
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }

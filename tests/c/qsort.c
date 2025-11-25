@@ -1,27 +1,21 @@
-// # This test breaks in swt tracer as swt tracer is missing unmappable block so it cannot
-// # see calls from unmappable blocks to mappable blocks and vice-versa. Disable this test
-// # for swt until we fix it.
-// # Example of what hwt see:
-// # mappable block (main):           <---
-// #        unmappable block (qsort)     |
-// #         mappable block (cmp)  ------
-// ignore-if: test "$YKB_TRACER" = "swt"
+// ## FIXME: Test hangs with hwt.
+// ignore-if: test "$YKB_TRACER" = "hwt"
 // Run-time:
 //   env-var: YKD_SERIALISE_COMPILATION=1
-//   env-var: YKD_LOG_JITSTATE=-
+//   env-var: YKD_LOG=4
 //   stderr:
-//     jitstate: start-tracing
+//     yk-tracing: start-tracing
 //     i=2
 //     4 6 1 3 2 5 end
-//     jitstate: stop-tracing
+//     yk-tracing: stop-tracing
 //     i=3
 //     1 4 6 3 2 5 end
-//     jitstate: enter-jit-code
+//     yk-execution: enter-jit-code
 //     i=4
 //     1 3 4 6 2 5 end
 //     i=5
 //     1 2 3 4 6 5 end
-//     jitstate: deoptimise
+//     yk-execution: deoptimise ...
 
 // Check that foreign code calling back to "native" code works.
 
@@ -46,7 +40,7 @@ int cmp(const void *a, const void *b) {
     return 1;
 }
 
-__attribute__((noinline)) void print_elems(int elems[]) {
+void print_elems(int elems[]) {
   for (int i = 0; i < N_ELEMS; i++)
     fprintf(stderr, "%d ", elems[i]);
   fprintf(stderr, "end\n");
@@ -73,6 +67,6 @@ int main(int argc, char **argv) {
   }
 
   yk_location_drop(loc);
-  yk_mt_drop(mt);
+  yk_mt_shutdown(mt);
   return (EXIT_SUCCESS);
 }

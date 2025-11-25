@@ -1,9 +1,10 @@
 ; Dump:
 ;   stdout:
 ;     ...
-;     func main() {
+;     func main(%arg0: {0: i32, 64: i64}) {
 ;       bb0:
-;         $0_0: {0: i32, 64: i64} = insertvalue const_struct, 100i32
+;         %0_0: {0: i32, 64: i64} = arg(0)
+;         %0_1: {0: i32, 64: i64} = insert_val %0_0, 100i32
 ;         ret
 ;     }
 
@@ -11,8 +12,8 @@
 
 %s = type { i32, i64 }
 
-define void @main() {
+define void @main(%s %val) {
 entry:
-  %0 = insertvalue %s zeroinitializer, i32 100, 0
+  %0 = insertvalue %s %val, i32 100, 0
   ret void
 }

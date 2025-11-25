@@ -1,5 +1,22 @@
 # Debugging
 
+## Disabling the JIT
+
+Sometimes it is useful to completely disable the JIT to verify that a problem is
+JIT-related. You can do this with the `YK_JITC` environment variable (see
+[run-time configuration](runtime_config.md) for details).
+
+## Trace optimisation
+
+Trace optimisation can make it difficult to understand why a yk interpreter has
+behaved in the way it does. It is worth trying to run your code with the
+optimiser turned off. You can do this with the `YKD_OPT` environment
+variable, which takes the following values:
+
+  * 1: turn the optimiser on. Default if not otherwise specified.
+  * 0: turn the optimiser off.
+
+
 ## Debugging JITted code
 
 Often you will find the need to inspect JITted code with a debugger. If the
@@ -20,19 +37,7 @@ This will automatically compile and run the `tests/c/simple.c` test under GDB.
 This would be ideal if you have a crashing trace, as it will dump you into a
 GDB shell at the time of the crash.
 
-The tool has some other switches which are useful for other situations, e.g.:
-
-```
-bin/gdb_c_test -j -s -b10 simple.c
-```
-
-compiles and runs `tests/c/simple.c` test under GDB with [JIT state
-debugging](runtime_config.md#ykd_print_jitstate)
-enabled, with [compilation
-serialised](runtime_config.md#ykd_serialise_compilation), setting a
-breakpoint on the first 10 traces compiled.
-
-For a list of all switches available, run:
+To see what else you can do with `gdb_c_test`, run:
 
 ```
 bin/gdb_c_test --help
@@ -40,3 +45,28 @@ bin/gdb_c_test --help
 
 For help on using GDB, see the [GDB
 documentation](https://sourceware.org/gdb/documentation/).
+
+### GDB plugin
+
+Yk comes with a GDB plugin that allows the debugger to show higher-level
+information in the source view window.
+
+The plugin is built by default and put in `target/yk_gdb_plugin.so`.
+
+To use it, put this line in `~/.gdbinit`:
+```
+jit-reader-load /path/to/yk/target/yk_gdb_plugin.so
+```
+
+Then when you run GDB, you should see:
+```
+Yk JIT support loaded.
+```
+
+When you are inside JITted code, the source view will show higher-level
+debugging information. You can show the assembler and source views on one GDB
+screen using the "split" layout. Type:
+
+```
+la spl
+```

@@ -12,7 +12,7 @@
 //!
 //! This module thus contains tracing backends which can record and process traces.
 
-use std::{error::Error, ffi::CString, sync::Arc};
+use std::{error::Error, fmt, sync::Arc};
 use thiserror::Error;
 
 #[cfg(tracer_hwt)]
@@ -45,7 +45,7 @@ pub(crate) fn default_tracer() -> Result<Arc<dyn Tracer>, Box<dyn Error>> {
 }
 
 /// An instance of a [Tracer] which is currently recording a trace of the current thread.
-pub(crate) trait TraceRecorder {
+pub(crate) trait TraceRecorder: fmt::Debug {
     /// Stop recording a trace of the current thread and return an iterator which successively
     /// produces [TraceAction]s.
     fn stop(self: Box<Self>) -> Result<Box<dyn AOTTraceIterator>, TraceRecorderError>;
@@ -62,10 +62,10 @@ pub enum TraceRecorderError {
     #[error("Trace empty")]
     #[allow(dead_code)]
     TraceEmpty,
-    /// The trace being recorded was too long and tracing was aborted.
-    #[error("Trace too long")]
+    /// A trace buffer-related overflow occurred.
+    #[error("{0}")]
     #[allow(dead_code)]
-    TraceTooLong,
+    TraceBufferOverflow(String),
 }
 
 /// An iterator which [TraceRecord]s use to process a trace into [TraceAction]s. The iterator must
@@ -85,24 +85,36 @@ pub(crate) trait AOTTraceIterator:
 
 /// When a trace is being processed, a problem might be noticed at any point. It is possible that
 /// tracing the original [crate::location::Location] again may "fix" the problem.
+#[derive(Debug, Error)]
 pub(crate) enum AOTTraceIteratorError {
+    #[error("Trace ended prematurely")]
     #[allow(dead_code)]
-    TraceTooLong,
+    PrematureEnd,
+    /// A trace buffer-related overflow occurred.
+    #[error("{0}")]
+    #[allow(dead_code)]
+    RecorderOverflow(String),
+    /// The trace exceeds yk's limit for IR instructions.
+    #[error("Trace would contain too many IR elements")]
+    #[allow(dead_code)]
+    TooManyIrElements,
+    #[error("longjmp encountered")]
     #[allow(dead_code)]
     LongJmpEncountered,
+    #[error("{0}")]
+    #[allow(dead_code)]
+    Other(String),
 }
 
 /// A processed item from a trace.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TraceAction {
     /// A sucessfully mapped block.
     MappedAOTBBlock {
-        /// The name of the function containing the block.
-        ///
-        /// PERF: Use a string pool to avoid duplicated function names in traces.
-        func_name: CString,
+        /// The index of the function that the block belongs to.
+        funcidx: usize,
         /// The index of the block within the function.
-        bb: usize,
+        bbidx: usize,
     },
     /// One or more machine basic blocks that could not be mapped.
     ///
@@ -118,8 +130,11 @@ pub enum TraceAction {
 }
 
 impl TraceAction {
-    pub fn new_mapped_aot_block(func_name: CString, bb: usize) -> Self {
-        Self::MappedAOTBBlock { func_name, bb }
+    pub fn new_mapped_aot_block(func_idx: usize, bb: usize) -> Self {
+        Self::MappedAOTBBlock {
+            funcidx: func_idx,
+            bbidx: bb,
+        }
     }
 
     pub fn new_unmappable_block() -> Self {
