@@ -6,6 +6,9 @@ use super::{
 use crate::mt::MTThread;
 use std::{cell::RefCell, error::Error, sync::Arc};
 
+#[cfg(target_arch = "x86_64")]
+pub(crate) mod patch;
+
 #[derive(Debug, Eq, PartialEq, Clone)]
 struct TracingBBlock {
     function_index: usize,
@@ -61,7 +64,7 @@ impl TraceRecorder for SWTTraceRecorder {
         let bbs = BASIC_BLOCKS.with(|tb| tb.replace(Vec::new()));
         if bbs.is_empty() {
             // FIXME: who should handle an empty trace?
-            panic!();
+            panic!("swt encountered an empty trace!");
         } else {
             Ok(Box::new(SWTraceIterator::new(bbs)))
         }
