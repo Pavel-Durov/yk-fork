@@ -84,6 +84,11 @@ thread_local! {
 #[thread_local]
 static __yk_thread_tracing_state: AtomicU8 = const { AtomicU8::new(IsTracing::None.as_u8()) };
 
+/// Global counter of threads currently tracing. This is NOT TLS - it's a simple atomic counter.
+/// When this is 0, no thread is tracing, and promotion functions can skip TLS lookups entirely.
+/// This optimisation avoids `__tls_get_addr` overhead on the fast path (not tracing).
+static TRACING_THREAD_COUNT: AtomicU32 = AtomicU32::new(0);
+
 /// A meta-tracer. This is always passed around stored in an [Arc].
 ///
 /// When you are finished with this meta-tracer, it is best to explicitly call [MT::shutdown] to
@@ -1299,6 +1304,15 @@ impl MTThread {
         }
     }
 
+    /// Fast check: is ANY thread currently tracing?
+    ///
+    /// This is a simple atomic load (no TLS lookup), making it suitable for the hot path.
+    /// Returns `false` when no thread is tracing, allowing callers to skip TLS lookups entirely.
+    #[inline(always)]
+    pub fn any_thread_tracing() -> bool {
+        TRACING_THREAD_COUNT.load(Ordering::Relaxed) > 0
+    }
+
     /// Is this thread currently tracing something?
     pub(crate) fn is_tracing() -> bool {
         IsTracing::from(__yk_thread_tracing_state.load(Ordering::Relaxed)) != IsTracing::None
@@ -1310,8 +1324,19 @@ impl MTThread {
     }
 
     /// Set this thread's tracing state.
+    ///
+    /// This also updates the global `TRACING_THREAD_COUNT` to enable fast-path optimisation
+    /// in promotion functions.
     fn set_tracing(kind: IsTracing) {
-        __yk_thread_tracing_state.swap(kind.as_u8(), Ordering::Relaxed);
+        let old = IsTracing::from(__yk_thread_tracing_state.swap(kind.as_u8(), Ordering::Relaxed));
+        let was_tracing = old != IsTracing::None;
+        let now_tracing = kind != IsTracing::None;
+        // Update the global counter only when transitioning to/from tracing
+        if !was_tracing && now_tracing {
+            TRACING_THREAD_COUNT.fetch_add(1, Ordering::Relaxed);
+        } else if was_tracing && !now_tracing {
+            TRACING_THREAD_COUNT.fetch_sub(1, Ordering::Relaxed);
+        }
     }
 
     /// Call `f` with a `&` reference to this thread's [MTThread] instance.
