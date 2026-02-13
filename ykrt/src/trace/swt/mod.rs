@@ -6,6 +6,8 @@ use super::{
 use crate::mt::MTThread;
 use std::{cell::RefCell, error::Error, sync::Arc};
 
+pub(crate) mod patch;
+
 #[derive(Debug, Eq, PartialEq, Clone)]
 struct TracingBBlock {
     function_index: u16,
