@@ -62,10 +62,9 @@ That single **header** block is one trace. In this case it is a **ControlPoint +
 
 **3. Try this**
 
-- Change the loop bound (e.g. run 2 iterations vs 20). You still get one trace; only the number of times you “enter-jit-code” and run that trace changes.
-- If you don’t see any tracing, lower the threshold: e.g. `YK_HOT_THRESHOLD=1` and run again.
+- Change the loop bound (e.g. run 2 iterations vs 20). You still get single trace that is executed multiple times.
+- **Experiment with different thresholds.** The threshold is how many times a control point must be hit before yk starts tracing. Run the same script with `YK_HOT_THRESHOLD=1`, then `YK_HOT_THRESHOLD=6`, then `YK_HOT_THRESHOLD=666` (the default). With a **low** value (1–5), tracing starts after just a few iterations and you should see the debugstr block quickly even for short loops. With a **high** value (e.g. 131), tracing only starts after many hits—if your loop runs only a handful of iterations, you may see no tracing at all. Compare when “start-tracing” and “enter-jit-code” appear in each run.
 
----
 
 ## Takeaway
 
