@@ -1,10 +1,10 @@
-// ignore-if: test "$YK_JITC" = "j2"
 // Compiler:
-//   env-var: YKB_EXTRA_CC_FLAGS=-O0 -Xclang -disable-O0-optnone -Xlinker --lto-newpm-passes=instcombine<max-iterations=1;no-use-loop-info;no-verify-fixpoint>
+//   env-var: YKB_EXTRA_CC_FLAGS=-O0 -Xclang -disable-O0-optnone -Xlinker --lto-newpm-passes=instcombine<max-iterations=1;no-verify-fixpoint>
 // Run-time:
 //   env-var: YKD_LOG_IR=aot,jit-pre-opt
 //   env-var: YKD_LOG=4
 //   env-var: YKD_LOG_STATS=/dev/null
+//   env-var: YKD_SERIALISE_COMPILATION=1
 //   stderr:
 //     yk-tracing: start-tracing
 //     i=4, val=1
@@ -16,7 +16,10 @@
 //     --- End aot ---
 //     --- Begin jit-pre-opt ---
 //     ...
-//     %{{_}}: i32 = call @fprintf(%{{_}}, %{{_}}, %{{_}}, 1i32)
+//     guard true, ...
+//     %{{16}}: i32 = 1
+//     ...
+//     %{{_}}: i32 = call %{{_}}(%{{_}}, %{{_}}, %{{_}}, %{{16}}) ; @fprintf
 //     ...
 //     --- End jit-pre-opt ---
 //     i=3, val=1

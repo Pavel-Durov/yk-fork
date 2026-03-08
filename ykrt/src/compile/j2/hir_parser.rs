@@ -15,6 +15,9 @@
 //!    [GuardExtra::deopt_vars]. The former are reordered and deduplicated as appropriate.
 //! 5. Guards can optionally specify an additional list which is the stack of frames, and the
 //!    [VarLocs] for their corresponding [GuardExtra::deopt_vars].
+//! 6. Function types and declarations are merged into one concept: that means that e.g. function
+//!    attributes are associated with a type (unlike LLVM IR where attributes are associated with
+//!    definitions and not with types).
 
 #[cfg(test)]
 use crate::compile::jitc_yk::aot_ir::{BBlockInstIdx, InstId};
@@ -51,7 +54,7 @@ static TEST_DEOPT_SAFEPOINT: DeoptSafepoint = DeoptSafepoint {
 
 struct HirParser<'lexer, 'input: 'lexer, Reg: RegT> {
     lexer: &'lexer LRNonStreamingLexer<'lexer, 'input, DefaultLexerTypes<StorageT>>,
-    externs: HashMap<&'input str, TyIdx>,
+    externs: HashMap<&'input str, (TyIdx, Vec<AstFuncAttr>)>,
     insts: IndexVec<InstIdx, Inst>,
     tys: IndexVec<TyIdx, Ty>,
     /// The [TyIdx] for [Ty::Int(1)].
@@ -83,6 +86,7 @@ impl<'lexer, 'input: 'lexer, Reg: RegT> HirParser<'lexer, 'input, Reg> {
                     arg_tys,
                     has_varargs,
                     rtn_ty,
+                    attrs,
                 },
         } in astexterns
         {
@@ -97,10 +101,37 @@ impl<'lexer, 'input: 'lexer, Reg: RegT> HirParser<'lexer, 'input, Reg> {
                 has_varargs,
                 rtn_tyidx,
             })));
-            self.externs.insert(name, tyidx);
+            let mut processed_attrs = Vec::with_capacity(attrs.len());
+            for attr in attrs {
+                match attr {
+                    AstFuncAttr::MemoryNone
+                    | AstFuncAttr::MemoryRead
+                    | AstFuncAttr::MemoryWrite
+                    | AstFuncAttr::MemoryReadWrite => {
+                        if processed_attrs
+                            .iter()
+                            .find(|x| {
+                                matches!(
+                                    x,
+                                    AstFuncAttr::MemoryNone
+                                        | AstFuncAttr::MemoryRead
+                                        | AstFuncAttr::MemoryWrite
+                                        | AstFuncAttr::MemoryReadWrite
+                                )
+                            })
+                            .is_some()
+                        {
+                            // Only one memory effect can be specified
+                            todo!();
+                        }
+                        processed_attrs.push(attr);
+                    }
+                }
+            }
+            self.externs.insert(name, (tyidx, processed_attrs));
         }
 
-        let mut entry_vlocs = Vec::new();
+        let mut args_vlocs = Vec::new();
         let mut guards = IndexVec::new();
         let mut testregiter = Reg::iter_test_regs();
         let mut autoregused = false;
@@ -186,7 +217,7 @@ impl<'lexer, 'input: 'lexer, Reg: RegT> HirParser<'lexer, 'input, Reg> {
                 AstInst::Arg { local, ty, vlocs } => {
                     self.p_def_local(local);
                     let tyidx = self.p_ty(ty);
-                    entry_vlocs.push(self.p_vlocs_with_auto(
+                    args_vlocs.push(self.p_vlocs_with_auto(
                         &mut autoregused,
                         &mut manualregused,
                         &mut testregiter,
@@ -213,7 +244,17 @@ impl<'lexer, 'input: 'lexer, Reg: RegT> HirParser<'lexer, 'input, Reg> {
                     if let (Some(local), Some(_ty)) = (local, ty) {
                         self.p_def_local(local);
                     }
-                    let func_tyidx = self.externs[self.lexer.span_str(extern_)];
+                    let (func_tyidx, attrs) = &self.externs[self.lexer.span_str(extern_)];
+                    let func_tyidx = *func_tyidx;
+                    let mut effects = CallEffects::ReadWrite;
+                    for attr in attrs {
+                        match attr {
+                            AstFuncAttr::MemoryNone => effects = CallEffects::None,
+                            AstFuncAttr::MemoryRead => effects = CallEffects::Read,
+                            AstFuncAttr::MemoryWrite => effects = CallEffects::Write,
+                            AstFuncAttr::MemoryReadWrite => effects = CallEffects::ReadWrite,
+                        }
+                    }
                     let tgt = self.p_local(tgt);
                     let args = args
                         .iter()
@@ -224,6 +265,7 @@ impl<'lexer, 'input: 'lexer, Reg: RegT> HirParser<'lexer, 'input, Reg> {
                             tgt,
                             func_tyidx,
                             args,
+                            effects,
                         }
                         .into(),
                     );
@@ -428,6 +470,12 @@ impl<'lexer, 'input: 'lexer, Reg: RegT> HirParser<'lexer, 'input, Reg> {
                     let val = self.p_local(val);
                     self.insts.push(FPToSI { tyidx, val }.into());
                 }
+                AstInst::Freeze { local, ty, val } => {
+                    self.p_def_local(local);
+                    let tyidx = self.p_ty(ty);
+                    let val = self.p_local(val);
+                    self.insts.push(Freeze { tyidx, val }.into());
+                }
                 AstInst::Global { local, ty, name } => {
                     self.p_def_local(local);
                     let tyidx = self.p_ty(ty);
@@ -522,7 +570,12 @@ impl<'lexer, 'input: 'lexer, Reg: RegT> HirParser<'lexer, 'input, Reg> {
                     let val = self.p_local(val);
                     self.insts.push(IntToPtr { tyidx, val }.into());
                 }
-                AstInst::Load { local, ty, ptr } => {
+                AstInst::Load {
+                    local,
+                    ty,
+                    ptr,
+                    is_volatile,
+                } => {
                     self.p_def_local(local);
                     let tyidx = self.p_ty(ty);
                     let ptr = self.p_local(ptr);
@@ -530,7 +583,7 @@ impl<'lexer, 'input: 'lexer, Reg: RegT> HirParser<'lexer, 'input, Reg> {
                         Load {
                             tyidx,
                             ptr,
-                            is_volatile: false,
+                            is_volatile,
                         }
                         .into(),
                     );
@@ -559,7 +612,7 @@ impl<'lexer, 'input: 'lexer, Reg: RegT> HirParser<'lexer, 'input, Reg> {
                     dst,
                     src,
                     len,
-                    volatile,
+                    is_volatile,
                 } => {
                     let dst = self.p_local(dst);
                     let src = self.p_local(src);
@@ -569,7 +622,7 @@ impl<'lexer, 'input: 'lexer, Reg: RegT> HirParser<'lexer, 'input, Reg> {
                             dst,
                             src,
                             len,
-                            volatile,
+                            is_volatile,
                         }
                         .into(),
                     );
@@ -578,7 +631,7 @@ impl<'lexer, 'input: 'lexer, Reg: RegT> HirParser<'lexer, 'input, Reg> {
                     dst,
                     val,
                     len,
-                    volatile,
+                    is_volatile,
                 } => {
                     let dst = self.p_local(dst);
                     let val = self.p_local(val);
@@ -588,7 +641,7 @@ impl<'lexer, 'input: 'lexer, Reg: RegT> HirParser<'lexer, 'input, Reg> {
                             dst,
                             val,
                             len,
-                            volatile,
+                            is_volatile,
                         }
                         .into(),
                     );
@@ -779,14 +832,18 @@ impl<'lexer, 'input: 'lexer, Reg: RegT> HirParser<'lexer, 'input, Reg> {
                     let rhs = self.p_local(rhs);
                     self.insts.push(SRem { tyidx, lhs, rhs }.into());
                 }
-                AstInst::Store { val, ptr } => {
+                AstInst::Store {
+                    val,
+                    ptr,
+                    is_volatile,
+                } => {
                     let val = self.p_local(val);
                     let ptr = self.p_local(ptr);
                     self.insts.push(
                         Store {
                             val,
                             ptr,
-                            is_volatile: false,
+                            is_volatile,
                         }
                         .into(),
                     );
@@ -891,7 +948,7 @@ impl<'lexer, 'input: 'lexer, Reg: RegT> HirParser<'lexer, 'input, Reg> {
         let m = Mod {
             trid: TraceId::testing(),
             trace_start: TraceStart::Test,
-            trace_end: TraceEnd::Test { entry_vlocs, block },
+            trace_end: TraceEnd::Test { args_vlocs, block },
             tys: self.tys,
             tyidx_int1: self.tyidx_int1,
             tyidx_ptr0: self.tyidx_ptr0,
@@ -1040,7 +1097,13 @@ impl<'lexer, 'input: 'lexer, Reg: RegT> HirParser<'lexer, 'input, Reg> {
                     }
                 }
                 AstVLoc::AutoStack => todo!(),
-                AstVLoc::Stack(_span) => todo!(),
+                AstVLoc::Stack(span) => {
+                    let s = self.lexer.span_str(span);
+                    let stack_off = s
+                        .parse::<u32>()
+                        .unwrap_or_else(|e| self.err_span(span, &format!("Invalid Stack: {e}")));
+                    VarLoc::Stack(stack_off)
+                }
                 AstVLoc::StackOff(span) => {
                     let s = self.lexer.span_str(span);
                     let stack_off = s
@@ -1135,6 +1198,15 @@ struct AstFuncTy {
     arg_tys: Vec<AstTy>,
     has_varargs: bool,
     rtn_ty: AstTy,
+    attrs: Vec<AstFuncAttr>,
+}
+
+#[allow(clippy::enum_variant_names)]
+enum AstFuncAttr {
+    MemoryNone,
+    MemoryRead,
+    MemoryWrite,
+    MemoryReadWrite,
 }
 
 enum AstInst {
@@ -1248,6 +1320,11 @@ enum AstInst {
         ty: AstTy,
         val: Span,
     },
+    Freeze {
+        local: Span,
+        ty: AstTy,
+        val: Span,
+    },
     Global {
         local: Span,
         ty: AstTy,
@@ -1275,6 +1352,7 @@ enum AstInst {
         local: Span,
         ty: AstTy,
         ptr: Span,
+        is_volatile: bool,
     },
     LShr {
         local: Span,
@@ -1286,13 +1364,13 @@ enum AstInst {
         dst: Span,
         src: Span,
         len: Span,
-        volatile: bool,
+        is_volatile: bool,
     },
     MemSet {
         dst: Span,
         val: Span,
         len: Span,
-        volatile: bool,
+        is_volatile: bool,
     },
     Mul {
         local: Span,
@@ -1367,6 +1445,7 @@ enum AstInst {
     Store {
         val: Span,
         ptr: Span,
+        is_volatile: bool,
     },
     Sub {
         local: Span,

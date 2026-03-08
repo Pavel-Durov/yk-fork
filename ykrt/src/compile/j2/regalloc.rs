@@ -73,6 +73,8 @@ use vob::Vob;
 pub(super) struct RegAlloc<'a, AB: HirToAsmBackend + ?Sized> {
     m: &'a Mod<AB::Reg>,
     b: &'a Block,
+    /// The [VarLocs] for each `arg` in [Self::b].
+    args_vlocs: &'a [VarLocs<AB::Reg>],
     /// The state of each instruction.
     istates: IndexVec<InstIdx, IState>,
     /// The state of each register.
@@ -85,11 +87,42 @@ pub(super) struct RegAlloc<'a, AB: HirToAsmBackend + ?Sized> {
 }
 
 impl<'a, AB: HirToAsmBackend> RegAlloc<'a, AB> {
-    pub(super) fn new(m: &'a Mod<AB::Reg>, b: &'a Block, stack_off: u32) -> Self {
+    pub(super) fn new(
+        m: &'a Mod<AB::Reg>,
+        b: &'a Block,
+        args_vlocs: &'a [VarLocs<AB::Reg>],
+        stack_off: u32,
+    ) -> Self {
+        // Before processing the main body of a trace, set the stack offset (if any) of entry
+        // variables, so that we don't end up unnecessarily spilling them twice during execution.
+        // This is an optimisation rather than a necessity.
+        let mut istates = index_vec![IState::None; b.insts_len()];
+        for (iidx, vlocs) in args_vlocs
+            .iter()
+            .enumerate()
+            .map(|(i, x)| (InstIdx::from_usize(i), x))
+        {
+            for vloc in vlocs.iter() {
+                match vloc {
+                    VarLoc::Stack(stack_off) => {
+                        assert_eq!(istates[iidx], IState::None);
+                        istates[iidx] = IState::Stack(*stack_off);
+                    }
+                    VarLoc::StackOff(stack_off) => {
+                        assert_eq!(istates[iidx], IState::None);
+                        istates[iidx] = IState::StackOff(*stack_off);
+                    }
+                    VarLoc::Reg(_, _) => (),
+                    VarLoc::Const(_) => (),
+                }
+            }
+        }
+
         Self {
             m,
             b,
-            istates: index_vec![IState::None; b.insts_len()],
+            args_vlocs,
+            istates,
             rstates: RStates::new(),
             is_used: Vob::from_elem(false, b.insts_len()),
             stack_off,
@@ -120,44 +153,14 @@ impl<'a, AB: HirToAsmBackend> RegAlloc<'a, AB> {
         out
     }
 
-    /// Before processing the main body of a trace, set the stack offset (if any) of entry
-    /// variables, so that we don't end up unnecessarily spilling them twice during execution.
-    /// This is an optimisation rather than a necessity.
-    pub(super) fn set_entry_stacks_at_end(&mut self, entry_vlocs: &[VarLocs<AB::Reg>]) {
-        for (iidx, vlocs) in entry_vlocs
-            .iter()
-            .enumerate()
-            .map(|(i, x)| (InstIdx::from_usize(i), x))
-        {
-            for vloc in vlocs.iter() {
-                match vloc {
-                    VarLoc::Stack(stack_off) => {
-                        assert_eq!(self.istates[iidx], IState::None);
-                        self.istates[iidx] = IState::Stack(*stack_off);
-                    }
-                    VarLoc::StackOff(stack_off) => {
-                        assert_eq!(self.istates[iidx], IState::None);
-                        self.istates[iidx] = IState::StackOff(*stack_off);
-                    }
-                    VarLoc::Reg(_, _) => (),
-                    VarLoc::Const(_) => (),
-                }
-            }
-        }
-    }
-
     /// After processing the main body of a trace, set the [VarLocs]s of the entry variables.
-    pub(super) fn set_entry_vlocs_at_start(
-        &mut self,
-        be: &mut AB,
-        entry_vlocs: &[VarLocs<AB::Reg>],
-    ) {
+    pub(super) fn set_args_vlocs_at_start(&mut self, be: &mut AB, args_vlocs: &[VarLocs<AB::Reg>]) {
         // In essence, this is a simple, special case of normal register allocation. First we work
         // out what the rstate after trace entry will be, diff that, and generate the appropriate
         // code.
 
         let mut in_rstate = RStates::<AB::Reg>::new();
-        for (iidx, vlocs) in entry_vlocs
+        for (iidx, vlocs) in args_vlocs
             .iter()
             .enumerate()
             .map(|(x, y)| (InstIdx::from(x), y))
@@ -184,7 +187,7 @@ impl<'a, AB: HirToAsmBackend> RegAlloc<'a, AB> {
         // now need to find all `arg` instructions that we need to spill i.e. those where (1) they
         // aren't spilt coming into the trace (2) during register allocation we've marked them down
         // as needing spilling.
-        for (iidx, vlocs) in entry_vlocs
+        for (iidx, vlocs) in args_vlocs
             .iter()
             .enumerate()
             .map(|(x, y)| (InstIdx::from(x), y))
@@ -209,11 +212,9 @@ impl<'a, AB: HirToAsmBackend> RegAlloc<'a, AB> {
         be: &mut AB,
         b: &Block,
         is_loop: bool,
-        all_entry_vlocs: &[VarLocs<AB::Reg>],
+        all_args_vlocs: &[VarLocs<AB::Reg>],
         all_term_vlocs: &[VarLocs<AB::Reg>],
     ) -> Result<(), CompilationError> {
-        assert_eq!(b.term_vars().len(), all_term_vlocs.len());
-
         // At a block's terminator, we potentially have to shuffle the stack around. In most cases
         // we have to "move" a value to/from the same stack location, but not always. Consider a
         // trace such as:
@@ -237,17 +238,13 @@ impl<'a, AB: HirToAsmBackend> RegAlloc<'a, AB> {
 
         // Always obtaining a temporary register is bad, and this approach is particularly bad: it
         // could fail to find a candidate register!
-        let tmp_reg = self
-            .rstates
-            .iter()
-            .find_map(|(reg, rstate)| {
-                if rstate.iidxs.is_empty() {
-                    Some(reg)
-                } else {
-                    None
-                }
-            })
-            .unwrap();
+        let mut tmp_reg = None;
+        let mut find_tmp_reg = || {
+            if tmp_reg.is_none() {
+                tmp_reg = Some(AB::tmp_reg_from_vlocs(all_term_vlocs));
+            }
+            tmp_reg.unwrap()
+        };
 
         // Push constants into registers as the very last thing (these registers are excellent
         // "temporary" candidates, so do them last).
@@ -259,7 +256,7 @@ impl<'a, AB: HirToAsmBackend> RegAlloc<'a, AB> {
                         VarLoc::Stack(_) => (),
                         VarLoc::StackOff(_) => todo!(),
                         VarLoc::Reg(reg, fill) => {
-                            be.move_const(*reg, None, bitw, *fill, kind)?;
+                            be.move_const(*reg, bitw, *fill, kind)?;
                         }
                         VarLoc::Const(_) => (),
                     }
@@ -280,8 +277,8 @@ impl<'a, AB: HirToAsmBackend> RegAlloc<'a, AB> {
                             {
                                 continue;
                             }
-                            be.spill(tmp_reg, RegFill::Zeroed, *stack_off, bitw)?;
-                            be.move_const(tmp_reg, None, bitw, RegFill::Zeroed, kind)?;
+                            be.spill(find_tmp_reg(), RegFill::Zeroed, *stack_off, bitw)?;
+                            be.move_const(find_tmp_reg(), bitw, RegFill::Zeroed, kind)?;
                         }
                         VarLoc::StackOff(_) => todo!(),
                         VarLoc::Reg(_, _) => (),
@@ -309,8 +306,8 @@ impl<'a, AB: HirToAsmBackend> RegAlloc<'a, AB> {
                 }
                 match vloc {
                     VarLoc::Stack(to_stack_off) => {
-                        if usize::from(*iidx) < all_entry_vlocs.len()
-                            && let Some(VarLoc::Stack(from_stack_off)) = all_entry_vlocs
+                        if usize::from(*iidx) < all_args_vlocs.len()
+                            && let Some(VarLoc::Stack(from_stack_off)) = all_args_vlocs
                                 [usize::from(*iidx)]
                             .iter()
                             .find(|vloc| matches!(vloc, VarLoc::Stack(_)))
@@ -347,7 +344,7 @@ impl<'a, AB: HirToAsmBackend> RegAlloc<'a, AB> {
             if from_stack_off == to_stack_off {
                 continue;
             }
-            be.move_stack_val(bitw, from_stack_off, to_stack_off, tmp_reg);
+            be.move_stack_val_at_term(bitw, from_stack_off, to_stack_off, find_tmp_reg());
         }
 
         Ok(())
@@ -510,16 +507,7 @@ impl<'a, AB: HirToAsmBackend> RegAlloc<'a, AB> {
             // memory.
             for iidx in max_bitw_iter.clone() {
                 if let Inst::Const(Const { kind, .. }) = self.b.inst(iidx) {
-                    let tmp_reg = if let Some(mut tmp_reg_iter) = be.const_needs_tmp_reg(*reg, kind)
-                    {
-                        match tmp_reg_iter.find(|reg| self.rstates.iidxs(*reg).is_empty()) {
-                            Some(x) => Some(x),
-                            None => todo!(),
-                        }
-                    } else {
-                        None
-                    };
-                    be.move_const(*reg, tmp_reg, max_bitw, *fill, kind)?;
+                    be.move_const(*reg, max_bitw, *fill, kind)?;
                     continue 'a;
                 } else if let IState::StackOff(stack_off) = self.istates[iidx] {
                     be.move_stackoff(*reg, stack_off)?;
@@ -705,7 +693,7 @@ impl<'a, AB: HirToAsmBackend> RegAlloc<'a, AB> {
 
         // Phase 1: Find registers for constraints. Note that multiple constraints may end up
         // using the same register. This phase does not mutate `self`.
-        let allocs = self.find_regs_for_constraints(iidx, &cnstrs)?;
+        let allocs = self.find_regs_for_constraints(be, iidx, &cnstrs)?;
 
         // Phase 2: Calculate *n:out*. Counter-intuitively, we need to calculate this "forwards",
         // even though when we generate code we'll do so backwards.
@@ -824,9 +812,8 @@ impl<'a, AB: HirToAsmBackend> RegAlloc<'a, AB> {
                 | RegCnstr::Input { clobber: true, .. }
                 | RegCnstr::InputOutput { .. }
                 | RegCnstr::Output { .. }
-                | RegCnstr::Cast { .. }
                 | RegCnstr::Temp { .. } => ractions.clobbers.push(reg),
-                RegCnstr::Input { clobber: false, .. } => (),
+                RegCnstr::Cast { .. } | RegCnstr::Input { clobber: false, .. } => (),
                 RegCnstr::KeepAlive { .. } => (),
             }
         }
@@ -1041,6 +1028,7 @@ impl<'a, AB: HirToAsmBackend> RegAlloc<'a, AB> {
     /// undefined behaviour.
     fn find_regs_for_constraints<const N: usize>(
         &self,
+        be: &AB,
         iidx: InstIdx,
         cnstrs: &[RegCnstr<AB::Reg>; N],
     ) -> Result<[AB::Reg; N], CompilationError> {
@@ -1134,6 +1122,26 @@ impl<'a, AB: HirToAsmBackend> RegAlloc<'a, AB> {
             }
         }
 
+        // Use a register hint if we have one available.
+        for (i, cnstr) in cnstrs.iter().enumerate() {
+            if allocs[i].is_some() {
+                continue;
+            }
+            match cnstr {
+                RegCnstr::Input { in_iidx, regs, .. }
+                | RegCnstr::InputOutput { in_iidx, regs, .. } => {
+                    if let Some(hint_reg) = be.reg_hint(self.b, self.args_vlocs, iidx, *in_iidx)
+                        && regs.contains(&hint_reg)
+                        && !allocs.contains(&Some(hint_reg))
+                    {
+                        allocs[i] = Some(hint_reg);
+                        continue;
+                    }
+                }
+                _ => (),
+            }
+        }
+
         // If we've got a can_be_same_as_input `Output` then we might have assigned it a register
         // above but still have unassigned `Input`s. See if we can find an `Input` to merge with
         // the `Output`.
@@ -1163,9 +1171,10 @@ impl<'a, AB: HirToAsmBackend> RegAlloc<'a, AB> {
             }
             match cnstr {
                 RegCnstr::Clobber { .. } => unreachable!(),
-                RegCnstr::Input { regs, .. }
-                | RegCnstr::InputOutput { regs, .. }
-                | RegCnstr::Output {
+                RegCnstr::Input { regs, .. } | RegCnstr::InputOutput { regs, .. } => {
+                    allocs[i] = Some(self.find_force_empty_reg(iidx, &allocs, regs));
+                }
+                RegCnstr::Output {
                     regs,
                     can_be_same_as_input: false,
                     ..
@@ -1469,10 +1478,22 @@ pub(super) trait PeelRegsBuilderT<Reg: RegT> {
     fn force_set(&mut self, reg: Reg);
     /// If `self` has no more registers to hand out, returns `true`, preventing [super::hir_to_asm]
     /// from wasting time calling [PeelRegsBuilderT::find_reg_for] pointlessly.
-    fn is_full(&self) -> bool;
-    /// Try allocating a register or `iidx` in `b`. Returns `Some` if it succeeded in doing so:
-    /// that register must then not be handed out on future calls to this function.
-    fn try_alloc_reg_for(&mut self, m: &Mod<Reg>, b: &Block, iidx: InstIdx) -> Option<Reg>;
+    fn is_full(&self, ignore_caller_saved: bool) -> bool;
+    /// At instruction `cur_iidx`, try allocating a register for its operand `op_iidx`.
+    /// `ignore_caller_save` should be `false` before the first call in a trace and `true`
+    /// henceforth: this allows the [PeelRegsBuilder] to choose registers intelligently across
+    /// calls.
+    ///
+    /// Returns `Some` if it succeeded in doing so: that register must then not be handed out on
+    /// future calls to this function.
+    fn try_alloc_reg_for(
+        &mut self,
+        m: &Mod<Reg>,
+        b: &Block,
+        ignore_caller_save: bool,
+        cur_iidx: InstIdx,
+        cnd_iidx: InstIdx,
+    ) -> Option<Reg>;
 }
 
 #[cfg(test)]
@@ -2043,9 +2064,38 @@ pub(crate) mod test {
         }
     }
 
-    struct TestPeelRegsBuilder;
+    struct TestPeelRegsBuilder {
+        set_regs: [bool; GP_REGS.len()],
+    }
 
-    impl PeelRegsBuilderT<TestReg> for TestPeelRegsBuilder {}
+    impl TestPeelRegsBuilder {
+        fn new() -> Self {
+            Self {
+                set_regs: [false; GP_REGS.len()],
+            }
+        }
+    }
+
+    impl PeelRegsBuilderT<TestReg> for TestPeelRegsBuilder {
+        fn force_set(&mut self, reg: TestReg) {
+            self.set_regs[usize::from(reg.regidx())] = true;
+        }
+
+        fn is_full(&self, _ignore_caller_save: bool) -> bool {
+            self.set_regs.iter().filter(|x| **x).count() > GP_REGS.len() - 1
+        }
+
+        fn try_alloc_reg_for(
+            &mut self,
+            _m: &Mod<TestReg>,
+            _b: &Block,
+            _ignore_caller_save: bool,
+            _cur_iidx: InstIdx,
+            _op_iidx: InstIdx,
+        ) -> Option<TestReg> {
+            None
+        }
+    }
 
     struct TestHirToAsm<'a> {
         m: &'a Mod<TestReg>,
@@ -2071,6 +2121,22 @@ pub(crate) mod test {
             self.ra_log.join("\n")
         }
 
+        fn peel_regs_builder() -> Self::PeelRegsBuilder {
+            TestPeelRegsBuilder::new()
+        }
+
+        fn tmp_reg_from_vlocs(vlocs: &[VarLocs<Self::Reg>]) -> Self::Reg {
+            // If the unwrap fails, we've failed to find a temporary register.
+            *[TestReg::GPR0, TestReg::GPR1, TestReg::GPR2, TestReg::GPR3]
+                .iter()
+                .find(|x| {
+                    vlocs
+                        .iter()
+                        .all(|y| !y.iter().any(|z| matches!(z, VarLoc::Reg(a, _) if *x == a)))
+                })
+                .unwrap()
+        }
+
         fn iter_possible_regs(&self, b: &Block, iidx: InstIdx) -> impl Iterator<Item = Self::Reg> {
             match b.inst_ty(self.m, iidx) {
                 Ty::Double | Ty::Float => FP_REGS.iter().cloned(),
@@ -2080,30 +2146,37 @@ pub(crate) mod test {
             }
         }
 
-        fn log(&mut self, _s: String) {}
-
-        fn const_needs_tmp_reg(
+        fn reg_hint(
             &self,
-            _reg: Self::Reg,
-            c: &ConstKind,
-        ) -> Option<impl Iterator<Item = Self::Reg>> {
-            if let ConstKind::Double(_) | ConstKind::Float(_) = c {
-                Some(GP_REGS.iter().cloned())
+            b: &Block,
+            args_vlocs: &[VarLocs<Self::Reg>],
+            _cur_iidx: InstIdx,
+            hint_iidx: InstIdx,
+        ) -> Option<Self::Reg> {
+            if let Inst::Arg(_) = b.inst(hint_iidx)
+                && let Some(VarLoc::Reg(reg, _)) = args_vlocs[usize::from(hint_iidx)]
+                    .iter()
+                    .find(|x| matches!(x, VarLoc::Reg(_, _)))
+            {
+                Some(*reg)
             } else {
                 None
             }
         }
 
+        fn about_to_process_block(&mut self, _b: &Block, _args_vlocs: &[VarLocs<Self::Reg>]) {}
+
+        fn log(&mut self, _s: String) {}
+
         fn move_const(
             &mut self,
             reg: Self::Reg,
-            tmp_reg: Option<Self::Reg>,
             tgt_bitw: u32,
             fill: RegFill,
             c: &ConstKind,
         ) -> Result<(), CompilationError> {
             self.ra_log.push(format!(
-                "const {reg:?} tmp_reg={tmp_reg:?} tgt_bitw={tgt_bitw} fill={fill:?} {c:?}"
+                "const {reg:?} tgt_bitw={tgt_bitw} fill={fill:?} {c:?}"
             ));
             Ok(())
         }
@@ -2160,6 +2233,29 @@ pub(crate) mod test {
             Ok(())
         }
 
+        fn move_stack_val_at_term(
+            &mut self,
+            bitw: u32,
+            src_stack_off: u32,
+            dst_stack_off: u32,
+            tmp_reg: Self::Reg,
+        ) {
+            self.ra_log.push(format!(
+                "move_stack_val bitw={bitw} src_stack_off={src_stack_off} dst_stack_off={dst_stack_off} tmp_reg={tmp_reg:?}"
+            ));
+        }
+
+        fn controlpoint_loop_end(&mut self) -> Result<Self::Label, CompilationError> {
+            self.ra_log.push("controlpoint_loop_end".to_owned());
+            Ok(TestLabelIdx::new(1))
+        }
+
+        fn controlpoint_peel_start(&mut self, peel_label: Self::Label) -> Self::Label {
+            self.ra_log
+                .push(format!("controlpoint_peel_start {peel_label:?}"));
+            TestLabelIdx::new(2)
+        }
+
         fn controlpoint_loop_start(&mut self, _post_stack_label: Self::Label, _stack_off: u32) {}
 
         fn guard_coupler_start(&mut self, _stack_off: u32) {}
@@ -2168,6 +2264,7 @@ pub(crate) mod test {
             &mut self,
             _trid: crate::mt::TraceId,
             _gridx: CompiledGuardIdx,
+            _args_vlocs: &[VarLocs<Self::Reg>],
         ) -> Result<Self::Label, CompilationError> {
             Ok(TestLabelIdx::new(0))
         }
@@ -2400,7 +2497,59 @@ pub(crate) mod test {
         }));
 
         let be = TestHirToAsm::new(&m);
-        let log = HirToAsm::new(&m, hl, be).build_test().unwrap();
+        let log = HirToAsm::new(&m, hl, be, true).build_test().unwrap();
+        let log = log
+            .lines()
+            .filter(|s| log_filter(s))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut failures = Vec::with_capacity(ptns.len());
+        for ptn in ptns {
+            match fmatcher(ptn).matches(&log) {
+                Ok(_) => return,
+                Err(e) => failures.push(format!("{e}")),
+            }
+        }
+
+        panic!("{}", failures.join("\n\n"));
+    }
+
+    fn build_and_test_loop<F>(s: &str, log_filter: F, ptns: &[&str])
+    where
+        F: Fn(&str) -> bool,
+    {
+        let mut m = str_to_mod::<TestReg>(s);
+        let TraceEnd::Test {
+            block: Block {
+                insts,
+                guard_extras,
+            },
+            args_vlocs,
+        } = &mut m.trace_end
+        else {
+            panic!()
+        };
+        m.trace_end = TraceEnd::TestPeel {
+            entry: Block {
+                insts: insts.clone(),
+                guard_extras: guard_extras.clone(),
+            },
+            peel: Block {
+                insts: insts.clone(),
+                guard_extras: guard_extras.clone(),
+            },
+            args_vlocs: args_vlocs.clone(),
+        };
+
+        let hl = Arc::new(Mutex::new(HotLocation {
+            kind: HotLocationKind::Tracing(TraceId::testing()),
+            tracecompilation_errors: 0,
+            #[cfg(feature = "ykd")]
+            debug_str: None,
+        }));
+
+        let be = TestHirToAsm::new(&m);
+        let log = HirToAsm::new(&m, hl, be, true).build_test_peel().unwrap();
         let log = log
             .lines()
             .filter(|s| log_filter(s))
@@ -2439,72 +2588,6 @@ pub(crate) mod test {
     fn cycles() {
         build_and_test(
             r#"
-          %0: i8 = arg [reg ("GPR1", undefined)]
-          %1: i8 = arg [reg ("GPR0", undefined)]
-          %2: i8 = add %0, %1
-          blackbox %2
-        "#,
-            |s| !s.starts_with("arrange_fill"),
-            &[
-                "
-          alloc %2 GPR0 GPR1
-          unspill stack_off=8 GPR1 Undefined bitw=8
-          copy_reg from=GPR1 to=GPR0
-          spill GPR0 Undefined stack_off=8 bitw=8
-        ",
-                "
-          alloc %2 GPR0 GPR1
-          unspill stack_off=8 GPR0 Undefined bitw=8
-          copy_reg from=GPR0 to=GPR1
-          spill GPR1 Undefined stack_off=8 bitw=8
-        ",
-                "
-          alloc %7 GPR0 GPR1
-          copy_reg from=GPR2 to=GPR0
-          alloc %6 GPR0 GPR1
-          copy_reg from=GPR0 to=GPR2
-          alloc %5 GPR0 GPR3
-          alloc %4 GPR0 GPR2
-          unspill stack_off=8 GPR0 Undefined bitw=8
-          copy_reg from=GPR0 to=GPR1
-          copy_reg from=GPR1 to=GPR3
-          spill GPR3 Undefined stack_off=8 bitw=8
-        ",
-            ],
-        );
-
-        build_and_test(
-            r#"
-          %0: i8 = arg [reg ("GPR0", undefined)]
-          %1: i8 = arg [reg ("GPR1", undefined)]
-          %2: i8 = arg [reg ("GPR2", undefined)]
-          %3: i8 = add %0, %1
-          %4: i8 = add %2, %3
-          blackbox %4
-        "#,
-            |s| !s.starts_with("arrange_fill"),
-            &[
-                "
-          alloc %4 GPR0 GPR1
-          alloc %3 GPR1 GPR2
-          unspill stack_off=8 GPR0 Undefined bitw=8
-          copy_reg from=GPR0 to=GPR1
-          copy_reg from=GPR1 to=GPR2
-          spill GPR2 Undefined stack_off=8 bitw=8
-        ",
-                "
-          alloc %4 GPR0 GPR1
-          alloc %3 GPR1 GPR2
-          unspill stack_off=8 GPR1 Undefined bitw=8
-          copy_reg from=GPR1 to=GPR2
-          copy_reg from=GPR2 to=GPR0
-          spill GPR0 Undefined stack_off=8 bitw=8
-        ",
-            ],
-        );
-
-        build_and_test(
-            r#"
           %0: i8 = arg [reg ("GPR3", undefined)]
           %1: i8 = arg [reg ("GPR2", undefined)]
           %2: i8 = arg [reg ("GPR1", undefined)]
@@ -2518,14 +2601,13 @@ pub(crate) mod test {
         "#,
             |s| !s.starts_with("arrange_fill"),
             &["
-          alloc %7 GPR0 GPR1
-          copy_reg from=GPR2 to=GPR0
-          alloc %6 GPR0 GPR1
-          copy_reg from=GPR0 to=GPR2
-          alloc %5 GPR0 GPR3
-          alloc %4 GPR0 GPR2
-          unspill stack_off=8 GPR0 Undefined bitw=8
-          copy_reg from=GPR0 to=GPR1
+          alloc %7 GPR1 GPR0
+          copy_reg from=GPR2 to=GPR1
+          alloc %6 GPR1 GPR0
+          copy_reg from=GPR1 to=GPR2
+          alloc %5 GPR1 GPR3
+          alloc %4 GPR1 GPR2
+          unspill stack_off=8 GPR1 Undefined bitw=8
           copy_reg from=GPR1 to=GPR3
           spill GPR3 Undefined stack_off=8 bitw=8
         "],
@@ -2544,7 +2626,7 @@ pub(crate) mod test {
         // output: they may need to be adjusted if the algorithm produces different output.
 
         // A direct cycle which must be broken.
-        let ra = RegAlloc::<TestHirToAsm>::new(&m, b, 0);
+        let ra = RegAlloc::<TestHirToAsm>::new(&m, b, &[], 0);
         let mut ractions = RegActions {
             unspills: Vec::new(),
             fill_changes: Vec::new(),
@@ -2579,7 +2661,7 @@ pub(crate) mod test {
         );
 
         // A direct cycle which must be broken
-        let ra = RegAlloc::<TestHirToAsm>::new(&m, b, 0);
+        let ra = RegAlloc::<TestHirToAsm>::new(&m, b, &[], 0);
         let mut ractions = RegActions {
             unspills: Vec::new(),
             fill_changes: Vec::new(),
@@ -2628,7 +2710,7 @@ pub(crate) mod test {
         );
 
         // A non-cycle, but which must be carefully ordered to avoid overwritings.
-        let ra = RegAlloc::<TestHirToAsm>::new(&m, b, 0);
+        let ra = RegAlloc::<TestHirToAsm>::new(&m, b, &[], 0);
         let mut ractions = RegActions {
             unspills: Vec::new(),
             fill_changes: Vec::new(),
@@ -2715,8 +2797,8 @@ pub(crate) mod test {
             |_| true,
             &["
           alloc %1 GPR0 GPR1
-          const GPR1 tmp_reg=None tgt_bitw=8 fill=Zeroed Int(ArbBitInt { bitw: 8, val: 2 })
-          const GPR0 tmp_reg=None tgt_bitw=8 fill=Zeroed Int(ArbBitInt { bitw: 8, val: 2 })
+          const GPR1 tgt_bitw=8 fill=Zeroed Int(ArbBitInt { bitw: 8, val: 2 })
+          const GPR0 tgt_bitw=8 fill=Zeroed Int(ArbBitInt { bitw: 8, val: 2 })
         "],
         );
     }
@@ -2738,27 +2820,8 @@ pub(crate) mod test {
           arrange_fill GPR0 from=Zeroed dst_bitw=8 to=Zeroed
           copy_reg from=GPR1 to=GPR0
           alloc %1 GPR0 GPR1
-          const GPR1 tmp_reg=None tgt_bitw=8 fill=Zeroed Int(ArbBitInt { bitw: 8, val: 2 })
-          const GPR0 tmp_reg=None tgt_bitw=8 fill=Zeroed Int(ArbBitInt { bitw: 8, val: 2 })
-        "],
-        );
-    }
-
-    #[test]
-    fn constant_tmp_reg() {
-        build_and_test(
-            r#"
-          %0: double = 0.0double
-          %1: double = 1.0double
-          %2: double = fadd %0, %1
-          blackbox %2
-          term []
-        "#,
-            |_| true,
-            &["
-          alloc %2 FP0 FP1
-          const FP1 tmp_reg=Some(GPR0) tgt_bitw=64 fill=Zeroed Double(1.0)
-          const FP0 tmp_reg=Some(GPR0) tgt_bitw=64 fill=Zeroed Double(0.0)
+          const GPR1 tgt_bitw=8 fill=Zeroed Int(ArbBitInt { bitw: 8, val: 2 })
+          const GPR0 tgt_bitw=8 fill=Zeroed Int(ArbBitInt { bitw: 8, val: 2 })
         "],
         );
     }
@@ -2874,6 +2937,74 @@ pub(crate) mod test {
           trunc %1 GPR1
           arrange_fill GPR1 from=Undefined dst_bitw=64 to=Undefined
           copy_reg from=GPR0 to=GPR1
+        "],
+        );
+    }
+
+    #[test]
+    fn reg_hints() {
+        // Without register hints, this will require at least copying registers around and,
+        // probably, spills.
+        build_and_test(
+            r#"
+          %0: i8 = arg [reg("GPR0", undefined)]
+          %1: i8 = arg [reg("GPR1", undefined)]
+          %2: i8 = add %1, %0
+          blackbox %2
+          %4: i8 = 4
+          term [%4, %4]
+        "#,
+            |_| true,
+            &["
+          const GPR0 ...
+          const GPR1 ...
+          alloc %2 GPR1 GPR0
+          arrange_fill GPR0 from=Undefined dst_bitw=8 to=Zeroed
+          arrange_fill GPR1 from=Undefined dst_bitw=8 to=Zeroed
+        "],
+        )
+    }
+
+    #[test]
+    fn move_without_overwriting() {
+        build_and_test_loop(
+            r#"
+          %0: i8 = arg [reg ("GPR0", undefined)]
+          %1: i8 = arg [reg ("GPR2", undefined), stack (1)]
+          %2: i8 = arg [reg ("GPR3", undefined), stack (2)]
+          %3: i8 = add %0, %1
+          %4: i8 = add %2, %2
+          term [%0, %3, %4]
+        "#,
+            |_| true,
+            &["
+          controlpoint_loop_end
+          move_stack_val bitw=8 src_stack_off=8 dst_stack_off=1 tmp_reg=GPR1
+          move_stack_val bitw=8 src_stack_off=16 dst_stack_off=2 tmp_reg=GPR1
+          spill GPR1 Undefined stack_off=16 bitw=8
+          alloc %4 GPR1 GPR2
+          unspill stack_off=24 GPR0 Undefined bitw=8
+          spill GPR0 Undefined stack_off=8 bitw=8
+          alloc %3 GPR0 GPR3
+          unspill stack_off=1 GPR3 Zeroed bitw=8
+          unspill stack_off=2 GPR2 Zeroed bitw=8
+          unspill stack_off=2 GPR1 Zeroed bitw=8
+          arrange_fill GPR0 from=Undefined dst_bitw=8 to=Zeroed
+          spill GPR0 Undefined stack_off=24 bitw=8
+          controlpoint_peel_start 1
+          move_stack_val bitw=8 src_stack_off=32 dst_stack_off=1 tmp_reg=GPR1
+          move_stack_val bitw=8 src_stack_off=40 dst_stack_off=2 tmp_reg=GPR1
+          spill GPR3 Undefined stack_off=40 bitw=8
+          alloc %4 GPR3 GPR1
+          unspill stack_off=48 GPR0 Undefined bitw=8
+          spill GPR0 Undefined stack_off=32 bitw=8
+          alloc %3 GPR0 GPR2
+          arrange_fill GPR1 from=Undefined dst_bitw=8 to=Zeroed
+          copy_reg from=GPR3 to=GPR1
+          arrange_fill GPR0 from=Undefined dst_bitw=8 to=Zeroed
+          arrange_fill GPR2 from=Undefined dst_bitw=8 to=Zeroed
+          arrange_fill GPR3 from=Undefined dst_bitw=8 to=Zeroed
+          spill GPR0 Undefined stack_off=48 bitw=8
         "],
         );
     }

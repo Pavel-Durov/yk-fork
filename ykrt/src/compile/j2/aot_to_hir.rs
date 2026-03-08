@@ -189,7 +189,7 @@ impl<Reg: RegT + 'static> AotToHir<Reg> {
                     .as_any()
                     .downcast::<J2CompiledTrace<Reg>>()
                     .unwrap();
-                let entry_vlocs = self.p_start_side(&src_ctr, src_gidx, &tgt_ctr)?;
+                let args_vlocs = self.p_start_side(&src_ctr, src_gidx, &tgt_ctr)?;
                 if let Some(hir::Switch {
                     iid,
                     seen_bbidxs: seen_blocks,
@@ -205,7 +205,7 @@ impl<Reg: RegT + 'static> AotToHir<Reg> {
                 }
                 BuildModKind::Side {
                     prev_bid,
-                    entry_vlocs,
+                    args_vlocs,
                     src_ctr,
                     src_gidx,
                     tgt_ctr,
@@ -281,7 +281,7 @@ impl<Reg: RegT + 'static> AotToHir<Reg> {
                 }
             },
             BuildModKind::Side {
-                entry_vlocs,
+                args_vlocs,
                 src_ctr,
                 src_gidx,
                 tgt_ctr,
@@ -291,7 +291,7 @@ impl<Reg: RegT + 'static> AotToHir<Reg> {
                 match return_safepoint {
                     None => (
                         hir::TraceStart::Guard {
-                            entry_vlocs,
+                            args_vlocs,
                             src_ctr,
                             src_gidx,
                         },
@@ -300,7 +300,7 @@ impl<Reg: RegT + 'static> AotToHir<Reg> {
                     ),
                     Some(exit_safepoint) => (
                         hir::TraceStart::Guard {
-                            entry_vlocs,
+                            args_vlocs,
                             src_ctr,
                             src_gidx,
                         },
@@ -334,7 +334,11 @@ impl<Reg: RegT + 'static> AotToHir<Reg> {
         };
 
         if should_log_ir(IRPhase::DebugStrs) {
-            todo!();
+            log_ir(&format!(
+                "--- Begin debugstrs{ds} ---\n; {}\n{}\n--- End debugstrs ---\n",
+                m.json_info().split("\n").collect::<Vec<_>>().join("\n; "),
+                self.debug_strs.join("\n")
+            ));
         }
 
         if should_log_ir(IRPhase::PreOpt) {
@@ -881,6 +885,7 @@ impl<Reg: RegT + 'static> AotToHir<Reg> {
                 Inst::ExtractValue { .. } => todo!(),
                 Inst::FCmp { .. } => self.p_fcmp(pc.clone(), inst)?,
                 Inst::FNeg { .. } => self.p_fneg(pc.clone(), inst)?,
+                Inst::Freeze { .. } => self.p_freeze(pc.clone(), inst)?,
                 Inst::ICmp { .. } => self.p_icmp(pc.clone(), inst)?,
                 Inst::IndirectCall { .. } => {
                     if self.p_icall(pc.clone(), bid, inst)? {
@@ -1073,6 +1078,14 @@ impl<Reg: RegT + 'static> AotToHir<Reg> {
             return Ok(false);
         }
 
+        if func.name() == "yk_is_interpreting" {
+            let i1_tyidx = self.opt.push_ty(hir::Ty::Int(1))?;
+            let ciidx =
+                self.const_to_iidx(i1_tyidx, hir::ConstKind::Int(ArbBitInt::from_u64(1, 0)))?;
+            self.frames.last_mut().unwrap().set_local(iid, ciidx);
+            return Ok(false);
+        }
+
         let mut jargs = SmallVec::with_capacity(args.len());
         for x in args {
             jargs.push(self.p_operand(x)?);
@@ -1096,8 +1109,10 @@ impl<Reg: RegT + 'static> AotToHir<Reg> {
 
         if !func.is_declaration()
             && !func.is_outline()
-            // FIXME: We currently don't handle va_start
-            && !func.contains_call_to(self.am, "llvm.va_start")
+            // FIXME: We currently don't handle va_start.
+            // It would be better if ykllvm marked functions containing `llvm.va_start.p*` with
+            // `yk_outline` (at least until we can inline calls to that intrinsic).
+            && !func.contains_call_to(self.am, "llvm.va_start.p0")
             // Is this a recursive call?
             && !self.frames.iter().any(|f| f.pc.as_ref().unwrap().funcidx() == *callee)
         {
@@ -1150,10 +1165,18 @@ impl<Reg: RegT + 'static> AotToHir<Reg> {
             let tyidx = self.opt.push_ty(hir::Ty::Ptr(0))?;
             let tgt_iidx = self.const_to_iidx(tyidx, hir::ConstKind::Ptr(addr))?;
 
+            let effects = match func.memory() {
+                FuncMemory::None => hir::CallEffects::None,
+                FuncMemory::Read => hir::CallEffects::Read,
+                FuncMemory::Write => hir::CallEffects::Write,
+                FuncMemory::ReadWrite => hir::CallEffects::ReadWrite,
+            };
+
             let inst = hir::Call {
                 tgt: tgt_iidx,
                 func_tyidx: ftyidx,
                 args: jargs,
+                effects,
             }
             .into();
             let hir::Ty::Func(box hir::FuncTy { rtn_tyidx, .. }) = self.opt.ty(ftyidx) else {
@@ -1195,6 +1218,7 @@ impl<Reg: RegT + 'static> AotToHir<Reg> {
             tgt: tgt_iidx,
             func_tyidx: ftyidx,
             args: jargs,
+            effects: hir::CallEffects::ReadWrite,
         };
         let hir::Ty::Func(box hir::FuncTy { rtn_tyidx, .. }) = self.opt.ty(ftyidx) else {
             panic!()
@@ -1311,8 +1335,9 @@ impl<Reg: RegT + 'static> AotToHir<Reg> {
         name: &str,
         jargs: SmallVec<[hir::InstIdx; 1]>,
     ) -> Result<(), CompilationError> {
-        assert!(name.starts_with("llvm."));
-        match name.split_once(".").unwrap().1.split_once(".").unwrap().0 {
+        let parts = name.split(".").collect::<Vec<&str>>();
+        assert_eq!(parts[0], "llvm");
+        match parts[1] {
             "abs" => {
                 let [src, int_min_poison]: [hir::InstIdx; 2] = jargs.into_vec().try_into().unwrap();
                 let int_min_poison = if let hir::Inst::Const(hir::Const {
@@ -1332,6 +1357,7 @@ impl<Reg: RegT + 'static> AotToHir<Reg> {
                 };
                 self.push_inst_and_link_local(iid, hinst).map(|_| ())
             }
+            "assume" => Ok(()),
             "ctpop" => {
                 let [src]: [hir::InstIdx; 1] = jargs.into_vec().try_into().unwrap();
                 let fty = self.opt.func_ty(ftyidx);
@@ -1354,7 +1380,7 @@ impl<Reg: RegT + 'static> AotToHir<Reg> {
             "memcpy" => {
                 let [dst, src, len, volatile]: [hir::InstIdx; 4] =
                     jargs.into_vec().try_into().unwrap();
-                let volatile = if let hir::Inst::Const(hir::Const {
+                let is_volatile = if let hir::Inst::Const(hir::Const {
                     kind: hir::ConstKind::Int(x),
                     ..
                 }) = self.opt.inst(volatile)
@@ -1368,14 +1394,14 @@ impl<Reg: RegT + 'static> AotToHir<Reg> {
                     dst,
                     src,
                     len,
-                    volatile,
+                    is_volatile,
                 };
                 self.opt.feed_void(hinst.into()).map(|_| ())
             }
             "memset" => {
                 let [dst, val, len, volatile]: [hir::InstIdx; 4] =
                     jargs.into_vec().try_into().unwrap();
-                let volatile = if let hir::Inst::Const(hir::Const {
+                let is_volatile = if let hir::Inst::Const(hir::Const {
                     kind: hir::ConstKind::Int(x),
                     ..
                 }) = self.opt.inst(volatile)
@@ -1389,7 +1415,7 @@ impl<Reg: RegT + 'static> AotToHir<Reg> {
                     dst,
                     val,
                     len,
-                    volatile,
+                    is_volatile,
                 };
                 self.opt.feed_void(hinst.into()).map(|_| ())
             }
@@ -1442,7 +1468,7 @@ impl<Reg: RegT + 'static> AotToHir<Reg> {
             CastKind::SIToFP => hir::SIToFP { tyidx, val }.into(),
             CastKind::FPExt => hir::FPExt { tyidx, val }.into(),
             CastKind::FPToSI => hir::FPToSI { tyidx, val }.into(),
-            CastKind::BitCast => todo!(),
+            CastKind::BitCast => hir::BitCast { tyidx, val }.into(),
             CastKind::PtrToInt => hir::PtrToInt { tyidx, val }.into(),
             CastKind::IntToPtr => hir::IntToPtr { tyidx, val }.into(),
             CastKind::UIToFP => hir::UIToFP {
@@ -1538,6 +1564,16 @@ impl<Reg: RegT + 'static> AotToHir<Reg> {
         let tyidx = self.p_ty(val.type_(self.am))?;
         let val = self.p_operand(val)?;
         self.push_inst_and_link_local(iid, hir::FNeg { tyidx, val })
+            .map(|_| ())
+    }
+
+    fn p_freeze(&mut self, iid: InstId, inst: &Inst) -> Result<(), CompilationError> {
+        let Inst::Freeze { op, tyidx } = inst else {
+            panic!()
+        };
+        let tyidx = self.p_ty(self.am.type_(*tyidx))?;
+        let val = self.p_operand(op)?;
+        self.push_inst_and_link_local(iid, hir::Freeze { tyidx, val })
             .map(|_| ())
     }
 
@@ -1947,7 +1983,7 @@ enum BuildModKind<Reg: RegT> {
     },
     Side {
         prev_bid: BBlockId,
-        entry_vlocs: Vec<VarLocs<Reg>>,
+        args_vlocs: Vec<VarLocs<Reg>>,
         src_ctr: Arc<J2CompiledTrace<Reg>>,
         src_gidx: CompiledGuardIdx,
         tgt_ctr: Arc<J2CompiledTrace<Reg>>,

@@ -17,7 +17,7 @@ use parking_lot::Mutex;
 use smallvec::SmallVec;
 use std::{
     any::Any,
-    error::Error,
+    assert_matches,
     ffi::c_void,
     sync::{Arc, Weak},
 };
@@ -118,15 +118,11 @@ impl<Reg: RegT> J2CompiledTrace<Reg> {
         &self.guards[gidx]
     }
 
-    pub(super) fn entry_vlocs(&self) -> &[VarLocs<Reg>] {
+    pub(super) fn args_vlocs(&self) -> &[VarLocs<Reg>] {
         match &self.trace_start {
-            J2TraceStart::ControlPoint { entry_vlocs, .. } => entry_vlocs,
+            J2TraceStart::ControlPoint { args_vlocs, .. } => args_vlocs,
             J2TraceStart::Guard { stack_off: _ } => todo!(),
         }
-    }
-
-    pub(super) fn exe(&self) -> *mut c_void {
-        self.codebuf.as_ptr() as *mut c_void
     }
 
     pub(super) fn guard_stack_off(&self, gidx: CompiledGuardIdx) -> u32 {
@@ -146,15 +142,25 @@ impl<Reg: RegT> J2CompiledTrace<Reg> {
             | J2TraceStart::Guard { stack_off, .. } => stack_off,
         }
     }
+
+    /// If a sidetrace can jump straight to this trace, return the address it should jump to.
+    ///
+    /// # Panics
+    ///
+    /// If this trace cannot be jumped straight to by a sidetrace.
+    pub(super) fn sidetrace_entry(&self) -> *const u8 {
+        match self.trace_start {
+            J2TraceStart::ControlPoint { sidetrace_off, .. } => {
+                self.codebuf.sidetrace_entry(sidetrace_off)
+            }
+            J2TraceStart::Guard { .. } => unreachable!(),
+        }
+    }
 }
 
 impl<Reg: RegT + 'static> CompiledTrace for J2CompiledTrace<Reg> {
     fn ctrid(&self) -> TraceId {
         self.trid
-    }
-
-    fn safepoint(&self) -> &Option<aot_ir::DeoptSafepoint> {
-        todo!()
     }
 
     fn as_any(self: Arc<Self>) -> Arc<dyn Any + Send + Sync + 'static> {
@@ -173,36 +179,27 @@ impl<Reg: RegT + 'static> CompiledTrace for J2CompiledTrace<Reg> {
         let gidx = CompiledGuardIdx::from(usize::from(gid));
         for patch_off in &self.guards[gidx].patch_offs {
             let patch_off = usize::try_from(*patch_off).unwrap();
-            self.codebuf.patch(patch_off, 5, |patch_addr| {
-                assert_eq!(unsafe { patch_addr.read() }, 0xE9);
-                let patch_addr = unsafe { patch_addr.byte_add(1) };
-                let next_ip = patch_addr.addr() + 4;
-                let diff = i32::try_from(tgt.addr().checked_signed_diff(next_ip).unwrap()).unwrap();
+            self.codebuf.patch(patch_off, 10, |patch_addr| {
+                // We can only patch `mov r64, imm64`.
+                assert_matches!(unsafe { patch_addr.read() }, 0x48 | 0x49);
+                let patch_addr = unsafe { patch_addr.byte_add(2) };
                 unsafe {
-                    (patch_addr as *mut u32).write(diff.cast_unsigned());
+                    (patch_addr as *mut u64).write(u64::try_from(tgt.addr()).unwrap());
                 }
             });
         }
     }
 
     fn entry(&self) -> *const c_void {
-        self.codebuf.as_ptr() as *const c_void
-    }
-
-    fn entry_sp_off(&self) -> usize {
-        todo!()
+        self.codebuf.entry_ptr() as *const c_void
     }
 
     fn hl(&self) -> &std::sync::Weak<parking_lot::Mutex<HotLocation>> {
         &self.hl
     }
 
-    fn disassemble(&self, _with_addrs: bool) -> Result<String, Box<dyn Error>> {
-        todo!()
-    }
-
     fn code(&self) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(self.codebuf.as_ptr(), self.codebuf.len()) }
+        unsafe { std::slice::from_raw_parts(self.codebuf.entry_ptr(), self.codebuf.len()) }
     }
 
     fn name(&self) -> String {
@@ -215,17 +212,17 @@ impl<Reg: RegT + 'static> CompiledTrace for J2CompiledTrace<Reg> {
 pub(super) enum J2TraceStart<Reg: RegT> {
     ControlPoint {
         entry_safepoint: &'static DeoptSafepoint,
-        /// Every entry in `entry_safepoint.lives` will have an entry in `entry_vlocs`, in order.
-        /// In other words, `entry_safepoint.lives.iter().zip(entry_vlocs.iter())` is guaranteed to
+        /// Every entry in `entry_safepoint.lives` will have an entry in `args_vlocs`, in order.
+        /// In other words, `entry_safepoint.lives.iter().zip(args_vlocs.iter())` is guaranteed to
         /// work as expected.
         ///
         /// However, some variables will have empty `VarLocs`. In other words, while this coupler
         /// trace guarantees to accept variables being set in accordance with
         /// `entry_safepoint.lives`, it is also happy with a non-strict subset of those. That means
         /// that other traces jumping to this coupler trace only need to deal with the subset
-        /// recorded in `entry_vlocs` (i.e. they can ignore the superset in
+        /// recorded in `args_vlocs` (i.e. they can ignore the superset in
         /// `entry_safepoint.lives`).
-        entry_vlocs: Vec<VarLocs<Reg>>,
+        args_vlocs: Vec<VarLocs<Reg>>,
         stack_off: u32,
         /// The offset into the compiled trace that sidetraces should jump to.
         sidetrace_off: usize,
@@ -354,7 +351,7 @@ mod tests {
     fn test_get_trace_name_control_loop() {
         let start = J2TraceStart::ControlPoint::<Reg> {
             entry_safepoint: &TEST_DEOPT_SAFEPOINT,
-            entry_vlocs: vec![],
+            args_vlocs: vec![],
             stack_off: 0,
             sidetrace_off: 0,
         };
@@ -373,7 +370,7 @@ mod tests {
         let trid = TraceId::from_u64(42);
         let start = J2TraceStart::ControlPoint::<Reg> {
             entry_safepoint: &TEST_DEOPT_SAFEPOINT,
-            entry_vlocs: vec![],
+            args_vlocs: vec![],
             stack_off: 0,
             sidetrace_off: 0,
         };

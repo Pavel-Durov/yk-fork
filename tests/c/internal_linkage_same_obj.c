@@ -1,4 +1,3 @@
-// ignore-if: test "$YK_JITC" = "j2"
 // Run-time:
 //   env-var: YKD_SERIALISE_COMPILATION=1
 //   env-var: YKD_LOG=4
@@ -9,7 +8,7 @@
 //     yk-tracing: stop-tracing
 //     --- Begin jit-pre-opt ---
 //     ...
-//     %{{12}}: i32 = call @call_me(%{{8}})
+//     %{{12}}: i32 = call %{{_}}(%{{8}}) ; @call_me
 //     ...
 //     --- End jit-pre-opt ---
 //     ...

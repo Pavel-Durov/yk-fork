@@ -1,5 +1,3 @@
-#![feature(exit_status_error)]
-
 use inner::main;
 
 #[cfg(cargo_profile = "debug")]
@@ -49,7 +47,7 @@ mod inner {
         // more than one copy.
         let mut rsync_cmd = Command::new("rsync");
         rsync_cmd.args(["-a", YKLUA_SUBMODULE_PATH, yklua_tgt_dir.to_str().unwrap()]);
-        rsync_cmd.status().unwrap().exit_ok().unwrap();
+        assert!(rsync_cmd.status().unwrap().success());
 
         // cargo can sometimes run multiple builds in parallel. At the moment that's probably only
         // build scripts, though that doesn't seem to be precisely specified and might change in the
@@ -175,14 +173,16 @@ mod inner {
                 p.extension().as_ref().and_then(|p| p.to_str()) == Some("lua")
             })
             .test_extract(move |p| {
-                read_to_string(p)
-                    .unwrap()
+                let s = read_to_string(p).unwrap();
+                let mut x = s
                     .lines()
+                    .rev()
                     .skip_while(|l| !l.starts_with(COMMENT))
                     .take_while(|l| l.starts_with(COMMENT))
                     .map(|l| &l[COMMENT.len()..])
-                    .collect::<Vec<_>>()
-                    .join("\n")
+                    .collect::<Vec<_>>();
+                x.reverse();
+                x.join("\n")
             })
             .test_cmds(move |p| {
                 let mut yklua_exe = target_dir();
@@ -195,10 +195,10 @@ mod inner {
                 vec![("Run-time", cmd)]
             })
             .fm_options(|_, _, fmb| {
-                // Use `{{}}` to match non-literal strings in tests.
-                // E.g. use `%{{var}}` to capture the name of a variable.
-                let ptn_re = Regex::new(r"\{\{.+?\}\}").unwrap();
-                let ptn_re_ignore = Regex::new(r"\{\{_}\}").unwrap();
+                // Use `${{...}}` to match non-literal strings in tests.
+                // E.g. use `${{var}}` to capture the name of a variable.
+                let ptn_re = Regex::new(r"\$\{\{.+?\}\}").unwrap();
+                let ptn_re_ignore = Regex::new(r"\$\{\{_}\}").unwrap();
                 let text_re = Regex::new(r"[a-zA-Z0-9\._]+").unwrap();
                 fmb.name_matcher_ignore(ptn_re_ignore, text_re.clone())
                     .name_matcher(ptn_re, text_re)

@@ -1,4 +1,3 @@
-// ignore-if: test "$YK_JITC" = "j2"
 // Run-time:
 //   env-var: YKD_LOG_IR=aot,jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
@@ -9,12 +8,12 @@
 //     yk-tracing: stop-tracing
 //     --- Begin aot ---
 //     ...
-//     call llvm.va_start(%{{_}})
+//     call llvm.va_start.p0(%{{_}})
 //     ...
 //     --- End aot ---
 //     --- Begin jit-pre-opt ---
 //     ...
-//     %{{_}}: i32 = call @f(...
+//     %{{_}}: i32 = call %{{_}}(%{{_}}, %{{_}}, %{{_}}, %{{_}}, %{{_}}) ; @__yk_opt_f
 //     ...
 //     --- End jit-pre-opt ---
 //     3: 36

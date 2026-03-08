@@ -1,10 +1,10 @@
-// ignore-if: test "$YK_JITC" = "j2"
 // Compiler:
-//   env-var: YKB_EXTRA_CC_FLAGS=-O0 -Xclang -disable-O0-optnone -Xlinker --lto-newpm-passes=instcombine<max-iterations=1;no-use-loop-info;no-verify-fixpoint>
+//   env-var: YKB_EXTRA_CC_FLAGS=-O0 -Xclang -disable-O0-optnone -Xlinker --lto-newpm-passes=instcombine<max-iterations=1;no-verify-fixpoint>
 // Run-time:
 //   env-var: YKD_LOG_IR=aot,jit-pre-opt
 //   env-var: YKD_LOG=4
 //   env-var: YKD_LOG_STATS=/dev/null
+//   env-var: YKD_SERIALISE_COMPILATION=1
 //   stderr:
 //     yk-tracing: start-tracing
 //     i=4, val=3, p=4
@@ -20,13 +20,12 @@
 //     --- End aot ---
 //     --- Begin jit-pre-opt ---
 //     ...
-//     %{{21}}: i32 = call @f()
+//     %{{17}}: i32 = call %{{_}}() ; @f
 //     ...
-//     %{{25}}: i32 = add %{{21}}, 1i32
+//     %{{23}}: ptr = dynptradd %{{_}}, %{{_}}, 1
+//     %{{34}}: ptr = ptradd %{{23}}, 1
 //     ...
-//     %{{29}}: ptr = dyn_ptr_add %{{26}}, %{{27}}, 1
-//     ...
-//     %{{_}}: i32 = call @fprintf(%{{_}}, %{{_}}, %{{_}}, %{{_}}, %{{_}})
+//     %{{_}}: i32 = call %{{_}}(%{{_}}, %{{_}}, %{{_}}, %{{_}}, %{{_}}) ; @fprintf
 //     ...
 //     --- End jit-pre-opt ---
 //     i=3, val=3, p=8

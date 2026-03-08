@@ -123,7 +123,12 @@ impl PassT for LoadStore {
         }
     }
 
-    fn inst_committed(&mut self, opt: &CommitInstOpt, iidx: InstIdx, inst: &Inst) {
+    fn preinst_committed(&mut self, opt: &CommitInstOpt, iidx: InstIdx) {
+        self.inst_committed(opt, iidx);
+    }
+
+    fn inst_committed(&mut self, opt: &CommitInstOpt, iidx: InstIdx) {
+        let inst = opt.inst(iidx);
         match inst {
             Inst::Load(Load {
                 tyidx: _,
@@ -181,7 +186,7 @@ impl PassT for LoadStore {
             }
             _ => {
                 if inst
-                    .read_write_effects()
+                    .write_effects()
                     .interferes(Effects::none().add_heap().add_volatile())
                 {
                     self.hv.clear();
@@ -303,7 +308,7 @@ mod test {
                     ls.borrow_mut().feed(opt, inst)
                 }
             },
-            |opt, iidx, inst| ls.borrow_mut().inst_committed(opt, iidx, inst),
+            |opt, iidx| ls.borrow_mut().inst_committed(opt, iidx),
             |_, _| (),
             ptn,
         );
@@ -597,6 +602,8 @@ mod test {
         // Test that the things that should be barriers really do act as barriers.
 
         // Calls
+
+        // Write barrier
         test_ls(
             "
           extern f()
@@ -616,6 +623,82 @@ mod test {
         ",
         );
 
+        test_ls(
+            "
+          extern f() memory(readwrite)
+
+          %0: ptr = arg [reg]
+          %1: i8 = load %0
+          %2: ptr = 0x1234
+          call f %2()
+          store %1, %0
+        ",
+            "
+          %0: ptr = arg
+          %1: i8 = load %0
+          %2: ptr = 0x1234
+          call %2()
+          store %1, %0
+        ",
+        );
+
+        test_ls(
+            "
+          extern f() memory(write)
+
+          %0: ptr = arg [reg]
+          %1: i8 = load %0
+          %2: ptr = 0x1234
+          call f %2()
+          store %1, %0
+        ",
+            "
+          %0: ptr = arg
+          %1: i8 = load %0
+          %2: ptr = 0x1234
+          call %2()
+          store %1, %0
+        ",
+        );
+
+        // Read/none barrier
+
+        test_ls(
+            "
+          extern f() memory(read)
+
+          %0: ptr = arg [reg]
+          %1: i8 = load %0
+          %2: ptr = 0x1234
+          call f %2()
+          store %1, %0
+        ",
+            "
+          %0: ptr = arg
+          %1: i8 = load %0
+          %2: ptr = 0x1234
+          call %2()
+        ",
+        );
+
+        test_ls(
+            "
+          extern f() memory(none)
+
+          %0: ptr = arg [reg]
+          %1: i8 = load %0
+          %2: ptr = 0x1234
+          call f %2()
+          store %1, %0
+        ",
+            "
+          %0: ptr = arg
+          %1: i8 = load %0
+          %2: ptr = 0x1234
+          call %2()
+        ",
+        );
+
         // memcpy
         test_ls(
             "
@@ -623,7 +706,7 @@ mod test {
           %1: ptr = arg [reg]
           %2: i64 = arg [reg]
           %3: i8 = load %0
-          memcpy %0, %1, %2, true
+          memcpy %0, %1, %2, false
           %5: i8 = load %0
         ",
             "
@@ -631,7 +714,7 @@ mod test {
           %1: ptr = arg
           %2: i64 = arg
           %3: i8 = load %0
-          memcpy %0, %1, %2, true
+          memcpy %0, %1, %2, false
           %5: i8 = load %0
         ",
         );
@@ -643,7 +726,7 @@ mod test {
           %1: i8 = arg [reg]
           %2: i32 = arg [reg]
           %3: i8 = load %0
-          memset %0, %1, %2, true
+          memset %0, %1, %2, false
           %5: i8 = load %0
         ",
             "
@@ -651,7 +734,7 @@ mod test {
           %1: i8 = arg
           %2: i32 = arg
           %3: i8 = load %0
-          memset %0, %1, %2, true
+          memset %0, %1, %2, false
           %5: i8 = load %0
         ",
         );
@@ -734,6 +817,45 @@ mod test {
           %3: i1 = icmp eq %2, %1
           guard true, %3, []
           blackbox %1
+          term [%0, %1]
+        ",
+        );
+    }
+
+    #[test]
+    fn volatiles() {
+        // Volatile loads fill the cache but aren't removed
+        test_ls(
+            "
+          %0: ptr = arg [reg]
+          %1: i8 = load volatile %0
+          %2: i8 = load %0
+          %3: i8 = load volatile %0
+          term [%0]
+        ",
+            "
+          %0: ptr = arg
+          %1: i8 = load volatile %0
+          %2: i8 = load volatile %0
+          term [%0]
+        ",
+        );
+
+        // Volatile stores fill the cache but aren't removed
+        test_ls(
+            "
+          %0: ptr = arg [reg]
+          %1: i8 = arg [reg]
+          store volatile %1, %0
+          store %1, %0
+          store volatile %1, %0
+          term [%0, %1]
+        ",
+            "
+          %0: ptr = arg
+          %1: i8 = arg
+          store volatile %1, %0
+          store volatile %1, %0
           term [%0, %1]
         ",
         );

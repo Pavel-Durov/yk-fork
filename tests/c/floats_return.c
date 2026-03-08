@@ -1,6 +1,5 @@
-// ignore-if: test "$YK_JITC" = "j2"
 // Compiler:
-//   env-var: YKB_EXTRA_CC_FLAGS=-O0 -Xclang -disable-O0-optnone -Xlinker --lto-newpm-passes=instcombine<max-iterations=1;no-use-loop-info;no-verify-fixpoint>
+//   env-var: YKB_EXTRA_CC_FLAGS=-O0 -Xclang -disable-O0-optnone -Xlinker --lto-newpm-passes=instcombine<max-iterations=1;no-verify-fixpoint>
 // Run-time:
 //   env-var: YKD_LOG_IR=jit-pre-opt
 //   env-var: YKD_SERIALISE_COMPILATION=1
@@ -10,13 +9,13 @@
 //     2: 6.200000 10.400000
 //   stderr:
 //     ...
-//     %{{_}}: float = call @float_rtn()
+//     %{{_}}: float = call %{{_}}() ; @float_rtn
 //     ...
-//     %{{y}}: double = call @double_rtn()
+//     %{{y}}: double = call %{{_}}() ; @double_rtn
 //     ...
 //     %{{z}}: double = fadd %{{y}}, %{{_}}
 //     ...
-//     %{{_}}: i32 = call @printf(%{{_}}, %{{_}}, %{{_}}, %{{z}})
+//     %{{_}}: i32 = call %{{_}}(%{{_}}, %{{_}}, %{{_}}, %{{z}}) ; @printf
 //     ...
 
 #include <stdio.h>

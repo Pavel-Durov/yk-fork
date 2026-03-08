@@ -4,7 +4,6 @@ use crate::{
     mt::{MT, TraceId},
     trace::AOTTraceIterator,
 };
-use jitc_yk::jit_ir::TraceEndFrame;
 use libc::c_void;
 use parking_lot::Mutex;
 use std::{
@@ -28,6 +27,7 @@ pub(crate) enum CompilationError {
     General(String),
     #[error("Internal error: {0}")]
     /// Something went wrong when compiling that is probably the result of a bug in yk.
+    #[allow(unused)]
     InternalError(String),
     #[error("Internal error: {0}")]
     /// A limit was exceeded (e.g. a pointer add that went beyond a struct). We try and check for
@@ -37,46 +37,22 @@ pub(crate) enum CompilationError {
     #[error("Internal error: {0:}")]
     /// Compilation failed because an external resource was exhausted: the end user running the
     /// interpreter probably wants to be informed of this.
+    #[allow(unused)]
     ResourceExhausted(Box<dyn Error>),
 }
 
 /// The trait that every JIT compiler backend must implement.
 pub(crate) trait Compiler: Send + Sync {
-    /// Compile a mapped root trace into machine code.
-    fn root_compile(
+    /// Compile the [Trace] `trace`.
+    fn compile(
         self: Arc<Self>,
         mt: Arc<MT>,
-        aottrace_iter: Box<dyn AOTTraceIterator>,
-        ctrid: TraceId,
-        hl: Arc<Mutex<HotLocation>>,
-        promotions: Box<[u8]>,
-        debug_strs: Vec<String>,
-        connector_ctr: Option<Arc<dyn CompiledTrace>>,
-        endframe: TraceEndFrame,
-    ) -> Result<Arc<dyn CompiledTrace>, CompilationError>;
-
-    /// Compile a guard trace into machine code.
-    fn sidetrace_compile(
-        self: Arc<Self>,
-        mt: Arc<MT>,
-        aottrace_iter: Box<dyn AOTTraceIterator>,
-        ctrid: TraceId,
-        parent_ctr: Arc<dyn CompiledTrace>,
-        gid: GuardId,
-        target_ctr: Arc<dyn CompiledTrace>,
-        hl: Arc<Mutex<HotLocation>>,
-        promotions: Box<[u8]>,
-        debug_strs: Vec<String>,
-        endframe: TraceEndFrame,
+        trace: Trace,
     ) -> Result<Arc<dyn CompiledTrace>, CompilationError>;
 }
 
 pub(crate) fn default_compiler() -> Result<Arc<dyn Compiler>, Box<dyn Error>> {
-    if std::env::var("YK_JITC").is_ok_and(|x| x == "j2") {
-        return Ok(j2::J2::new()?);
-    }
-
-    return Ok(jitc_yk::JITCYk::new()?);
+    return Ok(j2::J2::new()?);
 
     #[allow(unreachable_code)]
     {
@@ -84,11 +60,43 @@ pub(crate) fn default_compiler() -> Result<Arc<dyn Compiler>, Box<dyn Error>> {
     }
 }
 
+/// A recorded (but not yet compiled) trace.
+pub(crate) struct Trace {
+    pub(crate) trace_start: TraceStart,
+    pub(crate) trace_end: TraceEnd,
+    /// The [TraceId] this trace should have when compiled.
+    pub(crate) ctrid: TraceId,
+    pub(crate) ta_iter: Box<dyn AOTTraceIterator>,
+    pub(crate) promotions: Box<[u8]>,
+    pub(crate) debug_strs: Vec<String>,
+}
+
+/// How a recorded trace started.
+#[derive(Clone)]
+pub(crate) enum TraceStart {
+    /// This trace started at a control point.
+    ControlPoint { hl: Arc<Mutex<HotLocation>> },
+    /// This trace started at guard [TraceStart::Guard::gid] in [TraceStart::Guard::parent_ctr].
+    Guard {
+        parent_ctr: Arc<dyn CompiledTrace>,
+        gid: GuardId,
+    },
+}
+
+/// How a recorded trace ended.
+#[derive(Clone)]
+pub(crate) enum TraceEnd {
+    /// A [TraceStart::ControlPoint] trace looped. Note: by definition a [TraceStart::Guard] can
+    /// not end in [TraceEnd::Loop].
+    Loop,
+    /// A trace ended at another (possibly compiled, possibly tracing, possibly compiling) trace
+    /// that has/will have the tid [TraceId].
+    Coupler(TraceId),
+}
+
 pub(crate) trait CompiledTrace: fmt::Debug + Send + Sync {
     /// Return this trace's [TraceId].
     fn ctrid(&self) -> TraceId;
-
-    fn safepoint(&self) -> &Option<DeoptSafepoint>;
 
     /// Upcast this [CompiledTrace] to `Any`. This method is a hack that's only needed since trait
     /// upcasting in Rust is incomplete.
@@ -102,16 +110,10 @@ pub(crate) trait CompiledTrace: fmt::Debug + Send + Sync {
     /// The pointer to this trace's executable code.
     fn entry(&self) -> *const c_void;
 
-    /// The stack adjustment necessary when calling this trace.
-    fn entry_sp_off(&self) -> usize;
-
     /// Return a weak reference to the [HotLocation] that started the top-level trace. Note that a
     /// given `CompiledTrace` may be a side (i.e. a "sub") trace of that top-level trace: the same
     /// [HotLocation] is passed down to each of the child `CompiledTrace`s.
     fn hl(&self) -> &Weak<Mutex<HotLocation>>;
-
-    /// Disassemble the JITted code into a string, for testing and deubgging.
-    fn disassemble(&self, with_addrs: bool) -> Result<String, Box<dyn Error>>;
 
     /// Return a slice containing the native executable code.
     fn code(&self) -> &[u8];
@@ -143,10 +145,6 @@ mod compiled_trace_testing {
             TraceId::testing()
         }
 
-        fn safepoint(&self) -> &Option<DeoptSafepoint> {
-            todo!()
-        }
-
         fn as_any(self: Arc<Self>) -> Arc<dyn std::any::Any + Send + Sync + 'static> {
             panic!();
         }
@@ -163,15 +161,7 @@ mod compiled_trace_testing {
             panic!();
         }
 
-        fn entry_sp_off(&self) -> usize {
-            panic!();
-        }
-
         fn hl(&self) -> &Weak<Mutex<HotLocation>> {
-            panic!();
-        }
-
-        fn disassemble(&self, _with_addrs: bool) -> Result<String, Box<dyn Error>> {
             panic!();
         }
 
@@ -206,10 +196,6 @@ mod compiled_trace_testing {
             TraceId::testing()
         }
 
-        fn safepoint(&self) -> &Option<DeoptSafepoint> {
-            todo!()
-        }
-
         fn as_any(self: Arc<Self>) -> Arc<dyn std::any::Any + Send + Sync + 'static> {
             panic!();
         }
@@ -227,16 +213,8 @@ mod compiled_trace_testing {
             panic!();
         }
 
-        fn entry_sp_off(&self) -> usize {
-            panic!();
-        }
-
         fn hl(&self) -> &Weak<Mutex<HotLocation>> {
             &self.hl
-        }
-
-        fn disassemble(&self, _with_addrs: bool) -> Result<String, Box<dyn Error>> {
-            panic!();
         }
 
         fn code(&self) -> &[u8] {

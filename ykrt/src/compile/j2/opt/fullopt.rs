@@ -226,7 +226,7 @@ impl FullOpt {
             let fed = self.passes[i].feed(&mut opt, inst);
 
             for inst in popt_inner.pre_insts.drain(..) {
-                self.commit_inst_dedup_opt(inst);
+                self.commit_preinst(inst);
             }
 
             match fed {
@@ -257,37 +257,44 @@ impl FullOpt {
             assert!(popt_inner.gextra.is_none());
         }
 
-        Ok(Some(self.commit_inst_dedup_opt(inst)))
-    }
-
-    /// Commit `inst` to this trace, deduplicating constants if they already exist earlier in the
-    /// trace.
-    fn commit_inst_dedup_opt(&mut self, inst: Inst) -> InstIdx {
         if let Inst::Const(x) = &inst
             && let Some(x) = self.inner.consts_map.get(&HashableConst(x.to_owned()))
         {
-            return *x;
+            return Ok(Some(*x));
         }
-        self.commit_inst(inst)
+
+        Ok(Some(self.commit_inst(inst)))
     }
 
-    /// Commit `inst` to this trace, without deduplicating constants.
     fn commit_inst(&mut self, inst: Inst) -> InstIdx {
-        let opt = CommitInstOpt { inner: &self.inner };
-        let iidx = self.inner.insts.len_idx();
-        for pass in &mut self.passes {
-            pass.inst_committed(&opt, iidx, &inst);
-        }
+        self.commit_inst_internal(|pass, opt, iidx| pass.inst_committed(opt, iidx), inst)
+    }
 
+    fn commit_preinst(&mut self, inst: Inst) -> InstIdx {
+        self.commit_inst_internal(|pass, opt, iidx| pass.preinst_committed(opt, iidx), inst)
+    }
+
+    /// Commit `inst` to this trace, calling `f` for each pass in this optimiser.
+    fn commit_inst_internal<F>(&mut self, mut f: F, inst: Inst) -> InstIdx
+    where
+        F: FnMut(&mut dyn PassT, &CommitInstOpt, InstIdx),
+    {
         if let Inst::Const(x) = &inst {
+            let iidx = self.inner.insts.len_idx();
             self.inner
                 .consts_map
                 .insert(HashableConst(x.to_owned()), iidx);
         }
-        self.inner.insts.push(InstEquiv {
+        let iidx = self.inner.insts.push(InstEquiv {
             inst,
             equiv: InstIdx::MAX,
-        })
+        });
+
+        let opt = CommitInstOpt { inner: &self.inner };
+        for pass in &mut self.passes {
+            f(&mut **pass, &opt, iidx);
+        }
+        iidx
     }
 }
 
@@ -366,7 +373,12 @@ impl OptT for FullOpt {
         // can't possibly be used.
         let mut is_used = Vob::from_elem(false, entry.insts.len());
         for (iidx, inst) in entry.insts_iter(..).rev() {
-            if is_used[usize::from(iidx)] || inst.write_effects().interferes(Effects::all()) {
+            if is_used[usize::from(iidx)]
+                || inst
+                    .read_effects()
+                    .interferes(Effects::none().add_volatile())
+                || inst.write_effects().interferes(Effects::all())
+            {
                 is_used.set(usize::from(iidx), true);
                 for op_iidx in inst.iter_iidxs(&entry) {
                     is_used.set(usize::from(op_iidx), true);
@@ -414,17 +426,30 @@ impl OptT for FullOpt {
         assert!(popt_inner.gextra.is_none());
         assert!(popt_inner.new_equivs.is_empty());
         for inst in popt_inner.pre_insts.drain(..) {
-            self.commit_inst(inst);
+            self.commit_preinst(inst);
         }
 
         // Feed each instruction from `entry` (except the arguments!) into the peel.
-        for (iidx, inst) in entry
-            .insts_iter(..)
-            .skip(entry.term_vars().len()) // Skip `Arg` instructions
-            .filter(|(iidx, _)| is_used[usize::from(*iidx)])
-        {
-            let mut inst = inst.clone();
+        for iidx in (entry.term_vars().len()..entry.insts_len()).map(InstIdx::new) {
+            if !is_used[usize::from(iidx)] {
+                continue;
+            }
+            let mut inst = entry.inst(iidx).clone();
             if let Inst::Guard(mut x) = inst {
+                if let Inst::Const(Const {
+                    kind: ConstKind::Int(y),
+                    ..
+                }) = self.inst(self.equiv_iidx(map[x.cond]))
+                {
+                    let v = y.to_zero_ext_u8().unwrap();
+                    if (x.expect && v == 0) || (!x.expect && v == 1) {
+                        // We've found a contradiction. The peel is semi-pointless: we could
+                        // generate it up to this instruction, but the risk of creating extra
+                        // sidetraces doesn't seem worth it.
+                        return Ok((entry, None, self.inner.tys));
+                    }
+                }
+
                 let old_gextra = &entry.guard_extras[x.geidx];
                 let gextra = GuardExtra {
                     bid: old_gextra.bid,
@@ -438,8 +463,6 @@ impl OptT for FullOpt {
                 };
                 x.cond = map[x.cond];
                 x.geidx = GuardExtraIdx::MAX;
-                // FIXME: Peeled guards can find contradictions because not all loops are
-                // control-flow stable.
                 self.feed_guard(x, gextra)?;
             } else if inst.tyidx(&*self) == self.inner.tyidx_void {
                 inst.rewrite_iidxs(&mut *self, |x| map[x]);
@@ -617,10 +640,15 @@ pub(super) trait PassT {
     /// Feed [inst] instruction into the optimiser.
     fn feed(&mut self, opt: &mut PassOpt, inst: Inst) -> OptOutcome;
 
-    /// After an instruction has been committed to the trace -- i.e. there is
-    /// no possibility that an optimisation pass will remove it -- this
-    /// function will be called on all passes.
-    fn inst_committed(&mut self, ci: &CommitInstOpt, iidx: InstIdx, inst: &Inst);
+    /// After a pass has completed, it may have generated preinsts: for each, it will be appended
+    /// to the trace and this function will be called on all passes (including the pass that
+    /// generated the preinst).
+    fn preinst_committed(&mut self, opt: &CommitInstOpt, iidx: InstIdx);
+
+    /// After all passes have completed, if `inst` -- which may have been rewritten many times --
+    /// is still needed, it will be appended to the trace and then this function will be called on
+    /// all passes.
+    fn inst_committed(&mut self, ci: &CommitInstOpt, iidx: InstIdx);
 
     /// `equiv1` and `equiv2` have been identified as equivalent and henceforth `equiv1` will be
     /// rewritten to `equiv2`.
@@ -658,11 +686,15 @@ impl PassOpt<'_> {
         self.optinternal.push_ty(ty)
     }
 
-    /// Add the "pre-instruction" `preinst`: when the current pass has completed, `inst` will be
-    /// committed to the trace, and immediately available to subsequent passes. The [InstIdx] that
-    /// is returned will be `preinst`'s [InstIdx] _after_ it is committed. In other words, during
-    /// the current pass, [InstIdx] is invalid, and attempting any operations with it will lead to
-    /// undefined behaviour.
+    /// Add the "preinstruction" `preinst`. After the current pass has completed, `inst` is
+    /// guaranteed to have been committed to the trace, and will be available to subsequent passes.
+    ///
+    /// The [InstIdx] returned is only valid for use _after_ the current pass has completed.
+    /// Attempting to make use of it (e.g. by querying `Opt`) is undefined behaviour.
+    ///
+    /// Note the careful wording in the above: it is possible that the optimiser will prove `inst`
+    /// is equivalent to an existing instruction. However, that cannot be guaranteed, and must not
+    /// be relied upon in any way.undefined behaviour.
     pub(super) fn push_pre_inst(&mut self, preinst: Inst) -> InstIdx {
         if let Inst::Const(c) = &preinst
             && let Some(x) = self
@@ -838,7 +870,7 @@ pub(in crate::compile::j2) mod test {
     pub(in crate::compile::j2) fn str_to_peel_mod<Reg: RegT>(mod_s: &str) -> Mod<Reg> {
         let m = str_to_mod::<Reg>(mod_s);
         let TraceEnd::Test {
-            entry_vlocs,
+            args_vlocs,
             block: Block {
                 insts,
                 guard_extras,
@@ -867,7 +899,7 @@ pub(in crate::compile::j2) mod test {
         // instruction to the optimiser.
         let mut opt_map = IndexVec::with_capacity(insts.len());
         let mut insts_iter = insts.into_iter();
-        for _ in 0..entry_vlocs.len() {
+        for _ in 0..args_vlocs.len() {
             opt_map.push(opt_map.len_idx());
             fopt.feed_arg(insts_iter.next().unwrap().clone()).unwrap();
         }
@@ -895,14 +927,22 @@ pub(in crate::compile::j2) mod test {
         let tyidx_ptr0 = fopt.inner.tyidx_ptr0;
         let tyidx_void = fopt.inner.tyidx_void;
         let (entry, peel, tys) = fopt.build_with_peel().unwrap();
+        let trace_end = if let Some(peel) = peel {
+            TraceEnd::TestPeel {
+                args_vlocs: args_vlocs.to_owned(),
+                entry,
+                peel,
+            }
+        } else {
+            TraceEnd::Test {
+                args_vlocs: args_vlocs.to_owned(),
+                block: entry,
+            }
+        };
         Mod {
             trid: m.trid,
             trace_start: TraceStart::Test,
-            trace_end: TraceEnd::TestPeel {
-                entry_vlocs: entry_vlocs.to_owned(),
-                entry,
-                peel: peel.unwrap(),
-            },
+            trace_end,
             tys,
             tyidx_int1,
             tyidx_ptr0,
@@ -938,13 +978,13 @@ pub(in crate::compile::j2) mod test {
         ptn: &str,
     ) where
         for<'a> F: Fn(&'a mut PassOpt, Inst) -> OptOutcome,
-        for<'a> G: Fn(&'a CommitInstOpt, InstIdx, &Inst),
+        for<'a> G: Fn(&'a CommitInstOpt, InstIdx),
         for<'a> H: Fn(InstIdx, InstIdx),
     {
         let m = str_to_mod::<TestReg>(mod_s);
         let mut fopt = Box::new(FullOpt::new());
         let TraceEnd::Test {
-            entry_vlocs,
+            args_vlocs,
             block: Block {
                 insts,
                 guard_extras,
@@ -971,13 +1011,12 @@ pub(in crate::compile::j2) mod test {
             let fed = feed_f(&mut opt, inst);
 
             for inst in popt_inner.pre_insts.drain(..) {
-                let iidx = fopt.inner.insts.len_idx();
-                let opt = CommitInstOpt { inner: &fopt.inner };
-                inst_committed_f(&opt, iidx, &inst);
-                fopt.inner.insts.push(InstEquiv {
+                let iidx = fopt.inner.insts.push(InstEquiv {
                     inst,
                     equiv: InstIdx::MAX,
                 });
+                let opt = CommitInstOpt { inner: &fopt.inner };
+                inst_committed_f(&opt, iidx);
             }
 
             for (equiv1, equiv2) in popt_inner.new_equivs.drain(..) {
@@ -1005,12 +1044,12 @@ pub(in crate::compile::j2) mod test {
 
             let iidx = fopt.inner.insts.len_idx();
             opt_map.push(iidx);
-            let opt = CommitInstOpt { inner: &fopt.inner };
-            inst_committed_f(&opt, iidx, &inst);
             fopt.inner.insts.push(InstEquiv {
                 inst,
                 equiv: InstIdx::MAX,
             });
+            let opt = CommitInstOpt { inner: &fopt.inner };
+            inst_committed_f(&opt, iidx);
         }
         let tyidx_int1 = fopt.inner.tyidx_int1;
         let tyidx_ptr0 = fopt.inner.tyidx_ptr0;
@@ -1019,7 +1058,7 @@ pub(in crate::compile::j2) mod test {
         let m = Mod {
             trid: m.trid,
             trace_start: TraceStart::Test,
-            trace_end: TraceEnd::Test { entry_vlocs, block },
+            trace_end: TraceEnd::Test { args_vlocs, block },
             tys,
             tyidx_int1,
             tyidx_ptr0,
@@ -1053,7 +1092,7 @@ pub(in crate::compile::j2) mod test {
                     inst.canonicalise(opt);
                     StrengthFold::new().feed(opt, inst)
                 },
-                |_, _, _| (),
+                |_, _| (),
                 |_, _| (),
                 ptn,
             );
@@ -1162,6 +1201,26 @@ pub(in crate::compile::j2) mod test {
           %0: ptr = arg
           %1: i8 = 4
           term [%0, %1]
+        ",
+        );
+
+        // Guard contradiction prevents a peel being created.
+        full_opt_test(
+            "
+          %0: i8 = arg [reg]
+          %1: i8 = 0
+          %2: i1 = icmp eq %0, %1
+          guard true, %2, []
+          %4: i8 = 1
+          term [%4]
+        ",
+            "
+          %0: i8 = arg
+          %1: i8 = 0
+          %2: i1 = icmp eq %0, %1
+          guard true, %2, []
+          %5: i8 = 1
+          term [%5]
         ",
         );
     }

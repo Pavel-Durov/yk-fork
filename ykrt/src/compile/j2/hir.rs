@@ -324,17 +324,17 @@ impl<Reg: RegT> Mod<Reg> {
         match &self.trace_end {
             TraceEnd::Coupler { .. } | TraceEnd::Loop { .. } | TraceEnd::Return { .. } => todo!(),
             #[cfg(test)]
-            TraceEnd::Test { entry_vlocs, block } => {
-                block.assert_well_formed(self, entry_vlocs, entry_vlocs);
+            TraceEnd::Test { args_vlocs, block } => {
+                block.assert_well_formed(self, args_vlocs, args_vlocs);
             }
             #[cfg(test)]
             TraceEnd::TestPeel {
-                entry_vlocs,
+                args_vlocs,
                 entry,
                 peel,
             } => {
-                entry.assert_well_formed(self, entry_vlocs, entry_vlocs);
-                peel.assert_well_formed(self, entry_vlocs, entry_vlocs);
+                entry.assert_well_formed(self, args_vlocs, args_vlocs);
+                peel.assert_well_formed(self, args_vlocs, args_vlocs);
             }
         }
     }
@@ -448,7 +448,7 @@ pub(super) enum TraceStart<Reg: RegT> {
     Guard {
         src_ctr: Arc<J2CompiledTrace<Reg>>,
         src_gidx: CompiledGuardIdx,
-        entry_vlocs: Vec<VarLocs<Reg>>,
+        args_vlocs: Vec<VarLocs<Reg>>,
     },
     /// This is a trace intended for unit testing.
     #[cfg(test)]
@@ -475,13 +475,13 @@ pub(super) enum TraceEnd<Reg: RegT> {
     /// This is a trace intended for unit testing.
     #[cfg(test)]
     Test {
-        entry_vlocs: Vec<VarLocs<Reg>>,
+        args_vlocs: Vec<VarLocs<Reg>>,
         block: Block,
     },
     /// This is a trace intended for unit testing peeled loops.
     #[cfg(test)]
     TestPeel {
-        entry_vlocs: Vec<VarLocs<Reg>>,
+        args_vlocs: Vec<VarLocs<Reg>>,
         entry: Block,
         peel: Block,
     },
@@ -500,11 +500,11 @@ impl Block {
     pub(super) fn assert_well_formed<Reg: RegT>(
         &self,
         m: &dyn ModLikeT,
-        entry_vlocs: &[VarLocs<Reg>],
+        args_vlocs: &[VarLocs<Reg>],
         exit_vlocs: &[VarLocs<Reg>],
     ) {
         for (iidx, inst) in self.insts_iter(..) {
-            if iidx < InstIdx::from(entry_vlocs.len()) {
+            if iidx < InstIdx::from(args_vlocs.len()) {
                 assert_matches!(
                     inst,
                     Inst::Arg(_) | Inst::Const(_),
@@ -521,7 +521,7 @@ impl Block {
                     "%{iidx:?}: number of term vars does not match number of term VarLocs"
                 );
 
-                for (i, (x, y)) in entry_vlocs.iter().zip(exit_vlocs.iter()).enumerate() {
+                for (i, (x, y)) in args_vlocs.iter().zip(exit_vlocs.iter()).enumerate() {
                     let entry_tyidx = self.insts[InstIdx::from(i)].tyidx(m);
                     let exit_tyidx = self.insts[term_vars[i]].tyidx(m);
                     if entry_tyidx != exit_tyidx {
@@ -626,7 +626,12 @@ impl Block {
                 show.set(i, true);
             }
             for (iidx, inst) in self.insts_iter(..).rev() {
-                if show[usize::from(iidx)] || inst.write_effects().interferes(Effects::all()) {
+                if show[usize::from(iidx)]
+                    || inst.write_effects().interferes(Effects::all())
+                    || inst
+                        .read_effects()
+                        .interferes(Effects::none().add_volatile())
+                {
                     show.set(usize::from(iidx), true);
                     for op_iidx in inst.iter_iidxs(self) {
                         show.set(usize::from(op_iidx), true);
@@ -846,6 +851,7 @@ pub(super) enum Inst {
     FSub,
     FPExt,
     FPToSI,
+    Freeze,
     Guard,
     ICmp,
     IntToPtr,
@@ -1344,6 +1350,7 @@ impl InstT for BlackBox {
 pub(super) struct Call {
     pub tgt: InstIdx,
     pub func_tyidx: TyIdx,
+    pub effects: CallEffects,
     pub args: SmallVec<[InstIdx; 1]>,
 }
 
@@ -1380,15 +1387,25 @@ impl InstT for Call {
     }
 
     fn cse_eq(&self, _opt: &dyn EquivIIdxT, _other: &Inst) -> bool {
-        panic!();
+        false
     }
 
     fn read_effects(&self) -> Effects {
-        Effects::none().add_heap().add_volatile()
+        match self.effects {
+            CallEffects::None => Effects::none(),
+            CallEffects::Read | CallEffects::ReadWrite => Effects::none().add_heap().add_volatile(),
+            CallEffects::Write => Effects::none(),
+        }
     }
 
     fn write_effects(&self) -> Effects {
-        Effects::none().add_heap().add_volatile()
+        match self.effects {
+            CallEffects::None => Effects::none(),
+            CallEffects::Read => Effects::none(),
+            CallEffects::ReadWrite | CallEffects::Write => {
+                Effects::none().add_heap().add_volatile()
+            }
+        }
     }
 
     fn iter_iidxs<'a>(&'a self, b: &'a dyn BlockLikeT) -> IterIidxsIterator<'a> {
@@ -1430,6 +1447,14 @@ impl InstT for Call {
     fn tyidx(&self, m: &dyn ModLikeT) -> TyIdx {
         m.func_ty(self.func_tyidx).rtn_tyidx
     }
+}
+
+#[derive(Clone, Debug)]
+pub(super) enum CallEffects {
+    None,
+    Read,
+    Write,
+    ReadWrite,
 }
 
 #[derive(Clone, Debug)]
@@ -2357,6 +2382,65 @@ impl InstT for FPToSI {
     }
 }
 
+/// Freeze poison/undef values.
+#[derive(Clone, Debug)]
+pub(super) struct Freeze {
+    pub tyidx: TyIdx,
+    pub val: InstIdx,
+}
+
+impl InstT for Freeze {
+    fn assert_well_formed(&self, m: &dyn ModLikeT, b: &dyn BlockLikeT, iidx: InstIdx) {
+        assert_eq!(
+            m.ty(self.tyidx),
+            m.ty(b.inst(self.val).tyidx(m)),
+            "%{iidx:?}: inconsistent return / operand types"
+        );
+    }
+
+    fn canonicalise<T: BlockLikeT + EquivIIdxT + ModLikeT>(&mut self, opt: &mut T) {
+        self.val = opt.equiv_iidx(self.val);
+    }
+
+    fn cse_eq(&self, opt: &dyn EquivIIdxT, other: &Inst) -> bool {
+        if let Inst::Freeze(Freeze { tyidx, val }) = other
+            && self.tyidx == *tyidx
+            && opt.equiv_iidx(self.val) == *val
+        {
+            true
+        } else {
+            false
+        }
+    }
+
+    fn read_effects(&self) -> Effects {
+        Effects::none()
+    }
+
+    fn write_effects(&self) -> Effects {
+        Effects::none()
+    }
+
+    fn iter_iidxs<'a>(&'a self, b: &'a dyn BlockLikeT) -> IterIidxsIterator<'a> {
+        IterIidxsIterator::one(b, self.val)
+    }
+
+    fn rewrite_iidxs<F>(&mut self, _b: &mut dyn BlockLikeT, mut iidx_map: F)
+    where
+        F: FnMut(InstIdx) -> InstIdx,
+    {
+        self.val = iidx_map(self.val);
+    }
+
+    fn to_string<M: ModLikeT, B: BlockLikeT>(&self, _m: &M, _b: &B) -> String {
+        format!("freeze %{}", usize::from(self.val))
+    }
+
+    fn tyidx(&self, _m: &dyn ModLikeT) -> TyIdx {
+        self.tyidx
+    }
+}
+
 /// A guard that the value produced by `cond` is `expect_true`. If not, the remainder of the
 /// trace is invalid for this execution.
 #[derive(Clone, Debug)]
@@ -2705,18 +2789,14 @@ impl InstT for Load {
 
     fn read_effects(&self) -> Effects {
         if self.is_volatile {
-            Effects::none().add_volatile()
+            Effects::none().add_volatile().add_heap()
         } else {
             Effects::none().add_heap()
         }
     }
 
     fn write_effects(&self) -> Effects {
-        if self.is_volatile {
-            Effects::none().add_volatile()
-        } else {
-            Effects::none()
-        }
+        Effects::none()
     }
 
     fn iter_iidxs<'a>(&'a self, b: &'a dyn BlockLikeT) -> IterIidxsIterator<'a> {
@@ -2731,7 +2811,11 @@ impl InstT for Load {
     }
 
     fn to_string<M: ModLikeT, B: BlockLikeT>(&self, _m: &M, _b: &B) -> String {
-        format!("load %{}", usize::from(self.ptr))
+        if self.is_volatile {
+            format!("load volatile %{}", usize::from(self.ptr))
+        } else {
+            format!("load %{}", usize::from(self.ptr))
+        }
     }
 
     fn tyidx(&self, _m: &dyn ModLikeT) -> TyIdx {
@@ -2821,7 +2905,7 @@ pub(super) struct MemCpy {
     pub dst: InstIdx,
     pub src: InstIdx,
     pub len: InstIdx,
-    pub volatile: bool,
+    pub is_volatile: bool,
 }
 
 impl InstT for MemCpy {
@@ -2848,16 +2932,16 @@ impl InstT for MemCpy {
     }
 
     fn read_effects(&self) -> Effects {
-        if self.volatile {
-            Effects::none().add_volatile()
+        if self.is_volatile {
+            Effects::none().add_volatile().add_heap()
         } else {
             Effects::none().add_heap()
         }
     }
 
     fn write_effects(&self) -> Effects {
-        if self.volatile {
-            Effects::none().add_volatile()
+        if self.is_volatile {
+            Effects::none().add_volatile().add_heap()
         } else {
             Effects::none().add_heap()
         }
@@ -2882,7 +2966,7 @@ impl InstT for MemCpy {
             usize::from(self.dst),
             usize::from(self.src),
             usize::from(self.len),
-            if self.volatile { "true" } else { "false" }
+            if self.is_volatile { "true" } else { "false" }
         )
     }
 
@@ -2897,7 +2981,7 @@ pub(super) struct MemSet {
     pub dst: InstIdx,
     pub val: InstIdx,
     pub len: InstIdx,
-    pub volatile: bool,
+    pub is_volatile: bool,
 }
 
 impl InstT for MemSet {
@@ -2930,16 +3014,16 @@ impl InstT for MemSet {
     }
 
     fn read_effects(&self) -> Effects {
-        if self.volatile {
-            Effects::none().add_volatile()
+        if self.is_volatile {
+            Effects::none().add_volatile().add_heap()
         } else {
             Effects::none()
         }
     }
 
     fn write_effects(&self) -> Effects {
-        if self.volatile {
-            Effects::none().add_volatile()
+        if self.is_volatile {
+            Effects::none().add_volatile().add_heap()
         } else {
             Effects::none().add_heap()
         }
@@ -2964,7 +3048,7 @@ impl InstT for MemSet {
             usize::from(self.dst),
             usize::from(self.val),
             usize::from(self.len),
-            if self.volatile { "true" } else { "false" }
+            if self.is_volatile { "true" } else { "false" }
         )
     }
 
@@ -3858,7 +3942,6 @@ impl InstT for SRem {
 pub(super) struct Store {
     pub val: InstIdx,
     pub ptr: InstIdx,
-    #[allow(unused)]
     pub is_volatile: bool,
 }
 
@@ -3881,16 +3964,12 @@ impl InstT for Store {
     }
 
     fn read_effects(&self) -> Effects {
-        if self.is_volatile {
-            Effects::none().add_volatile()
-        } else {
-            Effects::none()
-        }
+        Effects::none()
     }
 
     fn write_effects(&self) -> Effects {
         if self.is_volatile {
-            Effects::none().add_volatile()
+            Effects::none().add_heap().add_volatile()
         } else {
             Effects::none().add_heap()
         }
@@ -3910,7 +3989,8 @@ impl InstT for Store {
 
     fn to_string<M: ModLikeT, B: BlockLikeT>(&self, _m: &M, _b: &B) -> String {
         format!(
-            "store %{}, %{}",
+            "store {}%{}, %{}",
+            if self.is_volatile { "volatile " } else { "" },
             usize::from(self.val),
             usize::from(self.ptr)
         )
@@ -4533,6 +4613,7 @@ impl<'a> Iterator for IterIidxsIterator<'a> {
                 tgt,
                 func_tyidx: _,
                 args,
+                effects: _,
             }) => {
                 if self.i == 1 {
                     return Some(*tgt);
@@ -5808,6 +5889,17 @@ mod test {
     }
 
     #[test]
+    #[should_panic(expected = "%1: inconsistent return / operand types")]
+    fn freeze_must_return_same_type() {
+        str_to_mod::<DummyReg>(
+            "
+          %0: i8 = arg [reg]
+          %1: i32 = freeze %0
+        ",
+        );
+    }
+
+    #[test]
     #[should_panic(expected = "%1: return type is not an integer type")]
     fn zext_must_return_integer() {
         str_to_mod::<DummyReg>(
@@ -5838,7 +5930,7 @@ mod test {
                     inst.canonicalise(&mut *opt);
                     OptOutcome::Rewritten(inst)
                 },
-                |_, _, _| (),
+                |_, _| (),
                 |_, _| (),
                 ptn,
             );
@@ -5907,7 +5999,7 @@ mod test {
         // the optimiser.
         let mut opt = FullOpt::new_testing(m.tys);
         let TraceEnd::Test {
-            entry_vlocs: _,
+            args_vlocs: _,
             block: Block {
                 insts,
                 guard_extras,

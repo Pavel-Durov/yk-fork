@@ -15,9 +15,9 @@ Externs -> Result<Vec<AstExtern>, Box<dyn Error>>:
   ;
 
 Extern -> Result<AstExtern, Box<dyn Error>>:
-    "EXTERN" "ID" "(" FuncArgs ")" FuncRtnType {
+    "EXTERN" "ID" "(" FuncArgs ")" FuncRtnType FuncAttrs {
       let (arg_tys, has_varargs) = $4?;
-      let ty = AstFuncTy { arg_tys, has_varargs, rtn_ty: $6? };
+      let ty = AstFuncTy { arg_tys, has_varargs, rtn_ty: $6?, attrs: $7? };
       Ok(AstExtern{name: $2?.span(), ty})
     }
   ;
@@ -38,6 +38,18 @@ NormalFuncArgs -> Result<Vec<AstTy>, Box<dyn Error>>:
 FuncRtnType -> Result<AstTy, Box<dyn Error>>:
     "->" Ty { $2 }
   | { Ok(AstTy::Void) }
+  ;
+
+FuncAttrs -> Result<Vec<AstFuncAttr>, Box<dyn Error>>:
+    FuncAttrs FuncAttr { flattenr($1, $2) }
+  | { Ok(Vec::new()) }
+  ;
+
+FuncAttr -> Result<AstFuncAttr, Box<dyn Error>>:
+    "MEMORY" "(" "NONE" ")" { Ok(AstFuncAttr::MemoryNone) }
+  | "MEMORY" "(" "READ" ")" { Ok(AstFuncAttr::MemoryRead) }
+  | "MEMORY" "(" "WRITE" ")" { Ok(AstFuncAttr::MemoryWrite) }
+  | "MEMORY" "(" "READWRITE" ")" { Ok(AstFuncAttr::MemoryReadWrite) }
   ;
 
 Insts -> Result<Vec<AstInst>, Box<dyn Error>>:
@@ -110,14 +122,17 @@ Inst -> Result<AstInst, Box<dyn Error>>:
   | "LOCAL" ":" Ty "=" "FPTOSI" "LOCAL" {
       Ok(AstInst::FPToSI { local: $1?.span(), ty: $3?, val: $6?.span() })
     }
+  | "LOCAL" ":" Ty "=" "FREEZE" "LOCAL" {
+      Ok(AstInst::Freeze { local: $1?.span(), ty: $3?, val: $6?.span() })
+    }
   | "LOCAL" ":" Ty "=" "GLOBAL" {
       Ok(AstInst::Global { local: $1?.span(), ty: $3?, name: $5?.span() })
     }
   | "LOCAL" ":" Ty "=" "ICMP" IPred "LOCAL" "," "LOCAL" {
       Ok(AstInst::ICmp{ local: $1?.span(), ty: $3?, pred: $6?, lhs: $7?.span(), rhs: $9?.span() })
     }
-  | "LOCAL" ":" Ty "=" "LOAD" "LOCAL" {
-      Ok(AstInst::Load { local: $1?.span(), ty: $3?, ptr: $6?.span() })
+  | "LOCAL" ":" Ty "=" "LOAD" Volatile "LOCAL" {
+      Ok(AstInst::Load { local: $1?.span(), ty: $3?, is_volatile: $6?, ptr: $7?.span() })
     }
   | "LOCAL" ":" Ty "=" "INTTOPTR" "LOCAL" {
       Ok(AstInst::IntToPtr { local: $1?.span(), ty: $3?, val: $6?.span() })
@@ -138,10 +153,10 @@ Inst -> Result<AstInst, Box<dyn Error>>:
       Ok(AstInst::PtrToInt { local: $1?.span(), ty: $3?, val: $6?.span() })
     }
   | "MEMCPY" "LOCAL" "," "LOCAL" "," "LOCAL" "," Bool {
-      Ok(AstInst::MemCpy { dst: $2?.span(), src: $4?.span(), len: $6?.span(), volatile: $8? })
+      Ok(AstInst::MemCpy { dst: $2?.span(), src: $4?.span(), len: $6?.span(), is_volatile: $8? })
     }
   | "MEMSET" "LOCAL" "," "LOCAL" "," "LOCAL" "," Bool {
-      Ok(AstInst::MemSet { dst: $2?.span(), val: $4?.span(), len: $6?.span(), volatile: $8? })
+      Ok(AstInst::MemSet { dst: $2?.span(), val: $4?.span(), len: $6?.span(), is_volatile: $8? })
     }
   | "LOCAL" ":" Ty "=" "SDIV" "LOCAL" "," "LOCAL" {
        Ok(AstInst::SDiv { local: $1?.span(), ty: $3?, lhs: $6?.span(), rhs: $8?.span() })
@@ -173,8 +188,8 @@ Inst -> Result<AstInst, Box<dyn Error>>:
   | "LOCAL" ":" Ty "=" "SUB" "LOCAL" "," "LOCAL" {
        Ok(AstInst::Sub { local: $1?.span(), ty: $3?, lhs: $6?.span(), rhs: $8?.span() })
     }
-  | "STORE" "LOCAL" "," "LOCAL" {
-      Ok(AstInst::Store { val: $2?.span(), ptr: $4?.span() })
+  | "STORE" Volatile "LOCAL" "," "LOCAL" {
+      Ok(AstInst::Store{ is_volatile: $2?, val: $3?.span(), ptr: $5?.span() })
     }
   | "LOCAL" ":" Ty "=" "UITOFP" "LOCAL" {
       Ok(AstInst::UIToFP { local: $1?.span(), ty: $3?, val: $6?.span() })
@@ -291,6 +306,11 @@ RegFill -> Result<RegFill, Box<dyn Error>>:
     "UNDEFINED" { Ok(RegFill::Undefined) }
   | "SIGNED" { Ok(RegFill::Signed) }
   | "ZEROED" { Ok(RegFill::Zeroed) }
+  ;
+
+Volatile -> Result<bool, Box<dyn Error>>:
+    "VOLATILE" { Ok(true) }
+  | { Ok(false) }
   ;
 
 Unmatched -> ():

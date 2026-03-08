@@ -1,3 +1,12 @@
+for i = 0, 10 do
+  if i < 5 then
+    io.stderr:write("<", tostring(i), "\n")
+  else
+    io.stderr:write(">=", tostring(i), "\n")
+  end
+end
+io.stderr:write("exit\n")
+
 -- Run-time:
 --   env-var: YK_HOT_THRESHOLD=3
 --   env-var: YK_SIDETRACE_THRESHOLD=2
@@ -8,57 +17,69 @@
 --     <0
 --     <1
 --     <2
---     yk-tracing: start-tracing: sidetrace.lua:58: LTI
+--     yk-tracing: start-tracing: sidetrace.lua:2: LTI
 --     <3
---     yk-tracing: stop-tracing: sidetrace.lua:58: LTI
---     --- Begin debugstrs: header: sidetrace.lua:58: LTI ---
---       sidetrace.lua:58: LTI
---       sidetrace.lua:59: GETTABUP
---       sidetrace.lua:59: GETFIELD
---       sidetrace.lua:59: SELF
---       sidetrace.lua:59: LOADK
---       sidetrace.lua:59: GETTABUP
---       sidetrace.lua:59: MOVE
---       sidetrace.lua:59: CALL
---       sidetrace.lua:59: LOADK
---       sidetrace.lua:59: CALL
---       sidetrace.lua:59: JMP
---       sidetrace.lua:57: FORLOOP
+--     yk-tracing: stop-tracing: sidetrace.lua:2: LTI
+--     --- Begin debugstrs: sidetrace.lua:2: LTI ---
+--     ; {
+--     ;   "trid": "0",
+--     ;   "start": {
+--     ;     "kind": "ControlPoint"
+--     ;   },
+--     ;   "end": {
+--     ;     "kind": "Loop"
+--     ;   }
+--     ; }
+--     sidetrace.lua:2: LTI
+--     sidetrace.lua:3: GETTABUP
+--     sidetrace.lua:3: GETFIELD
+--     sidetrace.lua:3: SELF
+--     sidetrace.lua:3: LOADK
+--     sidetrace.lua:3: GETTABUP
+--     sidetrace.lua:3: MOVE
+--     sidetrace.lua:3: CALL
+--     sidetrace.lua:3: LOADK
+--     sidetrace.lua:3: CALL
+--     sidetrace.lua:3: JMP
+--     sidetrace.lua:1: FORLOOP
 --     --- End debugstrs ---
 --     <4
---     yk-execution: enter-jit-code: sidetrace.lua:58: LTI
+--     yk-execution: enter-jit-code: sidetrace.lua:2: LTI
 --     yk-execution: deoptimise ...
 --     >=5
---     yk-execution: enter-jit-code: sidetrace.lua:58: LTI
+--     yk-execution: enter-jit-code: sidetrace.lua:2: LTI
 --     yk-execution: deoptimise ...
---     yk-tracing: start-side-tracing: sidetrace.lua:58: LTI
+--     yk-tracing: start-side-tracing: sidetrace.lua:2: LTI
 --     >=6
---     yk-tracing: stop-tracing: sidetrace.lua:58: LTI
---     --- Begin debugstrs: side-trace: sidetrace.lua:58: LTI ---
---       sidetrace.lua:61: GETTABUP
---       sidetrace.lua:61: GETFIELD
---       sidetrace.lua:61: SELF
---       sidetrace.lua:61: LOADK
---       sidetrace.lua:61: GETTABUP
---       sidetrace.lua:61: MOVE
---       sidetrace.lua:61: CALL
---       sidetrace.lua:61: LOADK
---       sidetrace.lua:61: CALL
---       sidetrace.lua:57: FORLOOP
+--     yk-tracing: stop-tracing: sidetrace.lua:2: LTI
+--     --- Begin debugstrs: sidetrace.lua:2: LTI ---
+--     ; {
+--     ;   "trid": "1",
+--     ;   "start": {
+--     ;     "kind": "Guard",
+--     ;     "src_trid": "0",
+--     ;     "gidx": "72"
+--     ;   },
+--     ;   "end": {
+--     ;     "kind": "Coupler",
+--     ;     "tgt_trid": "0"
+--     ;   }
+--     ; }
+--     sidetrace.lua:5: GETTABUP
+--     sidetrace.lua:5: GETFIELD
+--     sidetrace.lua:5: SELF
+--     sidetrace.lua:5: LOADK
+--     sidetrace.lua:5: GETTABUP
+--     sidetrace.lua:5: MOVE
+--     sidetrace.lua:5: CALL
+--     sidetrace.lua:5: LOADK
+--     sidetrace.lua:5: CALL
+--     sidetrace.lua:1: FORLOOP
 --     --- End debugstrs ---
 --     >=7
---     yk-execution: enter-jit-code: sidetrace.lua:58: LTI
+--     yk-execution: enter-jit-code: sidetrace.lua:2: LTI
 --     >=8
 --     >=9
 --     >=10
 --     yk-execution: deoptimise ...
 --     exit
-
-for i = 0, 10 do
-  if i < 5 then
-    io.stderr:write("<", tostring(i), "\n")
-  else
-    io.stderr:write(">=", tostring(i), "\n")
-  end
-end
-io.stderr:write("exit\n")

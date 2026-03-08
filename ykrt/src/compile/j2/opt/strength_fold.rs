@@ -61,7 +61,9 @@ impl PassT for StrengthFold {
         }
     }
 
-    fn inst_committed(&mut self, _opt: &CommitInstOpt, _iidx: InstIdx, _inst: &Inst) {}
+    fn preinst_committed(&mut self, _opt: &CommitInstOpt, _iidx: InstIdx) {}
+
+    fn inst_committed(&mut self, _opt: &CommitInstOpt, _iidx: InstIdx) {}
 
     fn equiv_committed(&mut self, _equiv1: InstIdx, _equiv2: InstIdx) {}
 
@@ -116,6 +118,50 @@ fn opt_add(opt: &mut PassOpt, mut inst: Add) -> OptOutcome {
             if rhs_c.to_zero_ext_u8() == Some(0) {
                 // Reduce `x + 0` to `x`.
                 return OptOutcome::Equiv(lhs);
+            }
+
+            let mut lhs_inst = opt.inst(lhs).to_owned();
+            lhs_inst.canonicalise(opt);
+            if let Inst::Add(Add {
+                tyidx: _,
+                lhs: lhs_lhs,
+                rhs: lhs_rhs,
+                nuw: false,
+                nsw: false,
+            }) = lhs_inst
+                && let Some(ConstKind::Int(lhs_rhs_c)) = opt.as_constkind(lhs_rhs)
+            {
+                let c_iidx = opt.push_pre_inst(Inst::Const(Const {
+                    tyidx,
+                    kind: ConstKind::Int(rhs_c.wrapping_add(&lhs_rhs_c)),
+                }));
+                return OptOutcome::Rewritten(Inst::Add(Add {
+                    tyidx,
+                    lhs: lhs_lhs,
+                    rhs: c_iidx,
+                    nuw: false,
+                    nsw: false,
+                }));
+            } else if let Inst::Sub(Sub {
+                tyidx: _,
+                lhs: lhs_lhs,
+                rhs: lhs_rhs,
+                nuw: false,
+                nsw: false,
+            }) = lhs_inst
+                && let Some(ConstKind::Int(lhs_rhs_c)) = opt.as_constkind(lhs_rhs)
+            {
+                let c_iidx = opt.push_pre_inst(Inst::Const(Const {
+                    tyidx,
+                    kind: ConstKind::Int(rhs_c.wrapping_sub(&lhs_rhs_c)),
+                }));
+                return OptOutcome::Rewritten(Inst::Add(Add {
+                    tyidx,
+                    lhs: lhs_lhs,
+                    rhs: c_iidx,
+                    nuw: false,
+                    nsw: false,
+                }));
             }
         }
         _ => (),
@@ -195,17 +241,13 @@ where
                 kind: ConstKind::Int(c),
             }));
         }
-        (_, Some(ConstKind::Int(rhs_c))) => {
-            if rhs_c.to_zero_ext_u8() == Some(0) {
-                // Reduce `x >> 0` to `x`.
-                return OptOutcome::Equiv(lhs);
-            }
+        (_, Some(ConstKind::Int(rhs_c))) if rhs_c.to_zero_ext_u8() == Some(0) => {
+            // Reduce `x >> 0` to `x`.
+            return OptOutcome::Equiv(lhs);
         }
-        (Some(ConstKind::Int(lhs_c)), _) => {
-            if lhs_c.to_zero_ext_u8() == Some(0) {
-                // Reduce `0 >> x` to `0`.
-                return OptOutcome::Equiv(lhs);
-            }
+        (Some(ConstKind::Int(lhs_c)), _) if lhs_c.to_zero_ext_u8() == Some(0) => {
+            // Reduce `0 >> x` to `0`.
+            return OptOutcome::Equiv(lhs);
         }
         _ => (),
     }
@@ -376,7 +418,11 @@ fn opt_guard(opt: &mut PassOpt, mut inst @ Guard { expect, cond, .. }: Guard) ->
     // recanonicalising the guard would change the `entry_vars` in a semantically incorrect way.
 
     let cond = opt.equiv_iidx(cond);
-    if let Inst::Const(_) = opt.inst(cond) {
+    if let Some(ConstKind::Int(x)) = opt.as_constkind(cond) {
+        // Contradictions should have been spotted before we get to here.
+        assert!(
+            (expect && x.to_zero_ext_u8() == Some(1)) || (!expect && x.to_zero_ext_u8() == Some(0))
+        );
         // A guard that references a constant is, by definition, not needed and doesn't affect
         // future analyses.
         return OptOutcome::NotNeeded;
@@ -511,8 +557,19 @@ fn opt_memcpy(opt: &mut PassOpt, mut inst: MemCpy) -> OptOutcome {
         dst,
         src,
         len,
-        volatile: _,
+        is_volatile,
     } = inst;
+
+    if let Some(ConstKind::Int(len_c)) = opt.as_constkind(len)
+        && let Some(0) = len_c.to_zero_ext_u8()
+    {
+        // memcpy of zero bytes. This is safe to remove even for volatile `memcpy`s.
+        return OptOutcome::NotNeeded;
+    }
+
+    if is_volatile {
+        return OptOutcome::Rewritten(inst.into());
+    }
 
     // LLVM's `memcpy` allows `dst` and `src` to point to the same memory, at which point `memcpy`
     // is a no-op.
@@ -527,13 +584,6 @@ fn opt_memcpy(opt: &mut PassOpt, mut inst: MemCpy) -> OptOutcome {
         false
     };
     if equiv {
-        return OptOutcome::NotNeeded;
-    }
-
-    if let Some(ConstKind::Int(len_c)) = opt.as_constkind(len)
-        && let Some(0) = len_c.to_zero_ext_u8()
-    {
-        // memcpy of zero bytes. Not needed.
         return OptOutcome::NotNeeded;
     }
 
@@ -758,17 +808,13 @@ fn opt_shl(opt: &mut PassOpt, mut inst: Shl) -> OptOutcome {
                 kind: ConstKind::Int(c),
             }));
         }
-        (_, Some(ConstKind::Int(rhs_c))) => {
-            if rhs_c.to_zero_ext_u8() == Some(0) {
-                // Reduce `x << 0` to `x`.
-                return OptOutcome::Equiv(lhs);
-            }
+        (_, Some(ConstKind::Int(rhs_c))) if rhs_c.to_zero_ext_u8() == Some(0) => {
+            // Reduce `x << 0` to `x`.
+            return OptOutcome::Equiv(lhs);
         }
-        (Some(ConstKind::Int(lhs_c)), _) => {
-            if lhs_c.to_zero_ext_u8() == Some(0) {
-                // Reduce `0 << x` to `0`.
-                return OptOutcome::Equiv(lhs);
-            }
+        (Some(ConstKind::Int(lhs_c)), _) if lhs_c.to_zero_ext_u8() == Some(0) => {
+            // Reduce `0 << x` to `0`.
+            return OptOutcome::Equiv(lhs);
         }
         _ => (),
     }
@@ -814,11 +860,9 @@ fn opt_sub(opt: &mut PassOpt, mut inst: Sub) -> OptOutcome {
                 kind: ConstKind::Int(lhs_c.wrapping_sub(&rhs_c)),
             }));
         }
-        (_, Some(ConstKind::Int(rhs_c))) => {
-            if rhs_c.to_zero_ext_u8() == Some(0) {
-                // Reduce `x - 0` to `x`.
-                return OptOutcome::Equiv(lhs);
-            }
+        (_, Some(ConstKind::Int(rhs_c))) if rhs_c.to_zero_ext_u8() == Some(0) => {
+            // Reduce `x - 0` to `x`.
+            return OptOutcome::Equiv(lhs);
         }
         _ => (),
     }
@@ -921,11 +965,9 @@ fn opt_xor(opt: &mut PassOpt, mut inst: Xor) -> OptOutcome {
                 kind: ConstKind::Int(lhs_c.bitxor(&rhs_c)),
             }));
         }
-        (_, Some(ConstKind::Int(rhs_c))) => {
-            if rhs_c.to_zero_ext_u8() == Some(0) {
-                // Reduce `x ^ 0` to `x`.
-                return OptOutcome::Equiv(lhs);
-            }
+        (_, Some(ConstKind::Int(rhs_c))) if rhs_c.to_zero_ext_u8() == Some(0) => {
+            // Reduce `x ^ 0` to `x`.
+            return OptOutcome::Equiv(lhs);
         }
         _ => (),
     }
@@ -962,7 +1004,7 @@ mod test {
                 inst.canonicalise(opt);
                 StrengthFold::new().feed(opt, inst)
             },
-            |_, _, _| (),
+            |_, _| (),
             |_, _| (),
             ptn,
         );
@@ -1040,6 +1082,44 @@ mod test {
             "
           %0: i8 = arg
           term [%0]
+        ",
+        );
+
+        // Chained constant folding
+
+        // `x + 1 + 2` == `x + 3`
+        test_sf(
+            "
+          %0: i8 = arg [reg]
+          %1: i8 = 1
+          %2: i8 = add %0, %1
+          %3: i8 = 2
+          %4: i8 = add %2, %3
+          blackbox %4
+        ",
+            "
+          ...
+          %4: i8 = 3
+          %5: i8 = add %0, %4
+          blackbox %5
+        ",
+        );
+
+        // `x - 3 + 5` == `x + 2`
+        test_sf(
+            "
+          %0: i8 = arg [reg]
+          %1: i8 = 3
+          %2: i8 = sub %0, %1
+          %3: i8 = 5
+          %4: i8 = add %2, %3
+          blackbox %4
+        ",
+            "
+          ...
+          %4: i8 = 2
+          %5: i8 = add %0, %4
+          blackbox %5
         ",
         );
     }
@@ -2452,6 +2532,49 @@ mod test {
           %1: ptr = 0x1234
           %2: i64 = 0
           memcpy %0, %1, %2, false
+        ",
+            "
+          %0: ptr = 0x4321
+          %1: ptr = 0x1234
+          %2: i64 = 0
+        ",
+        );
+
+        // Check that volatile memcpys of non-zero length aren't optimised away
+        test_sf(
+            "
+          %0: ptr = 0x1234
+          %1: ptr = 0x1234
+          %2: i64 = 4
+          memcpy %0, %1, %2, true
+        ",
+            "
+          %0: ptr = 0x1234
+          %1: ptr = 0x1234
+          %2: i64 = 4
+          memcpy %0, %1, %2, true
+        ",
+        );
+
+        test_sf(
+            "
+          %0: ptr = arg [reg]
+          %1: i64 = 4
+          memcpy %0, %0, %1, true
+        ",
+            "
+          %0: ptr = arg
+          %1: i64 = 4
+          memcpy %0, %0, %1, true
+        ",
+        );
+
+        test_sf(
+            "
+          %0: ptr = 0x4321
+          %1: ptr = 0x1234
+          %2: i64 = 0
+          memcpy %0, %1, %2, true
         ",
             "
           %0: ptr = 0x4321
