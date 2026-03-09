@@ -33,26 +33,42 @@ So when you look at a trace, the first question is: **is it a loop?** Only **Con
 
 From the repo root, run the small loop script in this course directory (replace `$LUA` with your yklua binary path):
 
-```bash
-export YKD_LOG=4 YKD_LOG_IR=debugstrs YKD_SERIALISE_COMPILATION=1 YK_HOT_THRESHOLD=3
-$LUA docs/src/dev/understanding_traces/examples/simple_loop.lua 2>&1
+```shell
+YKD_LOG=4 YKD_LOG_IR=debugstrs YKD_SERIALISE_COMPILATION=1 YK_HOT_THRESHOLD=3 ~/yklua/src/lua ~/lua-examples/simple_loop.lua
 ```
 
-Or use the existing test program (same idea):
+Expected output:
 
-```bash
-$LUA tests/lua/for_loop.lua 2>&1
+```shell
+yk-tracing: start-tracing
+yk-tracing: stop-tracing
+--- Begin debugstrs ---
+; {
+;   "trid": "0",
+;   "start": {
+;     "kind": "ControlPoint"
+;   },
+;   "end": {
+;     "kind": "Loop"
+;   }
+; }
+
+--- End debugstrs ---
+yk-execution: enter-jit-code
+yk-execution: deoptimise TraceId(0) GuardId(0)
+0123456789101112131415161718192021222324252627282930313233343536373839404142434445464748495051525354555657585960616263646566
 ```
+
 
 **2. What you should see**
 
 - Several lines of program output (numbers, etc.).
-- A line like: `yk-tracing: start-tracing: ... : GETTABUP` (or similar).
-- A line like: `yk-tracing: stop-tracing: ... : GETTABUP`.
+- A line like: `yk-tracing: start-tracing: ...`.
+- A line like: `yk-tracing: stop-tracing: ...`.
 - One block that looks like:
   ```text
-  --- Begin debugstrs: header: for_loop.lua:34: GETTABUP ---
-    for_loop.lua:34: GETTABUP
+  --- Begin debugstrs: header: for_loop.lua:34 ---
+    for_loop.lua:34
     ...
   --- End debugstrs ---
   ```
@@ -63,7 +79,7 @@ That single **header** block is one trace. In this case it is a **ControlPoint +
 **3. Try this**
 
 - Change the loop bound (e.g. run 2 iterations vs 20). You still get single trace that is executed multiple times.
-- **Experiment with different thresholds.** The threshold is how many times a control point must be hit before yk starts tracing. Run the same script with `YK_HOT_THRESHOLD=1`, then `YK_HOT_THRESHOLD=6`, then `YK_HOT_THRESHOLD=666` (the default). With a **low** value (1–5), tracing starts after just a few iterations and you should see the debugstr block quickly even for short loops. With a **high** value (e.g. 131), tracing only starts after many hits—if your loop runs only a handful of iterations, you may see no tracing at all. Compare when “start-tracing” and “enter-jit-code” appear in each run.
+- **Experiment with different thresholds.** The threshold is how many times a control point must be hit before yk starts tracing. Run the same script with `YK_HOT_THRESHOLD=1`, then `YK_HOT_THRESHOLD=6`, then `YK_HOT_THRESHOLD=131` (the default). With a **low** value (1–5), tracing starts after just a few iterations and you should see the debugstr block quickly even for short loops. With a **high** value (e.g. 666), tracing only starts after many hits—if your loop runs only a handful of iterations, you may see no tracing at all. Compare when “start-tracing” and “enter-jit-code” appear in each run.
 
 
 ## Takeaway
