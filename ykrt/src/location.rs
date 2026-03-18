@@ -354,6 +354,11 @@ impl SeenHotLocations {
         seen
     }
 
+    /// Number of [HotLocation]s seen so far (used for defer-coupler shallow check).
+    pub(super) fn len(&self) -> usize {
+        self.seen.len()
+    }
+
     /// Return true if [Self] forms a "pure" loop: that is, that the first and last [HotLocation]s
     /// are equivalent.
     ///
