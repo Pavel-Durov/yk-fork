@@ -65,6 +65,10 @@ pub type AtomicTraceCompilationErrorThreshold = AtomicU16;
 
 const DEFAULT_HOT_THRESHOLD: HotThreshold = 131;
 const DEFAULT_SIDETRACE_THRESHOLD: HotThreshold = 5;
+/// When true, defer stopping at a different compiled location once to allow returning to start (loop).
+const DEFER_COUPLER_ENABLED: bool = true;
+/// Max control-point transitions after deferring before we stop as coupler.
+const MAX_DEFER_STEPS: u32 = 1;
 /// How often can a [HotLocation] or [Guard] lead to an error in tracing or compilation before we
 /// give up trying to trace (or compile...) it?
 const DEFAULT_TRACECOMPILATION_ERROR_THRESHOLD: TraceCompilationErrorThreshold = 5;
@@ -509,6 +513,9 @@ impl MT {
                             frameaddr: _,
                             seen_hls: _,
                             gtrace: _,
+                            defer_coupler: _,
+                            defer_hl: _,
+                            defer_steps: _,
                         } => {
                             assert!(Arc::ptr_eq(&hl, &parent_ctr.hl().upgrade().unwrap()));
                             (thread_tracer, promotions, debug_strs)
@@ -595,6 +602,9 @@ impl MT {
                         frameaddr,
                         seen_hls: SeenHotLocations::new(hl),
                         gtrace: None,
+                        defer_coupler: None,
+                        defer_hl: None,
+                        defer_steps: 0,
                     });
                 }
                 Err(e) => {
@@ -629,6 +639,9 @@ impl MT {
                     frameaddr: _,
                     seen_hls: _,
                     gtrace: _,
+                    defer_coupler: _,
+                    defer_hl: _,
+                    defer_steps: _,
                 } => (hl, thread_tracer, promotions, debug_strs),
                 _ => unreachable!(),
             });
@@ -813,6 +826,9 @@ impl MT {
             frameaddr: tracing_frameaddr,
             hl: tracing_hl,
             seen_hls,
+            defer_coupler,
+            defer_hl,
+            defer_steps,
             ..
         } = mtt.peek_mut_tstate()
         else {
@@ -829,27 +845,17 @@ impl MT {
 
         match loc.hot_location_arc_clone() {
             Some(hl) => {
-                if seen_hls.push_and_check_any_loop_closed(Arc::clone(&hl)) {
-                    // We have traced this location more than once...
-                    if seen_hls.is_loop() {
-                        // ...and the entire trace is a single loop.
-                        let mut lk = hl.lock();
-                        lk.kind = HotLocationKind::Compiling(*tracing_trid);
-                        return TransitionControlPoint::StopLoopTracing(*tracing_trid);
-                    } else {
-                        // ...and we have unrolled an inner loop.
-
-                        // We could be much more clever here, but for now we throw away the
-                        // recorded trace, start tracing the inner loop again, and mark the outer
-                        // loop as ready for tracing as soon as it's next encountered.
-                        assert!(!Arc::ptr_eq(&hl, tracing_hl));
-                        let mut lk = hl.lock();
-                        let unroll_tid = self.next_trace_id();
-                        lk.kind = HotLocationKind::Tracing(unroll_tid);
-                        drop(lk);
+                // Step cap: if we already deferred, count this transition; stop as coupler if over cap.
+                if defer_coupler.is_some() {
+                    *defer_steps += 1;
+                    if *defer_steps > MAX_DEFER_STEPS {
+                        let dc = defer_coupler.unwrap();
                         let mut lk = tracing_hl.lock();
-                        lk.kind = HotLocationKind::Counting(self.hot_threshold());
-                        return TransitionControlPoint::StopUnrollTracing { unroll_tid };
+                        lk.kind = HotLocationKind::Compiling(*tracing_trid);
+                        return TransitionControlPoint::StopCouplerTracing {
+                            start_tid: *tracing_trid,
+                            coupler_tid: dc,
+                        };
                     }
                 }
 
@@ -862,17 +868,58 @@ impl MT {
                             _ => unreachable!(),
                         };
                         drop(lk);
+                        if DEFER_COUPLER_ENABLED && defer_coupler.is_none() && seen_hls.len() <= 2 {
+                            *defer_coupler = Some(coupler_tid);
+                            *defer_hl = Some(Arc::clone(&hl));
+                            *defer_steps = 0;
+                            return TransitionControlPoint::NoAction;
+                        }
+                        let stop_tid = defer_coupler.unwrap_or(coupler_tid);
                         let mut lk = tracing_hl.lock();
                         lk.kind = HotLocationKind::Compiling(*tracing_trid);
-                        TransitionControlPoint::StopCouplerTracing {
+                        return TransitionControlPoint::StopCouplerTracing {
                             start_tid: *tracing_trid,
-                            coupler_tid,
-                        }
+                            coupler_tid: stop_tid,
+                        };
                     }
-                    HotLocationKind::Counting(_) => TransitionControlPoint::NoAction,
-                    HotLocationKind::Tracing(_) => TransitionControlPoint::NoAction,
-                    HotLocationKind::DontTrace => TransitionControlPoint::NoAction,
+                    HotLocationKind::Counting(_)
+                    | HotLocationKind::Tracing(_)
+                    | HotLocationKind::DontTrace => {}
                 }
+                drop(lk);
+
+                if seen_hls.push_and_check_any_loop_closed(Arc::clone(&hl)) {
+                    // We have traced this location more than once...
+                    if seen_hls.is_loop() {
+                        // ...and the entire trace is a single loop.
+                        let mut lk = hl.lock();
+                        lk.kind = HotLocationKind::Compiling(*tracing_trid);
+                        return TransitionControlPoint::StopLoopTracing(*tracing_trid);
+                    } else {
+                        // ...and we have unrolled an inner loop. If we revisited defer_hl, stop as coupler instead.
+                        assert!(!Arc::ptr_eq(&hl, tracing_hl));
+                        if let Some(ref dhl) = *defer_hl {
+                            if Arc::ptr_eq(&hl, dhl) {
+                                let dc = defer_coupler.unwrap();
+                                let mut lk = tracing_hl.lock();
+                                lk.kind = HotLocationKind::Compiling(*tracing_trid);
+                                return TransitionControlPoint::StopCouplerTracing {
+                                    start_tid: *tracing_trid,
+                                    coupler_tid: dc,
+                                };
+                            }
+                        }
+                        let mut lk = hl.lock();
+                        let unroll_tid = self.next_trace_id();
+                        lk.kind = HotLocationKind::Tracing(unroll_tid);
+                        drop(lk);
+                        let mut lk = tracing_hl.lock();
+                        lk.kind = HotLocationKind::Counting(self.hot_threshold());
+                        return TransitionControlPoint::StopUnrollTracing { unroll_tid };
+                    }
+                }
+
+                TransitionControlPoint::NoAction
             }
             None => {
                 let hl = match loc.inc_count() {
@@ -1129,6 +1176,9 @@ impl MT {
                         frameaddr,
                         seen_hls: SeenHotLocations::new(hl),
                         gtrace: Some((parent, gid)),
+                        defer_coupler: None,
+                        defer_hl: None,
+                        defer_steps: 0,
                     }),
                     Err(e) => {
                         MTThread::set_tracing(IsTracing::None);
@@ -1190,6 +1240,12 @@ enum MTThreadState {
         /// If we're tracing from a guard, this will be `Some(parent_ctr,
         /// guard_idx_in_parent_ctr)`; for loop traces this will be `None`.
         gtrace: Option<(Arc<dyn CompiledTrace>, GuardId)>,
+        /// Defer-coupler: if we would stop at a different compiled location, we may defer once.
+        defer_coupler: Option<TraceId>,
+        /// The [HotLocation] we deferred at (revisit → stop as coupler instead of unroll abort).
+        defer_hl: Option<Arc<Mutex<HotLocation>>>,
+        /// Number of control-point steps since we deferred; capped by [MAX_DEFER_STEPS].
+        defer_steps: u32,
     },
     Executing {
         mt: Arc<MT>,
@@ -1603,6 +1659,9 @@ mod tests {
                 frameaddr: ptr::null_mut(),
                 seen_hls: SeenHotLocations::new(hl),
                 gtrace: None,
+                defer_coupler: None,
+                defer_hl: None,
+                defer_steps: 0,
             });
         });
     }
@@ -1636,6 +1695,9 @@ mod tests {
                 frameaddr: ptr::null_mut(),
                 seen_hls: SeenHotLocations::new(hl),
                 gtrace: Some((ctr, GuardId::from(0))),
+                defer_coupler: None,
+                defer_hl: None,
+                defer_steps: 0,
             });
         });
     }
@@ -1765,6 +1827,9 @@ mod tests {
                             frameaddr: ptr::null_mut(),
                             seen_hls: SeenHotLocations::new(hl),
                             gtrace: None,
+                            defer_coupler: None,
+                            defer_hl: None,
+                            defer_steps: 0,
                         });
                     });
                     break;
@@ -2004,6 +2069,9 @@ mod tests {
                                     frameaddr: ptr::null_mut(),
                                     seen_hls: SeenHotLocations::new(hl),
                                     gtrace: None,
+                                    defer_coupler: None,
+                                    defer_hl: None,
+                                    defer_steps: 0,
                                 });
                             });
                             assert!(matches!(
@@ -2179,6 +2247,9 @@ mod tests {
                     frameaddr: fp,
                     seen_hls: SeenHotLocations::new(hl),
                     gtrace: None,
+                    defer_coupler: None,
+                    defer_hl: None,
+                    defer_steps: 0,
                 });
             });
         }
