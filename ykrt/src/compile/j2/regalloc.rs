@@ -2492,6 +2492,7 @@ pub(crate) mod test {
             tracecompilation_errors: 0,
             #[cfg(feature = "ykd")]
             debug_str: None,
+            is_method_entry: false,
         }));
 
         let be = TestHirToAsm::new(&m);
@@ -2544,6 +2545,7 @@ pub(crate) mod test {
             tracecompilation_errors: 0,
             #[cfg(feature = "ykd")]
             debug_str: None,
+            is_method_entry: false,
         }));
 
         let be = TestHirToAsm::new(&m);

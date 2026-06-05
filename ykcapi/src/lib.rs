@@ -145,6 +145,14 @@ pub extern "C" fn yk_location_new() -> Location {
     Location::new()
 }
 
+/// Create a new method-entry [Location]. Like [yk_location_new] but marks the location as a
+/// method-entry anchor so the tracer cools it down fully when an inner loop is encountered,
+/// rather than re-queueing it immediately (which would cause an abort storm).
+#[unsafe(no_mangle)]
+pub extern "C" fn yk_location_new_method_entry() -> Location {
+    Location::new_method_entry()
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn yk_is_interpreting() -> bool {
     // aot_to_hir turns this function call into the constant `false` so all we need to do here is

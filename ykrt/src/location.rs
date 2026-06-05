@@ -15,14 +15,22 @@ use crate::{
 use parking_lot::Mutex;
 
 #[cfg(target_pointer_width = "64")]
-const STATE_TAG_MASK: usize = 0b11; // All of the tag data must fit in this.
+const STATE_TAG_MASK: usize = 0b11; // Bits 0-1: state kind (null / not-hot / hot).
 #[cfg(target_pointer_width = "64")]
-const STATE_NUM_BITS: usize = 2;
+// Bit 2: method-entry flag, only meaningful when STATE_NOT_HOT. Arc<Mutex<HotLocation>> is at
+// least 8-byte aligned, so bits 0-2 of the pointer are always 0 and safe to use as tag bits.
+const STATE_ENTRY_BIT: usize = 0b100;
+#[cfg(target_pointer_width = "64")]
+// Combined mask for extracting a pointer stored in a hot Location (clear bits 0-2).
+const STATE_FULL_MASK: usize = STATE_TAG_MASK | STATE_ENTRY_BIT;
+#[cfg(target_pointer_width = "64")]
+// Count / pointer payload begins at bit 3 (one extra bit vs. the old layout).
+const STATE_NUM_BITS: usize = 3;
 
 const STATE_NULL: usize = 0b00;
 /// The tag value for a not-yet-hot [Location]. Because null [Location]s have an inner value of 0,
 /// this value *must* be non-zero. To derive the count of a not-yet-hot [Location], we have to do
-/// `(inner & !1) >> STATE_NUM_BITS` to derive the count.
+/// `(inner & !STATE_TAG_MASK) >> STATE_NUM_BITS` to derive the count.
 const STATE_NOT_HOT: usize = 0b01;
 /// The tag value for a hot [Location]; its [HotLocation] address will be contained in the non-tag
 /// bits.
@@ -105,9 +113,11 @@ pub struct Location {
     /// means that the `Counting` state is encoded in two separate ways: both with and without
     /// allocated memory.
     ///
-    /// The layout of a Location is as follows: bit 0 = <STATE_NOT_HOT|STATE_HOT>; bits 1..<machine
-    /// width> = payload. In the `STATE_NOT_HOT` state, the payload is an integer; in a `STATE_HOT`
-    /// state, the payload is a pointer from `Arc::into_raw::<Mutex<HotLocation>>()`.
+    /// The layout of a Location is as follows:
+    ///   bits 0-1 = state kind (STATE_NULL / STATE_NOT_HOT / STATE_HOT)
+    ///   bit  2   = method-entry flag (only meaningful when STATE_NOT_HOT)
+    ///   bits 3.. = payload: count (STATE_NOT_HOT) or pointer (STATE_HOT)
+    /// In the `STATE_HOT` state, bits 0-2 are 0 in the pointer (8-byte alignment).
     inner: AtomicUsize,
 }
 
@@ -118,6 +128,17 @@ impl Location {
         debug_assert_ne!(STATE_NOT_HOT, 0);
         Self {
             inner: AtomicUsize::new(STATE_NOT_HOT),
+        }
+    }
+
+    /// Create a new method-entry location. Behaves like [Self::new] but marks the location as a
+    /// method-entry anchor. When the tracer encounters an inner loop while tracing from a
+    /// method-entry anchor it cools the anchor down fully (rather than re-queuing it immediately),
+    /// allowing the inner loop to compile first and the method-entry to later become a coupler.
+    pub fn new_method_entry() -> Self {
+        debug_assert_ne!(STATE_NOT_HOT, 0);
+        Self {
+            inner: AtomicUsize::new(STATE_NOT_HOT | STATE_ENTRY_BIT),
         }
     }
 
@@ -146,6 +167,7 @@ impl Location {
             debug_assert_eq!(HotThreshold::MIN, 0);
             // For the `as` to be safe, `HotThreshold` can't be bigger than `usize`
             debug_assert!(mem::size_of::<HotThreshold>() <= mem::size_of::<usize>());
+            let entry_bit = x & STATE_ENTRY_BIT; // preserve across the CAS
             let old = (x >> STATE_NUM_BITS) as HotThreshold;
             // The particular value of `new` must fit in the bits we have available.
             let new = old + 1;
@@ -157,8 +179,8 @@ impl Location {
 
             self.inner
                 .compare_exchange_weak(
-                    ((old as usize) << STATE_NUM_BITS) | STATE_NOT_HOT,
-                    ((new as usize) << STATE_NUM_BITS) | STATE_NOT_HOT,
+                    ((old as usize) << STATE_NUM_BITS) | entry_bit | STATE_NOT_HOT,
+                    ((new as usize) << STATE_NUM_BITS) | entry_bit | STATE_NOT_HOT,
                     Ordering::Relaxed,
                     Ordering::Relaxed,
                 )
@@ -191,13 +213,20 @@ impl Location {
     pub(crate) fn count_to_hot_location(
         &self,
         old: HotThreshold,
-        hl: HotLocation,
+        mut hl: HotLocation,
     ) -> Option<Arc<Mutex<HotLocation>>> {
+        // Read the entry bit from the current atomic value so we can include it in the CAS
+        // expected value and propagate is_method_entry into the HotLocation.
+        let cur = self.inner.load(Ordering::Relaxed);
+        let entry_bit = cur & STATE_ENTRY_BIT;
+        hl.is_method_entry = entry_bit != 0;
+
         let hl = Arc::new(Mutex::new(hl));
         let cl: *const Mutex<HotLocation> = Arc::into_raw(Arc::clone(&hl));
-        debug_assert_eq!((cl as usize) & !STATE_TAG_MASK, cl as usize);
+        // Arc<Mutex<HotLocation>> is at least 8-byte aligned, so bits 0-2 are always 0.
+        debug_assert_eq!((cl as usize) & !STATE_FULL_MASK, cl as usize);
         match self.inner.compare_exchange(
-            ((old as usize) << STATE_NUM_BITS) | STATE_NOT_HOT,
+            ((old as usize) << STATE_NUM_BITS) | entry_bit | STATE_NOT_HOT,
             (cl as usize) | STATE_HOT,
             Ordering::Relaxed,
             Ordering::Relaxed,
@@ -226,6 +255,7 @@ impl Location {
                     kind: HotLocationKind::Counting(count),
                     tracecompilation_errors: 0,
                     debug_str: Some(s),
+                    is_method_entry: false, // set by count_to_hot_location from the entry bit
                 };
                 if self.count_to_hot_location(count, hl).is_none() {
                     // We clashed with another thread.
@@ -243,7 +273,7 @@ impl Location {
             // `Arc::into_raw::<Mutex<T>>` returns `*mut Mutex<T>` so the address we're wrapping is
             // a pointer to the `Mutex` itself. By returning a `&` reference we ensure that the
             // reference to the `Mutex` can't outlive this `Location`.
-            Some(unsafe { &*((x & !STATE_TAG_MASK) as *const _) })
+            Some(unsafe { &*((x & !STATE_FULL_MASK) as *const _) })
         } else {
             None
         }
@@ -254,7 +284,7 @@ impl Location {
     pub(crate) fn hot_location_arc_clone(&self) -> Option<Arc<Mutex<HotLocation>>> {
         let x = self.inner.load(Ordering::Relaxed);
         if x & STATE_TAG_MASK == STATE_HOT {
-            let raw = unsafe { Arc::from_raw((x & !STATE_TAG_MASK) as *mut _) };
+            let raw = unsafe { Arc::from_raw((x & !STATE_FULL_MASK) as *mut _) };
             let cl = Arc::clone(&raw);
             mem::forget(raw);
             Some(cl)
@@ -274,7 +304,7 @@ impl Drop for Location {
     fn drop(&mut self) {
         let x = self.inner.load(Ordering::Relaxed);
         if x & STATE_TAG_MASK == STATE_HOT {
-            drop(unsafe { Arc::from_raw((x & !STATE_TAG_MASK) as *mut Mutex<HotLocation>) });
+            drop(unsafe { Arc::from_raw((x & !STATE_FULL_MASK) as *mut Mutex<HotLocation>) });
         }
     }
 }
@@ -287,6 +317,11 @@ pub(crate) struct HotLocation {
     pub(crate) tracecompilation_errors: TraceCompilationErrorThreshold,
     /// An optional debug string for this hot location.
     pub(crate) debug_str: Option<String>,
+    /// True if this location was created via [Location::new_method_entry]. When the tracer detects
+    /// an "unrolled inner loop" while this location is the trace start, it cools the location down
+    /// fully (count back to 0) instead of re-queueing it immediately, giving the inner loop time
+    /// to compile and allowing this location to later form a coupler trace into it.
+    pub(crate) is_method_entry: bool,
 }
 
 impl HotLocation {

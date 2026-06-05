@@ -4487,6 +4487,7 @@ mod test {
             tracecompilation_errors: 0,
             #[cfg(feature = "ykd")]
             debug_str: None,
+            is_method_entry: false,
         }));
         let be = X64HirToAsm::new(&m, CodeBufInProgress::new_testing(), true);
         let log = HirToAsm::new(&m, hl, be, true).build_test().unwrap();

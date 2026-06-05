@@ -69,6 +69,14 @@ bool yk_is_interpreting();
 // appropriate clean-up.
 YkLocation yk_location_new(void);
 
+// Create a new method-entry `YkLocation`. Behaves like `yk_location_new` but marks the location
+// as a method-entry anchor. When the tracer encounters an inner loop while tracing from this
+// location it cools the anchor down fully (back to count 0) rather than re-queueing it
+// immediately, preventing the "unrolled inner loop" abort storm that arises when a method-entry
+// and a loop-header anchor coexist in the same method. Once the inner loop compiles, the
+// method-entry will naturally become a coupler trace into it.
+YkLocation yk_location_new_method_entry(void);
+
 // Force the location to have a HotLocation and assign it a debug string.
 //
 // Debug strings (where present) are displayed in some log messages.

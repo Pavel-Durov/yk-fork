@@ -782,6 +782,7 @@ impl MT {
                                 kind: HotLocationKind::Tracing(trid),
                                 tracecompilation_errors: 0,
                                 debug_str: None,
+                                is_method_entry: false, // set by count_to_hot_location
                             };
                             if let Some(hl) = loc.count_to_hot_location(x, hl) {
                                 TransitionControlPoint::StartTracing(hl, trid)
@@ -849,15 +850,25 @@ impl MT {
                     } else {
                         // ...and we have unrolled an inner loop.
 
-                        // We could be much more clever here, but for now we throw away the
-                        // recorded trace, start tracing the inner loop again, and mark the outer
-                        // loop as ready for tracing as soon as it's next encountered.
+                        // Throw away the recorded trace and start tracing the inner loop. For a
+                        // regular outer loop we re-queue it at hot_threshold so it re-traces soon
+                        // (forming a coupler into the inner loop once that compiles). For a
+                        // method-entry anchor we cool it all the way back to 0: the method-entry
+                        // can never itself form a backedge loop, so re-queueing it immediately
+                        // just causes it to abort again on the very next call, producing a storm.
+                        // With a full cooldown it will naturally become a coupler once the inner
+                        // loop is compiled.
                         assert!(!Arc::ptr_eq(&hl, tracing_hl));
                         let unroll_tid = self.next_trace_id();
                         lk.kind = HotLocationKind::Tracing(unroll_tid);
                         drop(lk);
                         let mut lk = tracing_hl.lock();
-                        lk.kind = HotLocationKind::Counting(self.hot_threshold());
+                        let cooldown = if lk.is_method_entry {
+                            0
+                        } else {
+                            self.hot_threshold()
+                        };
+                        lk.kind = HotLocationKind::Counting(cooldown);
                         return TransitionControlPoint::StopUnrollTracing { unroll_tid };
                     }
                 }
@@ -897,6 +908,7 @@ impl MT {
                             kind: HotLocationKind::Counting(count),
                             tracecompilation_errors: 0,
                             debug_str: None,
+                            is_method_entry: false, // set by count_to_hot_location
                         };
                         loc.count_to_hot_location(count, hl)
                     }
@@ -1010,6 +1022,7 @@ impl MT {
                         kind: HotLocationKind::Tracing(next_trid),
                         tracecompilation_errors: 0,
                         debug_str: None,
+                        is_method_entry: false, // set by count_to_hot_location
                     };
                     if let Some(_hl) = loc.count_to_hot_location(x, hl) {
                         let Some((parent_ctr, gid)) = gtrace else {
