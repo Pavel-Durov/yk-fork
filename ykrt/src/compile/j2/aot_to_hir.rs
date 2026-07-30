@@ -751,7 +751,7 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
                 };
                 hir::Ty::Func(Box::new(fty))
             }
-            Ty::Struct(_ty) => todo!(),
+            Ty::Struct(_ty) => hir::Ty::Ptr(0),
             Ty::Float(FloatTy::Double) => hir::Ty::Double,
             Ty::Float(FloatTy::Float) => hir::Ty::Float,
             Ty::Unimplemented(_) => todo!(),
