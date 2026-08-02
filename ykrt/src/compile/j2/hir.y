@@ -185,6 +185,9 @@ Inst -> Result<AstInst, Box<dyn Error>>:
   | "LOCAL" ":" Ty "=" "SMIN" "LOCAL" "," "LOCAL" {
        Ok(AstInst::SMin { local: $1?.span(), ty: $3?, lhs: $6?.span(), rhs: $8?.span() })
     }
+  | "LOCAL" ":" Ty "=" "SOVERFLOW" SOverflowOp "LOCAL" "," "LOCAL" {
+       Ok(AstInst::SOverflow { local: $1?.span(), ty: $3?, op: $6?, lhs: $7?.span(), rhs: $9?.span() })
+    }
   | "LOCAL" ":" Ty "=" "SREM" "LOCAL" "," "LOCAL" {
        Ok(AstInst::SRem { local: $1?.span(), ty: $3?, lhs: $6?.span(), rhs: $8?.span() })
     }
@@ -302,6 +305,12 @@ IPred -> Result<IPred, Box<dyn Error>>:
   | "SLE" { Ok(IPred::Sle) }
   ;
 
+SOverflowOp -> Result<SOverflowOp, Box<dyn Error>>:
+    "ADD" { Ok(SOverflowOp::Add) }
+  | "MUL" { Ok(SOverflowOp::Mul) }
+  | "SUB" { Ok(SOverflowOp::Sub) }
+  ;
+
 Ty -> Result<AstTy, Box<dyn Error>>:
     "INT_TY" { Ok(AstTy::Int($1?.span())) }
   | "FLOAT_TY" { Ok(AstTy::Float) }
@@ -334,7 +343,11 @@ Unmatched -> ():
 
 %%
 
-use crate::compile::j2::{hir::IPred, hir_parser::*, regalloc::RegFill};
+use crate::compile::j2::{
+    hir::{IPred, SOverflowOp},
+    hir_parser::*,
+    regalloc::RegFill,
+};
 use std::error::Error;
 
 fn flattenr<T>(lhs: Result<Vec<T>, Box<dyn Error>>, rhs: Result<T, Box<dyn Error>>)

@@ -97,6 +97,10 @@ pub(super) struct AotToHir<'a, Reg: RegT> {
     frames: Vec<Frame>,
     /// If logging is enabled, create a map of addresses -> names to make IR printing nicer.
     addr_name_map: Option<HashMap<usize, Option<String>>>,
+    /// Computed fields of multi-result intrinsics (e.g. `sadd.with.overflow`'s `{sum,
+    /// overflow}`), keyed by the call's `InstId`. These have no backing memory, unlike a
+    /// register-packed struct return, so `p_extractvalue` reads straight from here.
+    intrinsic_multi_results: HashMap<InstId, SmallVec<[hir::InstIdx; 2]>>,
     /// The JIT IR this struct builds.
     phantom: PhantomData<Reg>,
 }
@@ -150,6 +154,7 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
             opt,
             frames: Vec::new(),
             addr_name_map: should_log_any_ir().then_some(HashMap::new()),
+            intrinsic_multi_results: HashMap::new(),
             phantom: PhantomData,
         }
     }
@@ -556,6 +561,18 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
         // We could, if we want, do some sort of caching for constants so that we don't end up with
         // as many duplicate instructions.
         self.opt.feed(hir::Const { tyidx, kind }.into())
+    }
+
+    fn intrinsic_multi_result(
+        &mut self,
+        iid: InstId,
+        vals: SmallVec<[hir::InstIdx; 2]>,
+    ) -> Result<(), CompilationError> {
+        self.intrinsic_multi_results.insert(iid.clone(), vals);
+        let tyidx_ptr0 = self.opt.tyidx_ptr0();
+        let null_ptr = self.const_to_iidx(tyidx_ptr0, hir::ConstKind::Ptr(0))?;
+        self.frames.last_mut().unwrap().set_local(iid, null_ptr);
+        Ok(())
     }
 
     /// Translate a [TraceAction] to a [BBlockId]. If `ta` is not a mappable block, this will
@@ -1513,6 +1530,55 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
         Ok(())
     }
 
+    /// Translate one of LLVM's `llvm.s{add,mul,sub}.with.overflow` intrinsics, which return a
+    /// `{result, overflow}` struct. HIR has no multi-result instruction, so we compute the two
+    /// fields separately -- backends are expected to notice that a single machine instruction
+    /// produces both -- and record them for [Self::p_extractvalue].
+    fn p_with_overflow(
+        &mut self,
+        iid: InstId,
+        op: hir::SOverflowOp,
+        jargs: SmallVec<[hir::InstIdx; 1]>,
+    ) -> Result<(), CompilationError> {
+        let [lhs, rhs]: [hir::InstIdx; 2] = jargs.into_vec().try_into().unwrap();
+        let bitw = self.opt.inst_bitw(&*self.opt, lhs);
+        let tyidx = self.opt.push_ty(hir::Ty::Int(bitw))?;
+        let res = match op {
+            hir::SOverflowOp::Add => self.opt.feed(
+                hir::Add {
+                    tyidx,
+                    lhs,
+                    rhs,
+                    nuw: false,
+                    nsw: false,
+                }
+                .into(),
+            )?,
+            hir::SOverflowOp::Mul => self.opt.feed(
+                hir::Mul {
+                    tyidx,
+                    lhs,
+                    rhs,
+                    nuw: false,
+                    nsw: false,
+                }
+                .into(),
+            )?,
+            hir::SOverflowOp::Sub => self.opt.feed(
+                hir::Sub {
+                    tyidx,
+                    lhs,
+                    rhs,
+                    nuw: false,
+                    nsw: false,
+                }
+                .into(),
+            )?,
+        };
+        let overflow = self.opt.feed(hir::SOverflow { op, lhs, rhs }.into())?;
+        self.intrinsic_multi_result(iid, smallvec![res, overflow])
+    }
+
     fn p_llvm_intrinsic(
         &mut self,
         iid: InstId,
@@ -1595,6 +1661,7 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
                 self.push_inst_and_link_local(iid, hinst).map(|_| ())
             }
             "lifetime" => Ok(()),
+            "prefetch" => Ok(()),
             "memcpy" => {
                 let [dst, src, len, volatile]: [hir::InstIdx; 4] =
                     jargs.into_vec().try_into().unwrap();
@@ -1636,6 +1703,17 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
                     is_volatile,
                 };
                 self.opt.feed_void(hinst.into()).map(|_| ())
+            }
+            "sadd" | "smul" | "ssub" => {
+                // The only `llvm.s{add,mul,sub}.*` intrinsics are the `with.overflow` variants.
+                assert_eq!(parts[2], "with");
+                assert_eq!(parts[3], "overflow");
+                let op = match parts[1] {
+                    "sadd" => hir::SOverflowOp::Add,
+                    "smul" => hir::SOverflowOp::Mul,
+                    _ => hir::SOverflowOp::Sub,
+                };
+                self.p_with_overflow(iid, op, jargs)
             }
             "smax" => {
                 let [lhs, rhs]: [hir::InstIdx; 2] = jargs.into_vec().try_into().unwrap();
@@ -1902,17 +1980,22 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
             panic!() // IR malformed: extractvalue's operand must be a struct.
         };
 
-        if let Operand::Local(aot_iid) = op
-            && indices.len() == 1
-        {
-            let lo_iidx = self.frames.last().unwrap().get_local(&*self.opt, aot_iid);
-            match self.opt.inst(lo_iidx) {
-                hir::Inst::CallStructReturnLow(_) => {
+        if let Operand::Local(aot_iid) = op {
+            if let Some(vals) = self.intrinsic_multi_results.get(aot_iid) {
+                // A multi-result intrinsic (e.g. `sadd.with.overflow`): no backing memory, so
+                // no `ptr_add`/`load` -- just forward the already-computed field.
+                assert_eq!(indices.len(), 1);
+                let v = vals[indices[0]];
+                self.frames.last_mut().unwrap().set_local(iid, v);
+                return Ok(());
+            }
+            if indices.len() == 1 {
+                let lo_iidx = self.frames.last().unwrap().get_local(&*self.opt, aot_iid);
+                if let hir::Inst::CallStructReturnLow(_) = self.opt.inst(lo_iidx) {
                     return self.p_extractvalue_register_packed(
                         iid, *tyidx, struct_ty, indices[0], lo_iidx,
                     );
                 }
-                _ => {}
             }
         }
         self.p_extractvalue_memory_backed(iid, *tyidx, op, struct_ty, indices)

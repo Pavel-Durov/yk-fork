@@ -3992,6 +3992,71 @@ impl HirToAsmBackend for X64HirToAsm<'_> {
         Ok(())
     }
 
+    fn i_soverflow(
+        &mut self,
+        ra: &mut RegAlloc<Self>,
+        b: &Block,
+        iidx: InstIdx,
+        SOverflow { op, lhs, rhs }: &SOverflow,
+    ) -> Result<(), CompilationError> {
+        let bitw = b.inst_bitw(self.m, *lhs);
+        assert_eq!(bitw, b.inst_bitw(self.m, *rhs));
+
+        // We perform the operation and throw the result away, keeping only `OF`: the (wrapping)
+        // result itself is a separate HIR instruction. `OF` is only meaningful if the operation is
+        // performed at exactly the operands' bit width, so unlike e.g. `i_add` we cannot widen
+        // narrow values to 32 bits.
+        let [lhsr, rhsr, outr] = ra.alloc(
+            self,
+            iidx,
+            [
+                RegCnstr::Input {
+                    in_iidx: *lhs,
+                    in_fill: RegCnstrFill::Undefined,
+                    regs: &NORMAL_GP_REGS,
+                    clobber: true,
+                },
+                RegCnstr::Input {
+                    in_iidx: *rhs,
+                    in_fill: RegCnstrFill::Undefined,
+                    regs: &NORMAL_GP_REGS,
+                    clobber: false,
+                },
+                RegCnstr::Output {
+                    out_fill: RegCnstrFill::Undefined,
+                    regs: &NORMAL_GP_REGS,
+                    can_be_same_as_input: true,
+                },
+            ],
+        )?;
+
+        self.asm
+            .push_inst(IcedInst::with1(Code::Seto_rm8, outr.to_reg8()));
+        self.asm.push_inst(match (op, bitw) {
+            (SOverflowOp::Add, 32) => {
+                IcedInst::with2(Code::Add_rm32_r32, lhsr.to_reg32(), rhsr.to_reg32())
+            }
+            (SOverflowOp::Add, 64) => {
+                IcedInst::with2(Code::Add_rm64_r64, lhsr.to_reg64(), rhsr.to_reg64())
+            }
+            (SOverflowOp::Mul, 32) => {
+                IcedInst::with2(Code::Imul_r32_rm32, lhsr.to_reg32(), rhsr.to_reg32())
+            }
+            (SOverflowOp::Mul, 64) => {
+                IcedInst::with2(Code::Imul_r64_rm64, lhsr.to_reg64(), rhsr.to_reg64())
+            }
+            (SOverflowOp::Sub, 32) => {
+                IcedInst::with2(Code::Sub_rm32_r32, lhsr.to_reg32(), rhsr.to_reg32())
+            }
+            (SOverflowOp::Sub, 64) => {
+                IcedInst::with2(Code::Sub_rm64_r64, lhsr.to_reg64(), rhsr.to_reg64())
+            }
+            (_, x) => todo!("{x}"),
+        });
+
+        Ok(())
+    }
+
     fn i_srem(
         &mut self,
         ra: &mut RegAlloc<Self>,
@@ -8398,6 +8463,62 @@ mod test {
               ; %2: i64 = smin %0, %1
               cmp r.64.x, r.64.y
               cmovg r.64.x, r.64.y
+              ...
+            "],
+        );
+    }
+
+    #[test]
+    fn cg_soverflow() {
+        // i64
+        codegen_and_test(
+            "
+              %0: i64 = arg [reg]
+              %1: i64 = arg [reg]
+              %2: i1 = soverflow add %0, %1
+              blackbox %2
+              term [%0, %1]
+            ",
+            &["
+              ...
+              ; %2: i1 = soverflow add %0, %1
+              add r.64._, r.64._
+              seto r.8._
+              ...
+            "],
+        );
+
+        codegen_and_test(
+            "
+              %0: i64 = arg [reg]
+              %1: i64 = arg [reg]
+              %2: i1 = soverflow mul %0, %1
+              blackbox %2
+              term [%0, %1]
+            ",
+            &["
+              ...
+              ; %2: i1 = soverflow mul %0, %1
+              imul r.64._, r.64._
+              seto r.8._
+              ...
+            "],
+        );
+
+        // i32
+        codegen_and_test(
+            "
+              %0: i32 = arg [reg]
+              %1: i32 = arg [reg]
+              %2: i1 = soverflow sub %0, %1
+              blackbox %2
+              term [%0, %1]
+            ",
+            &["
+              ...
+              ; %2: i1 = soverflow sub %0, %1
+              sub r.32._, r.32._
+              seto r.8._
               ...
             "],
         );
