@@ -3478,6 +3478,119 @@ impl HirToAsmBackend for X64HirToAsm<'_> {
         Ok(())
     }
 
+    fn i_overflow(
+        &mut self,
+        ra: &mut RegAlloc<Self>,
+        b: &Block,
+        iidx: InstIdx,
+        Overflow {
+            op,
+            signed,
+            lhs,
+            rhs,
+        }: &Overflow,
+    ) -> Result<(), CompilationError> {
+        let bitw = b.inst_bitw(self.m, *lhs);
+        assert_eq!(bitw, b.inst_bitw(self.m, *rhs));
+
+        // We perform the operation and throw the result away, keeping only the flag it sets: the
+        // (wrapping) result itself is a separate HIR instruction. Signed operations report
+        // overflow in `OF`, unsigned ones in `CF`. Either flag is only meaningful if the operation
+        // is performed at exactly the operands' bit width, so unlike e.g. `i_add` we cannot widen
+        // narrow values to 32 bits.
+        let setcc = if *signed {
+            Code::Seto_rm8
+        } else {
+            Code::Setb_rm8
+        };
+
+        if *op == OverflowOp::Mul && !*signed {
+            // x64 has no two-operand unsigned multiply, so we have to use one-operand `mul`, which
+            // multiplies `RAX` by its operand, leaving the double-width result in `RDX:RAX` and
+            // setting `CF` if the high half is non-zero.
+            let [_lhsr, rhsr, outr, _] = ra.alloc(
+                self,
+                iidx,
+                [
+                    RegCnstr::Input {
+                        in_iidx: *lhs,
+                        in_fill: RegCnstrFill::Undefined,
+                        regs: &[Reg::RAX],
+                        clobber: true,
+                    },
+                    RegCnstr::Input {
+                        in_iidx: *rhs,
+                        in_fill: RegCnstrFill::Undefined,
+                        regs: &GP_REGS_NO_RAX_RDX,
+                        clobber: false,
+                    },
+                    RegCnstr::Output {
+                        out_fill: RegCnstrFill::Undefined,
+                        regs: &GP_REGS_NO_RAX_RDX,
+                        can_be_same_as_input: true,
+                    },
+                    RegCnstr::Clobber { reg: Reg::RDX },
+                ],
+            )?;
+            self.asm.push_inst(IcedInst::with1(setcc, outr.to_reg8()));
+            self.asm.push_inst(match bitw {
+                32 => IcedInst::with1(Code::Mul_rm32, rhsr.to_reg32()),
+                64 => IcedInst::with1(Code::Mul_rm64, rhsr.to_reg64()),
+                x => todo!("{x}"),
+            });
+            return Ok(());
+        }
+
+        let [lhsr, rhsr, outr] = ra.alloc(
+            self,
+            iidx,
+            [
+                RegCnstr::Input {
+                    in_iidx: *lhs,
+                    in_fill: RegCnstrFill::Undefined,
+                    regs: &NORMAL_GP_REGS,
+                    clobber: true,
+                },
+                RegCnstr::Input {
+                    in_iidx: *rhs,
+                    in_fill: RegCnstrFill::Undefined,
+                    regs: &NORMAL_GP_REGS,
+                    clobber: false,
+                },
+                RegCnstr::Output {
+                    out_fill: RegCnstrFill::Undefined,
+                    regs: &NORMAL_GP_REGS,
+                    can_be_same_as_input: true,
+                },
+            ],
+        )?;
+
+        self.asm.push_inst(IcedInst::with1(setcc, outr.to_reg8()));
+        self.asm.push_inst(match (op, bitw) {
+            (OverflowOp::Add, 32) => {
+                IcedInst::with2(Code::Add_rm32_r32, lhsr.to_reg32(), rhsr.to_reg32())
+            }
+            (OverflowOp::Add, 64) => {
+                IcedInst::with2(Code::Add_rm64_r64, lhsr.to_reg64(), rhsr.to_reg64())
+            }
+            (OverflowOp::Mul, 32) => {
+                IcedInst::with2(Code::Imul_r32_rm32, lhsr.to_reg32(), rhsr.to_reg32())
+            }
+            (OverflowOp::Mul, 64) => {
+                IcedInst::with2(Code::Imul_r64_rm64, lhsr.to_reg64(), rhsr.to_reg64())
+            }
+            (OverflowOp::Sub, 32) => {
+                IcedInst::with2(Code::Sub_rm32_r32, lhsr.to_reg32(), rhsr.to_reg32())
+            }
+            (OverflowOp::Sub, 64) => {
+                IcedInst::with2(Code::Sub_rm64_r64, lhsr.to_reg64(), rhsr.to_reg64())
+            }
+            (_, x) => todo!("{x}"),
+        });
+
+        Ok(())
+    }
+
     fn i_ptradd(
         &mut self,
         ra: &mut RegAlloc<Self>,
@@ -3642,7 +3755,6 @@ impl HirToAsmBackend for X64HirToAsm<'_> {
                 }
                 Ok(())
             }
-            Ty::Func(_) => todo!(),
             Ty::Int(bitw) => {
                 if *bitw == 1
                     && let Some(c) = self.zero_ext_op_for_imm8(b, *truev)
@@ -3766,8 +3878,9 @@ impl HirToAsmBackend for X64HirToAsm<'_> {
                 }
                 Ok(())
             }
-            Ty::Ptr(addrspace) => {
-                assert_eq!(*addrspace, 0);
+            // A `Func` value is a code pointer at the machine level, so it selects exactly as a
+            // `Ptr` does.
+            Ty::Func(_) | Ty::Ptr(0) => {
                 let [condr, truer, falser] = ra.alloc(
                     self,
                     iidx,
@@ -3801,7 +3914,7 @@ impl HirToAsmBackend for X64HirToAsm<'_> {
                     .push_inst(IcedInst::with2(Code::Bt_rm32_imm8, condr.to_reg32(), 0));
                 Ok(())
             }
-            Ty::Void => todo!(),
+            Ty::Ptr(_) | Ty::Void => todo!(),
         }
     }
 
@@ -8091,6 +8204,114 @@ mod test {
               ...
               ; %2: i64 = or %0, %1
               or r.64.x, r.64.y
+              ...
+            "],
+        );
+    }
+
+    #[test]
+    fn cg_overflow() {
+        // i64
+        codegen_and_test(
+            "
+              %0: i64 = arg [reg]
+              %1: i64 = arg [reg]
+              %2: i1 = soverflow add %0, %1
+              blackbox %2
+              term [%0, %1]
+            ",
+            &["
+              ...
+              ; %2: i1 = soverflow add %0, %1
+              add r.64._, r.64._
+              seto r.8._
+              ...
+            "],
+        );
+
+        codegen_and_test(
+            "
+              %0: i64 = arg [reg]
+              %1: i64 = arg [reg]
+              %2: i1 = uoverflow add %0, %1
+              blackbox %2
+              term [%0, %1]
+            ",
+            &["
+              ...
+              ; %2: i1 = uoverflow add %0, %1
+              add r.64._, r.64._
+              setb r.8._
+              ...
+            "],
+        );
+
+        codegen_and_test(
+            "
+              %0: i64 = arg [reg]
+              %1: i64 = arg [reg]
+              %2: i1 = soverflow mul %0, %1
+              blackbox %2
+              term [%0, %1]
+            ",
+            &["
+              ...
+              ; %2: i1 = soverflow mul %0, %1
+              imul r.64._, r.64._
+              seto r.8._
+              ...
+            "],
+        );
+
+        // Unsigned multiply has to go via one-operand `mul`, which uses `RAX` / `RDX`.
+        codegen_and_test(
+            "
+              %0: i64 = arg [reg]
+              %1: i64 = arg [reg]
+              %2: i1 = uoverflow mul %0, %1
+              blackbox %2
+              term [%0, %1]
+            ",
+            &["
+              ...
+              ; %2: i1 = uoverflow mul %0, %1
+              mul r.64._
+              setb r.8._
+              ...
+            "],
+        );
+
+        // i32
+        codegen_and_test(
+            "
+              %0: i32 = arg [reg]
+              %1: i32 = arg [reg]
+              %2: i1 = soverflow sub %0, %1
+              blackbox %2
+              term [%0, %1]
+            ",
+            &["
+              ...
+              ; %2: i1 = soverflow sub %0, %1
+              sub r.32._, r.32._
+              seto r.8._
+              ...
+            "],
+        );
+
+        codegen_and_test(
+            "
+              %0: i32 = arg [reg]
+              %1: i32 = arg [reg]
+              %2: i1 = uoverflow sub %0, %1
+              blackbox %2
+              term [%0, %1]
+            ",
+            &["
+              ...
+              ; %2: i1 = uoverflow sub %0, %1
+              sub r.32._, r.32._
+              setb r.8._
               ...
             "],
         );

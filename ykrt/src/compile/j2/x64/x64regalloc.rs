@@ -459,6 +459,23 @@ pub(super) const NORMAL_GP_REGS: [Reg; 14] = [
     Reg::RAX,
 ];
 
+/// [NORMAL_GP_REGS] minus `RAX` / `RDX`, for values that must survive an instruction which
+/// implicitly writes both (e.g. one-operand `mul`).
+pub(super) const GP_REGS_NO_RAX_RDX: [Reg; 12] = [
+    Reg::R15,
+    Reg::R14,
+    Reg::R13,
+    Reg::R12,
+    Reg::R11,
+    Reg::R10,
+    Reg::R9,
+    Reg::R8,
+    Reg::RDI,
+    Reg::RSI,
+    Reg::RBX,
+    Reg::RCX,
+];
+
 pub(super) const ALL_XMM_REGS: [Reg; 16] = [
     Reg::XMM0,
     Reg::XMM1,

@@ -869,6 +869,7 @@ pub(super) enum Inst {
     MemSet,
     Mul,
     Or,
+    Overflow,
     PtrAdd,
     PtrToInt,
     SDiv,
@@ -3452,6 +3453,113 @@ impl InstT for Or {
 
     fn tyidx(&self, _m: &dyn ModLikeT) -> TyIdx {
         self.tyidx
+    }
+}
+
+/// Does the operation `op` on `lhs` and `rhs`, interpreted as `signed` (or not) integers,
+/// overflow?
+///
+/// This is the `overflow` field of the struct returned by LLVM's `llvm.sadd.with.overflow` and
+/// friends. The `result` field of that struct is simply the wrapping result of the operation, so
+/// we represent it with a normal [Add] / [Mul] / [Sub].
+#[derive(Clone, Debug)]
+pub(super) struct Overflow {
+    pub op: OverflowOp,
+    /// Are `lhs` / `rhs` to be interpreted as signed integers?
+    pub signed: bool,
+    /// What LLVM calls `op1`.
+    pub lhs: InstIdx,
+    /// What LLVM calls `op2`.
+    pub rhs: InstIdx,
+}
+
+impl InstT for Overflow {
+    fn assert_well_formed(&self, m: &dyn ModLikeT, b: &dyn BlockLikeT, iidx: InstIdx) {
+        assert_eq!(
+            b.inst(self.lhs).tyidx(m),
+            b.inst(self.rhs).tyidx(m),
+            "%{iidx:?}: inconsistent lhs / rhs types"
+        );
+        assert_matches!(
+            m.ty(b.inst(self.lhs).tyidx(m)),
+            Ty::Int(_),
+            "%{iidx:?}: integer required"
+        );
+    }
+
+    fn canonicalise<T: BlockLikeT + EquivIIdxT + ModLikeT>(&mut self, opt: &mut T) {
+        self.lhs = opt.equiv_iidx(self.lhs);
+        self.rhs = opt.equiv_iidx(self.rhs);
+    }
+
+    fn cse_eq(&self, opt: &dyn EquivIIdxT, other: &Inst) -> bool {
+        if let Inst::Overflow(Overflow {
+            op,
+            signed,
+            lhs,
+            rhs,
+        }) = other
+            && self.op == *op
+            && self.signed == *signed
+            && opt.equiv_iidx(self.lhs) == *lhs
+            && opt.equiv_iidx(self.rhs) == *rhs
+        {
+            true
+        } else {
+            false
+        }
+    }
+
+    fn read_effects(&self) -> Effects {
+        Effects::none()
+    }
+
+    fn write_effects(&self) -> Effects {
+        Effects::none()
+    }
+
+    fn iter_iidxs<'a>(&'a self, b: &'a dyn BlockLikeT) -> IterIidxsIterator<'a> {
+        IterIidxsIterator::two(b, self.lhs, self.rhs)
+    }
+
+    fn rewrite_iidxs<F>(&mut self, _b: &mut dyn BlockLikeT, mut iidx_map: F)
+    where
+        F: FnMut(InstIdx) -> InstIdx,
+    {
+        self.lhs = iidx_map(self.lhs);
+        self.rhs = iidx_map(self.rhs);
+    }
+
+    fn to_string<M: ModLikeT, B: BlockLikeT>(&self, _m: &M, _b: &B) -> String {
+        format!(
+            "{}overflow {} %{}, %{}",
+            if self.signed { "s" } else { "u" },
+            self.op.as_str(),
+            usize::from(self.lhs),
+            usize::from(self.rhs)
+        )
+    }
+
+    fn tyidx(&self, m: &dyn ModLikeT) -> TyIdx {
+        m.tyidx_int1()
+    }
+}
+
+/// The operation an [Overflow] checks for overflow.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub(super) enum OverflowOp {
+    Add,
+    Mul,
+    Sub,
+}
+
+impl OverflowOp {
+    fn as_str(&self) -> &str {
+        match self {
+            OverflowOp::Add => "add",
+            OverflowOp::Mul => "mul",
+            OverflowOp::Sub => "sub",
+        }
     }
 }
 

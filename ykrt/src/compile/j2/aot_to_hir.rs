@@ -98,6 +98,10 @@ pub(super) struct AotToHir<'a, Reg: RegT> {
     frames: Vec<Frame>,
     /// If logging is enabled, create a map of addresses -> names to make IR printing nicer.
     addr_name_map: Option<HashMap<usize, Option<String>>>,
+    /// Computed fields of multi-result intrinsics (e.g. `sadd.with.overflow`'s `{sum,
+    /// overflow}`), keyed by the call's `InstId`. Unlike the struct returns [Self::p_extractvalue]
+    /// otherwise deals with, these have no backing memory, so it reads straight from here.
+    intrinsic_multi_results: HashMap<InstId, SmallVec<[hir::InstIdx; 2]>>,
     /// The JIT IR this struct builds.
     phantom: PhantomData<Reg>,
 }
@@ -151,6 +155,7 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
             opt,
             frames: Vec::new(),
             addr_name_map: should_log_any_ir().then_some(HashMap::new()),
+            intrinsic_multi_results: HashMap::new(),
             phantom: PhantomData,
         }
     }
@@ -562,6 +567,18 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
         // We could, if we want, do some sort of caching for constants so that we don't end up with
         // as many duplicate instructions.
         self.opt.feed(hir::Const { tyidx, kind }.into())
+    }
+
+    fn intrinsic_multi_result(
+        &mut self,
+        iid: InstId,
+        vals: SmallVec<[hir::InstIdx; 2]>,
+    ) -> Result<(), CompilationError> {
+        self.intrinsic_multi_results.insert(iid.clone(), vals);
+        let tyidx_ptr0 = self.opt.tyidx_ptr0();
+        let null_ptr = self.const_to_iidx(tyidx_ptr0, hir::ConstKind::Ptr(0))?;
+        self.frames.last_mut().unwrap().set_local(iid, null_ptr);
+        Ok(())
     }
 
     /// Translate a [TraceAction] to a [BBlockId]. If `ta` is not a mappable block, this will
@@ -1215,6 +1232,14 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
             //      (which could be zero, or many, and may include recursive calls) until that
             //      function returns.
 
+            // [p_ty] has no way of representing the `{result, overflow}` struct that the
+            // `with.overflow` intrinsics return, so they have to be dispatched before we translate
+            // the function's type -- which they have no need of anyway.
+            if let Some((op, signed)) = with_overflow_op(func.name()) {
+                self.p_with_overflow(iid, op, signed, jargs)?;
+                return Ok(CallProcessedKind::Outlined);
+            }
+
             let ftyidx = self.p_ty(self.am.type_(func.tyidx()))?;
 
             // Handle LLVM intrinsics.
@@ -1451,6 +1476,159 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
         Ok(())
     }
 
+    /// Translate one of LLVM's `llvm.{s,u}{add,mul,sub}.with.overflow` intrinsics, which return a
+    /// `{result, overflow}` struct. HIR has no multi-result instruction, so we compute the two
+    /// fields as separate instructions and record them for [Self::p_extractvalue]. Note that this
+    /// means the arithmetic is performed twice at the machine level: once for the result and once
+    /// for the flag it sets.
+    fn p_with_overflow(
+        &mut self,
+        iid: InstId,
+        op: hir::OverflowOp,
+        signed: bool,
+        jargs: SmallVec<[hir::InstIdx; 1]>,
+    ) -> Result<(), CompilationError> {
+        let [lhs, rhs]: [hir::InstIdx; 2] = jargs.into_vec().try_into().unwrap();
+        let bitw = self.opt.inst_bitw(&*self.opt, lhs);
+        let tyidx = self.opt.push_ty(hir::Ty::Int(bitw))?;
+        // The wrapping result is the same whether the operands are signed or not: only the
+        // overflow check differs.
+        let res = match op {
+            hir::OverflowOp::Add => self.opt.feed(
+                hir::Add {
+                    tyidx,
+                    lhs,
+                    rhs,
+                    nuw: false,
+                    nsw: false,
+                }
+                .into(),
+            )?,
+            hir::OverflowOp::Mul => self.opt.feed(
+                hir::Mul {
+                    tyidx,
+                    lhs,
+                    rhs,
+                    nuw: false,
+                    nsw: false,
+                }
+                .into(),
+            )?,
+            hir::OverflowOp::Sub => self.opt.feed(
+                hir::Sub {
+                    tyidx,
+                    lhs,
+                    rhs,
+                    nuw: false,
+                    nsw: false,
+                }
+                .into(),
+            )?,
+        };
+        let overflow = self.opt.feed(
+            hir::Overflow {
+                op,
+                signed,
+                lhs,
+                rhs,
+            }
+            .into(),
+        )?;
+        self.intrinsic_multi_result(iid, smallvec![res, overflow])
+    }
+
+    /// Translate LLVM's `llvm.fshl` (funnel shift left): `lhs` and `rhs` are concatenated, shifted
+    /// left by `shift % bitw`, and the most significant `bitw` bits returned. HIR has no
+    /// equivalent instruction, so we lower it to
+    /// `s == 0 ? lhs : (lhs << s) | (rhs >> (bitw - s))`, where `s = shift % bitw`. The `s == 0`
+    /// case has to be handled separately because `rhs >> bitw` is poison.
+    fn p_fshl(
+        &mut self,
+        iid: InstId,
+        jargs: SmallVec<[hir::InstIdx; 1]>,
+    ) -> Result<(), CompilationError> {
+        let [lhs, rhs, shift]: [hir::InstIdx; 3] = jargs.into_vec().try_into().unwrap();
+        let bitw = self.opt.inst_bitw(&*self.opt, lhs);
+        // LLVM allows non-power-of-two widths, but then `shift % bitw` isn't a simple mask.
+        assert!(bitw.is_power_of_two());
+        let tyidx = self.opt.push_ty(hir::Ty::Int(bitw))?;
+
+        let mask = self.const_to_iidx(
+            tyidx,
+            hir::ConstKind::Int(ArbBitInt::from_u64(bitw, u64::from(bitw - 1))),
+        )?;
+        let s = self.opt.feed(
+            hir::And {
+                tyidx,
+                lhs: shift,
+                rhs: mask,
+            }
+            .into(),
+        )?;
+        let hi = self.opt.feed(
+            hir::Shl {
+                tyidx,
+                lhs,
+                rhs: s,
+                nuw: false,
+                nsw: false,
+            }
+            .into(),
+        )?;
+        let bitw_c = self.const_to_iidx(
+            tyidx,
+            hir::ConstKind::Int(ArbBitInt::from_u64(bitw, u64::from(bitw))),
+        )?;
+        let inv_s = self.opt.feed(
+            hir::Sub {
+                tyidx,
+                lhs: bitw_c,
+                rhs: s,
+                nuw: false,
+                nsw: false,
+            }
+            .into(),
+        )?;
+        let lo = self.opt.feed(
+            hir::LShr {
+                tyidx,
+                lhs: rhs,
+                rhs: inv_s,
+                exact: false,
+            }
+            .into(),
+        )?;
+        let both = self.opt.feed(
+            hir::Or {
+                tyidx,
+                lhs: hi,
+                rhs: lo,
+                disjoint: false,
+            }
+            .into(),
+        )?;
+        let zero = self.const_to_iidx(tyidx, hir::ConstKind::Int(ArbBitInt::from_u64(bitw, 0)))?;
+        let is_zero = self.opt.feed(
+            hir::ICmp {
+                pred: hir::IPred::Eq,
+                lhs: s,
+                rhs: zero,
+                samesign: false,
+            }
+            .into(),
+        )?;
+        self.push_inst_and_link_local(
+            iid,
+            hir::Select {
+                tyidx,
+                cond: is_zero,
+                truev: lhs,
+                falsev: both,
+            },
+        )
+        .map(|_| ())
+    }
+
     fn p_llvm_intrinsic(
         &mut self,
         iid: InstId,
@@ -1522,6 +1700,7 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
                 };
                 self.push_inst_and_link_local(iid, hinst).map(|_| ())
             }
+            "fshl" => self.p_fshl(iid, jargs),
             "is" if parts[2] == "fpclass" => {
                 let [val, test]: [hir::InstIdx; 2] = jargs.into_vec().try_into().unwrap();
                 let test = if let hir::Inst::Const(hir::Const {
@@ -1585,6 +1764,8 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
                 };
                 self.opt.feed_void(hinst.into()).map(|_| ())
             }
+            // A hint we're free to ignore.
+            "prefetch" => Ok(()),
             "smax" => {
                 let [lhs, rhs]: [hir::InstIdx; 2] = jargs.into_vec().try_into().unwrap();
                 let fty = self.opt.func_ty(ftyidx);
@@ -1847,6 +2028,18 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
         let Ty::Struct(struct_ty) = op.type_(self.am) else {
             panic!()
         };
+
+        // A multi-result intrinsic (e.g. `sadd.with.overflow`) has no backing memory: its fields
+        // were computed when we processed the call, so just forward the one we're asked for.
+        if let Operand::Local(aot_iid) = op
+            && let Some(vals) = self.intrinsic_multi_results.get(aot_iid)
+        {
+            assert_eq!(indices.len(), 1, "extractvalue with nested indices");
+            let val = vals[indices[0]];
+            self.frames.last_mut().unwrap().set_local(iid, val);
+            return Ok(());
+        }
+
         let Inst::Load { volatile, .. } = op.to_inst(self.am) else {
             todo!()
         };
@@ -2274,6 +2467,28 @@ impl Frame {
     }
 }
 
+/// If `name` is one of LLVM's `llvm.{s,u}{add,mul,sub}.with.overflow` intrinsics, return the
+/// operation it performs and whether its operands are signed.
+fn with_overflow_op(name: &str) -> Option<(hir::OverflowOp, bool)> {
+    let rest = name.strip_prefix("llvm.")?;
+    let (op, rest) = rest.split_at_checked(4)?;
+    // The remainder is `.with.overflow.<ty>`: note that e.g. `llvm.sadd.sat` must not match.
+    if !rest.starts_with(".with.overflow.") {
+        return None;
+    }
+    let signed = match op.as_bytes()[0] {
+        b's' => true,
+        b'u' => false,
+        _ => return None,
+    };
+    match &op[1..] {
+        "add" => Some((hir::OverflowOp::Add, signed)),
+        "mul" => Some((hir::OverflowOp::Mul, signed)),
+        "sub" => Some((hir::OverflowOp::Sub, signed)),
+        _ => None,
+    }
+}
+
 /// Consume `N` bytes from `iter` and return an array of those bytes (in order).
 fn iter_to_array<const N: usize>(iter: &mut dyn Iterator<Item = &u8>) -> [u8; N] {
     let mut out = [0; N];
@@ -2308,4 +2523,31 @@ enum TraceEndKind {
     Term,
     /// It returned to an outer caller.
     Return(&'static Statepoint),
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_with_overflow_op() {
+        assert_matches!(
+            with_overflow_op("llvm.sadd.with.overflow.i64"),
+            Some((hir::OverflowOp::Add, true))
+        );
+        assert_matches!(
+            with_overflow_op("llvm.umul.with.overflow.i32"),
+            Some((hir::OverflowOp::Mul, false))
+        );
+        assert_matches!(
+            with_overflow_op("llvm.ssub.with.overflow.i8"),
+            Some((hir::OverflowOp::Sub, true))
+        );
+        // Intrinsics which share a prefix but are something else entirely.
+        assert_matches!(with_overflow_op("llvm.sadd.sat.i64"), None);
+        assert_matches!(with_overflow_op("llvm.smul.fix.i64"), None);
+        assert_matches!(with_overflow_op("llvm.smax.i64"), None);
+        assert_matches!(with_overflow_op("llvm.abs.i64"), None);
+        assert_matches!(with_overflow_op("mrb_int_add"), None);
+    }
 }
