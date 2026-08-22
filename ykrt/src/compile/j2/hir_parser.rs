@@ -722,6 +722,29 @@ impl<'lexer, 'input: 'lexer, Reg: RegT> HirParser<'lexer, 'input, Reg> {
                         .into(),
                     );
                 }
+                AstInst::Overflow {
+                    local,
+                    ty,
+                    op,
+                    signed,
+                    lhs,
+                    rhs,
+                } => {
+                    self.p_def_local(local);
+                    let tyidx = self.p_ty(ty);
+                    assert_eq!(&self.tys[tyidx], &Ty::Int(1));
+                    let lhs = self.p_local(lhs);
+                    let rhs = self.p_local(rhs);
+                    self.insts.push(
+                        Overflow {
+                            op,
+                            signed,
+                            lhs,
+                            rhs,
+                        }
+                        .into(),
+                    );
+                }
                 AstInst::PtrAdd {
                     local,
                     ty,
@@ -1469,6 +1492,14 @@ enum AstInst {
     Or {
         local: Span,
         ty: AstTy,
+        lhs: Span,
+        rhs: Span,
+    },
+    Overflow {
+        local: Span,
+        ty: AstTy,
+        op: OverflowOp,
+        signed: bool,
         lhs: Span,
         rhs: Span,
     },
