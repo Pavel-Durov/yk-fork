@@ -2344,7 +2344,11 @@ impl HirToAsmBackend for X64HirToAsm<'_> {
         ExtractVal { val: _, off, tyidx }: &ExtractVal,
     ) -> Result<(), CompilationError> {
         // Expecting struct across at most two 64-bit GP registers (RAX and RDX).
-        assert!(self.m.ty(*tyidx).bitw() <= 64);
+        let bitw = self.m.ty(*tyidx).bitw();
+        assert!(
+            bitw <= 64,
+            "extractval chunk is {bitw} bits wide, expected <= 64"
+        );
         let reg = match *off {
             0 => Reg::RAX,
             64 => Reg::RDX,
@@ -7570,7 +7574,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "extractval chunk wider than one register")]
+    #[should_panic(expected = "extractval chunk is 128 bits wide, expected <= 64")]
     fn cg_extractval_chunk_wider_than_one_register() {
         codegen_and_test(
             "
