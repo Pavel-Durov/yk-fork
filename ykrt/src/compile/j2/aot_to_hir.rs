@@ -1220,8 +1220,7 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
 
             // Handle LLVM intrinsics.
             if func.name().starts_with("llvm.") {
-                let ftyidx = self.p_ty(self.am.type_(func.tyidx()))?;
-                self.p_llvm_intrinsic(iid, ftyidx, func.name(), jargs)?;
+                self.p_llvm_intrinsic(iid, func, jargs)?;
                 return Ok(CallProcessedKind::Outlined);
             }
 
@@ -1499,13 +1498,67 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
         Ok(())
     }
 
+    fn with_overflow_field(
+        &mut self,
+        op: hir::OverflowOp,
+        args: &[Operand],
+        field_idx: usize,
+    ) -> Result<hir::InstIdx, CompilationError> {
+        let lhs = self.p_operand(&args[0])?;
+        let rhs = self.p_operand(&args[1])?;
+        match field_idx {
+            0 => {
+                let bitw = self.opt.inst_bitw(&*self.opt, lhs);
+                let tyidx = self.opt.push_ty(hir::Ty::Int(bitw))?;
+                match op {
+                    hir::OverflowOp::SAdd | hir::OverflowOp::UAdd => self.opt.feed(
+                        hir::Add {
+                            tyidx,
+                            lhs,
+                            rhs,
+                            nuw: false,
+                            nsw: false,
+                        }
+                        .into(),
+                    ),
+                    hir::OverflowOp::SMul | hir::OverflowOp::UMul => self.opt.feed(
+                        hir::Mul {
+                            tyidx,
+                            lhs,
+                            rhs,
+                            nuw: false,
+                            nsw: false,
+                        }
+                        .into(),
+                    ),
+                    hir::OverflowOp::SSub | hir::OverflowOp::USub => self.opt.feed(
+                        hir::Sub {
+                            tyidx,
+                            lhs,
+                            rhs,
+                            nuw: false,
+                            nsw: false,
+                        }
+                        .into(),
+                    ),
+                }
+            }
+            1 => self.opt.feed(hir::Overflow { op, lhs, rhs }.into()),
+            _ => panic!("with.overflow struct only has 2 fields"),
+        }
+    }
+
     fn p_llvm_intrinsic(
         &mut self,
         iid: InstId,
-        ftyidx: hir::TyIdx,
-        name: &str,
+        func: &'static Func,
         jargs: SmallVec<[hir::InstIdx; 1]>,
     ) -> Result<(), CompilationError> {
+        let name = func.name();
+        if with_overflow_op(name).is_some() {
+            return Ok(());
+        }
+        let ftyidx = self.p_ty(self.am.type_(func.tyidx()))?;
         let parts = name.split(".").collect::<Vec<&str>>();
         assert_eq!(parts[0], "llvm");
         match parts[1] {
@@ -1896,6 +1949,14 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
         let Ty::Struct(struct_ty) = op.type_(self.am) else {
             panic!()
         };
+        if let Inst::Call { callee, args, .. } = op.to_inst(self.am)
+            && let Some(op) = with_overflow_op(self.am.func(*callee).name())
+        {
+            assert_eq!(indices.len(), 1, "extractvalue with nested indices");
+            let val = self.with_overflow_field(op, args, indices[0])?;
+            self.frames.last_mut().unwrap().set_local(iid, val);
+            return Ok(());
+        }
 
         match op.to_inst(self.am) {
             Inst::Call { .. } => {
@@ -2332,6 +2393,55 @@ impl Frame {
     /// bindings (which occur due to unrolling).
     fn set_local(&mut self, iid: InstId, iidx: hir::InstIdx) {
         self.locals.insert(iid, iidx);
+    }
+}
+
+/// If `name` is one of LLVM's `llvm.{s,u}{add,mul,sub}.with.overflow` intrinsics, return the
+/// operation it performs.
+fn with_overflow_op(name: &str) -> Option<hir::OverflowOp> {
+    let rest = name.strip_prefix("llvm.")?;
+    let (op, rest) = rest.split_at_checked(4)?;
+    // The remainder is `.with.overflow.<ty>`: note that e.g. `llvm.sadd.sat` must not match.
+    if !rest.starts_with(".with.overflow.") {
+        return None;
+    }
+    match op {
+        "sadd" => Some(hir::OverflowOp::SAdd),
+        "uadd" => Some(hir::OverflowOp::UAdd),
+        "smul" => Some(hir::OverflowOp::SMul),
+        "umul" => Some(hir::OverflowOp::UMul),
+        "ssub" => Some(hir::OverflowOp::SSub),
+        "usub" => Some(hir::OverflowOp::USub),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod overflow_op_test {
+    use super::*;
+
+    #[test]
+    fn test_with_overflow_op() {
+        assert_matches!(
+            with_overflow_op("llvm.sadd.with.overflow.i64"),
+            Some(hir::OverflowOp::SAdd)
+        );
+        assert_matches!(
+            with_overflow_op("llvm.umul.with.overflow.i32"),
+            Some(hir::OverflowOp::UMul)
+        );
+        assert_matches!(
+            with_overflow_op("llvm.ssub.with.overflow.i8"),
+            Some(hir::OverflowOp::SSub)
+        );
+        // Intrinsics which share a prefix but are something else entirely.
+        assert_matches!(with_overflow_op("llvm.sadd.sat.i64"), None);
+        assert_matches!(with_overflow_op("llvm.smul.fix.i64"), None);
+        assert_matches!(with_overflow_op("llvm.smax.i64"), None);
+        assert_matches!(with_overflow_op("llvm.abs.i64"), None);
+        assert_matches!(with_overflow_op("mrb_int_add"), None);
+        // Ordinary, non-LLVM function calls must not panic.
+        assert_matches!(with_overflow_op("main"), None);
     }
 }
 

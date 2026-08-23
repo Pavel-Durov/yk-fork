@@ -191,6 +191,24 @@ Inst -> Result<AstInst, Box<dyn Error>>:
   | "LOCAL" ":" Ty "=" "SMIN" "LOCAL" "," "LOCAL" {
        Ok(AstInst::SMin { local: $1?.span(), ty: $3?, lhs: $6?.span(), rhs: $8?.span() })
     }
+  | "LOCAL" ":" Ty "=" "SOVERFLOW" "ADD" "LOCAL" "," "LOCAL" {
+       Ok(AstInst::Overflow { local: $1?.span(), ty: $3?, op: OverflowOp::SAdd, lhs: $7?.span(), rhs: $9?.span() })
+    }
+  | "LOCAL" ":" Ty "=" "SOVERFLOW" "MUL" "LOCAL" "," "LOCAL" {
+       Ok(AstInst::Overflow { local: $1?.span(), ty: $3?, op: OverflowOp::SMul, lhs: $7?.span(), rhs: $9?.span() })
+    }
+  | "LOCAL" ":" Ty "=" "SOVERFLOW" "SUB" "LOCAL" "," "LOCAL" {
+       Ok(AstInst::Overflow { local: $1?.span(), ty: $3?, op: OverflowOp::SSub, lhs: $7?.span(), rhs: $9?.span() })
+    }
+  | "LOCAL" ":" Ty "=" "UOVERFLOW" "ADD" "LOCAL" "," "LOCAL" {
+       Ok(AstInst::Overflow { local: $1?.span(), ty: $3?, op: OverflowOp::UAdd, lhs: $7?.span(), rhs: $9?.span() })
+    }
+  | "LOCAL" ":" Ty "=" "UOVERFLOW" "MUL" "LOCAL" "," "LOCAL" {
+       Ok(AstInst::Overflow { local: $1?.span(), ty: $3?, op: OverflowOp::UMul, lhs: $7?.span(), rhs: $9?.span() })
+    }
+  | "LOCAL" ":" Ty "=" "UOVERFLOW" "SUB" "LOCAL" "," "LOCAL" {
+       Ok(AstInst::Overflow { local: $1?.span(), ty: $3?, op: OverflowOp::USub, lhs: $7?.span(), rhs: $9?.span() })
+    }
   | "LOCAL" ":" Ty "=" "SREM" "LOCAL" "," "LOCAL" {
        Ok(AstInst::SRem { local: $1?.span(), ty: $3?, lhs: $6?.span(), rhs: $8?.span() })
     }
@@ -340,7 +358,11 @@ Unmatched -> ():
 
 %%
 
-use crate::compile::j2::{hir::IPred, hir_parser::*, regalloc::RegFill};
+use crate::compile::j2::{
+    hir::{IPred, OverflowOp},
+    hir_parser::*,
+    regalloc::RegFill,
+};
 use std::error::Error;
 
 fn flattenr<T>(lhs: Result<Vec<T>, Box<dyn Error>>, rhs: Result<T, Box<dyn Error>>)

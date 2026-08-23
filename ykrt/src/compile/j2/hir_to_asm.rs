@@ -1153,6 +1153,11 @@ impl<'a, AB: HirToAsmBackend> HirToAsm<'a, AB> {
                         self.be.i_or(&mut ra, b, iidx, x)?;
                     }
                 }
+                Inst::Overflow(x) => {
+                    if ra.is_used(iidx) {
+                        self.be.i_overflow(&mut ra, b, iidx, x)?;
+                    }
+                }
                 Inst::PtrAdd(x) => {
                     if ra.is_used(iidx) {
                         self.be.i_ptradd(&mut ra, b, iidx, x)?;
@@ -1767,6 +1772,14 @@ pub(super) trait HirToAsmBackend {
         b: &Block,
         iidx: InstIdx,
         inst: &Or,
+    ) -> Result<(), CompilationError>;
+
+    fn i_overflow(
+        &mut self,
+        ra: &mut RegAlloc<Self>,
+        b: &Block,
+        iidx: InstIdx,
+        inst: &Overflow,
     ) -> Result<(), CompilationError>;
 
     fn i_ptradd(
