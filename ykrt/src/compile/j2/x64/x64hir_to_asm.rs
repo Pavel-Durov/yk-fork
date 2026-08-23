@@ -1073,6 +1073,14 @@ impl HirToAsmBackend for X64HirToAsm<'_> {
                     self.reg_hints.push(Reg::RDX);
                     continue;
                 }
+                Inst::ExtractVal(ExtractVal { off, .. }) => {
+                    self.reg_hints.push(match off {
+                        0 => Reg::RAX,
+                        64 => Reg::RDX,
+                        _ => Reg::Undefined,
+                    });
+                    continue;
+                }
 
                 _ => {
                     self.reg_hints.push(Reg::Undefined);
@@ -7527,8 +7535,8 @@ mod test {
               %1: i128 = call random %0()
               %2: i64 = extractval %1 [0]
               %3: i64 = extractval %1 [64]
-              blackbox %2
-              blackbox %3
+              %4: i64 = add %2, %3
+              blackbox %4
               term []
             ",
             &[r#"
@@ -7537,31 +7545,9 @@ mod test {
               call {{addr}}
               ...
               ; %2: i64 = extractval %1 [0]
-              ...
               ; %3: i64 = extractval %1 [64]
-              ...
-            "#],
-        );
-
-        codegen_and_test(
-            "
-              extern random() -> i128
-
-              %0: ptr = @random
-              %1: i128 = call random %0()
-              %2: i64 = extractval %1 [0]
-              %3: i8 = trunc %2
-              blackbox %3
-              term []
-            ",
-            &[r#"
-              ...
-              ; %1: i128 = call %0()
-              call {{addr}}
-              ...
-              ; %2: i64 = extractval %1 [0]
-              ...
-              ; %3: i8 = trunc %2
+              ; %4: i64 = add %2, %3
+              add rax, rdx
               ...
             "#],
         );
