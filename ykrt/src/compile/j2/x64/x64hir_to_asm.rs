@@ -7568,7 +7568,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "extractval offset 32 is not register aligned")]
     fn cg_extractval_offset_not_register_aligned() {
         codegen_and_test(
             "
@@ -7585,7 +7585,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "extractval chunk wider than one register")]
     fn cg_extractval_chunk_wider_than_one_register() {
         codegen_and_test(
             "
