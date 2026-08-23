@@ -7543,7 +7543,6 @@ mod test {
               ...
               ; %1: i128 = call %0()
               call {{addr}}
-              ...
               ; %2: i64 = extractval %1 [0]
               ; %3: i64 = extractval %1 [64]
               ; %4: i64 = add %2, %3
