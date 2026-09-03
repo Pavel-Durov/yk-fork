@@ -1511,6 +1511,41 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
         let parts = name.split(".").collect::<Vec<&str>>();
         assert_eq!(parts[0], "llvm");
         match parts[1] {
+            "sadd" if parts[2] == "with" && parts[3] == "overflow" => {
+                let [lhs, rhs]: [hir::InstIdx; 2] = jargs.into_vec().try_into().unwrap();
+                let tyidx = self.opt.inst(lhs).tyidx(&*self.opt);
+                assert_eq!(tyidx, self.opt.inst(rhs).tyidx(&*self.opt));
+                let rtn_tyidx = self.opt.push_ty(hir::Ty::Int(64))?;
+                let call_iidx = self.push_inst_and_link_local(
+                    iid,
+                    hir::SAddOverflow {
+                        tyidx: rtn_tyidx,
+                        lhs,
+                        rhs,
+                    },
+                )?;
+                let sum_iidx = self.opt.feed(
+                    hir::ExtractVal {
+                        val: call_iidx,
+                        off: 0,
+                        tyidx,
+                    }
+                    .into(),
+                )?;
+                let i1_tyidx = self.opt.push_ty(hir::Ty::Int(1))?;
+                let overflow_iidx = self.opt.feed(
+                    hir::ExtractVal {
+                        val: call_iidx,
+                        off: 32,
+                        tyidx: i1_tyidx,
+                    }
+                    .into(),
+                )?;
+                let call_iidx = self.opt.equiv_iidx(call_iidx);
+                self.call_extractvals
+                    .insert(call_iidx, vec![sum_iidx, overflow_iidx]);
+                Ok(())
+            }
             "uadd" if parts[2] == "with" && parts[3] == "overflow" => {
                 let [lhs, rhs]: [hir::InstIdx; 2] = jargs.into_vec().try_into().unwrap();
                 let tyidx = self.opt.inst(lhs).tyidx(&*self.opt);
