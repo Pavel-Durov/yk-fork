@@ -98,7 +98,7 @@ pub(super) struct AotToHir<'a, Reg: RegT> {
     frames: Vec<Frame>,
     /// If logging is enabled, create a map of addresses -> names to make IR printing nicer.
     addr_name_map: Option<FxHashMap<usize, Option<String>>>,
-    /// Mapping of struct-returning Calls to its ExtractVals per struct field instructions.
+    /// Mapping of struct-building Calls/InsertVals to their per-field ExtractVal instructions.
     call_extractvals: FxHashMap<hir::InstIdx, Vec<hir::InstIdx>>,
     /// The JIT IR this struct builds.
     phantom: PhantomData<Reg>,
@@ -941,7 +941,7 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
                     CallProcessedKind::Outlined => (),
                     CallProcessedKind::Terminated => return Ok(TraceEndKind::Call),
                 },
-                Inst::InsertValue { .. } => todo!(),
+                Inst::InsertValue { .. } => self.p_insertvalue(pc.clone(), inst)?,
                 Inst::Load { .. } => self.p_load(pc.clone(), inst)?,
                 Inst::LoadArg { .. } => self.p_loadarg(pc.clone(), inst)?,
                 Inst::Phi { .. } => unreachable!(),
@@ -1967,6 +1967,41 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
         .map(|_| ())
     }
 
+    fn p_insertvalue(&mut self, iid: InstId, inst: &Inst) -> Result<(), CompilationError> {
+        let Inst::InsertValue { agg, elem } = inst else {
+            panic!()
+        };
+        let Ty::Struct(struct_ty) = agg.type_(self.am) else {
+            panic!()
+        };
+        let num_fields = struct_ty.field_tyidxs().len();
+        let mut field_iidxs: Vec<hir::InstIdx> = match agg {
+            Operand::Const(cidx) => {
+                let Const::Poison(_) = self.am.const_(*cidx) else {
+                    panic!()
+                };
+                Vec::with_capacity(num_fields)
+            }
+            Operand::Local(_) => {
+                let Inst::InsertValue { .. } = agg.to_inst(self.am) else {
+                    panic!()
+                };
+                let prev_iid = agg.to_inst_id();
+                let inst_idx = self.frames.last().unwrap().get_local(&*self.opt, &prev_iid);
+                self.call_extractvals[&inst_idx].clone()
+            }
+            _ => panic!(),
+        };
+        // Builds a struct via a chain of `insertvalue`, one field at a time, so a fully
+        // built struct never reaches this point.
+        field_iidxs.push(self.p_operand(elem)?);
+
+        let handle = field_iidxs[0];
+        self.call_extractvals.insert(handle, field_iidxs);
+        self.frames.last_mut().unwrap().set_local(iid, handle);
+        Ok(())
+    }
+
     fn p_extractvalue(&mut self, iid: InstId, inst: &Inst) -> Result<(), CompilationError> {
         let Inst::ExtractValue { tyidx, op, indices } = inst else {
             panic!()
@@ -1977,7 +2012,7 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
         };
 
         match op.to_inst(self.am) {
-            Inst::Call { .. } => {
+            Inst::Call { .. } | Inst::InsertValue { .. } => {
                 assert_eq!(indices.len(), 1);
                 let aot_iid = op.to_inst_id();
                 let val_iidx = self.frames.last().unwrap().get_local(&*self.opt, &aot_iid);
@@ -2211,6 +2246,37 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
             panic!()
         };
         let ptr = self.p_operand(tgt)?;
+        if let Ty::Struct(struct_ty) = val.type_(self.am) {
+            let aot_iid = val.to_inst_id();
+            let inst_idx = self.frames.last().unwrap().get_local(&*self.opt, &aot_iid);
+            let field_iidxs = &self.call_extractvals[&inst_idx];
+            let bitoffs = struct_ty.field_bit_offs();
+            assert_eq!(field_iidxs.len(), bitoffs.len());
+            for (field_iidx, bitoff) in field_iidxs.iter().zip(bitoffs.iter()) {
+                assert_eq!(bitoff % 8, 0);
+                let byte_off = u32::try_from(bitoff / 8).unwrap();
+                let field_ptr = self.opt.feed(
+                    hir::PtrAdd {
+                        ptr,
+                        off: i32::try_from(byte_off).unwrap(),
+                        in_bounds: false,
+                        nusw: false,
+                        nuw: false,
+                    }
+                    .into(),
+                )?;
+                self.opt.feed_void(
+                    hir::Store {
+                        ptr: field_ptr,
+                        val: *field_iidx,
+                        is_volatile: *volatile,
+                    }
+                    .into(),
+                )?;
+            }
+            return Ok(());
+        }
+
         let val = self.p_operand(val)?;
         self.opt
             .feed_void(
