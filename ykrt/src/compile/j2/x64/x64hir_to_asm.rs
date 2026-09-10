@@ -51,6 +51,7 @@ use crate::{
                 x64regalloc::{ALL_XMM_REGS, NORMAL_GP_REGS, PeelRegsBuilder, Reg},
             },
         },
+        jitc_yk::arbbitint::ArbBitInt,
     },
     mt::TraceId,
     varlocs,
@@ -1081,6 +1082,13 @@ impl HirToAsmBackend for X64HirToAsm<'_> {
             L::Direct(6, off, _sz) => {
                 assert!(*off <= 0);
                 varlocs![VarLoc::StackOff(off.unsigned_abs())]
+            }
+            L::I32(val) => varlocs![VarLoc::Const(ConstKind::Int(ArbBitInt::from_u64(
+                64,
+                i64::from(*val).cast_unsigned()
+            )))],
+            L::U64(val) => {
+                varlocs![VarLoc::Const(ConstKind::Int(ArbBitInt::from_u64(64, *val)))]
             }
             L::Indirect(6, off, _sz) => {
                 assert!(*off <= 0);
