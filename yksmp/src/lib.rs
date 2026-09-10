@@ -97,11 +97,10 @@ pub enum Location {
     /// In order to get the value for `x` we compute the pointer and dereference it, whereas the
     /// value for `y` is simply the computation of the pointer (`rbp - offset`).
     Direct(u16, i32, u16),
-    /// The live variable is a constant and has been directly inlined into the stackmap.
-    Constant(u32),
-    /// The live variable is a large constant and was stored in a vector as part of a record. This
-    /// variant describes the index where the constant is stored.
-    LargeConstant(u64),
+    /// The live variable is a (signed) `i32`.
+    I32(i32),
+    /// The live variable is an (unsigned) `u64`.
+    U64(u64),
 }
 
 /// Information about a functions's prologue.
@@ -275,12 +274,12 @@ impl StackMapParser<'_> {
                     Location::Indirect(dwreg, offset, size)
                 }
                 0x04 => {
-                    let offset = self.read_u32();
-                    Location::Constant(offset)
+                    let offset = self.read_i32();
+                    Location::I32(offset)
                 }
                 0x05 => {
                     let offset = self.read_i32();
-                    Location::LargeConstant(consts[usize::try_from(offset).unwrap()])
+                    Location::U64(consts[usize::try_from(offset).unwrap()])
                 }
                 _ => unreachable!(),
             };
