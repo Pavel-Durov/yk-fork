@@ -442,6 +442,20 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
             .and_then(|x| self.ta_to_bid(&x))
     }
 
+    /// If `bid` ends in an unconditional branch to a successor block, and the latter is not
+    /// recorded, return `Some(successor)`; otherwise return `None`.
+    fn inferred_successor(&self, bid: BBlockId) -> Option<BBlockId> {
+        let Inst::Br { succ } = self.am.bblock(&bid).insts().last().unwrap() else {
+            return None;
+        };
+        let succ_bid = BBlockId::new(bid.funcidx(), *succ);
+        if self.am.bblock(&succ_bid).records {
+            None
+        } else {
+            Some(succ_bid)
+        }
+    }
+
     fn next_pc(&self, pc: InstId) -> InstId {
         InstId::new(
             pc.funcidx(),
@@ -886,11 +900,15 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
                 let mut bid = BBlockId::new(pc.funcidx(), pc.bbidx());
                 let mut blk = self.am.bblock(&bid);
                 if usize::from(pc.iidx()) == blk.insts.len() {
-                    let Some(ta) = self.ta_iter.next() else {
+                    let Some(recorded_bid) = self.peek_next_bbid() else {
                         return Ok(TraceEndKind::Term);
                     };
-                    let ta = ta.map_err(|e| CompilationError::General(format!("{e:?}")))?;
-                    let cnd_bid = self.ta_to_bid(&ta).unwrap();
+                    let cnd_bid = if let Some(x) = self.inferred_successor(bid) {
+                        x
+                    } else {
+                        self.ta_iter.next();
+                        recorded_bid
+                    };
                     blk = self.am.bblock(&cnd_bid);
                     let mut iidx = 0;
                     pc = InstId::new(cnd_bid.funcidx(), cnd_bid.bbidx(), BBlockInstIdx::new(iidx));
@@ -1429,13 +1447,11 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
         let mut prev_bid = cur_bid;
         let mut recurse = 0;
         loop {
-            let ta = {
-                let Some(Ok(ta)) = self.ta_iter.peek() else {
-                    return Ok(OutliningKind::DidNotFindSuccessor);
-                };
-                ta.to_owned()
+            let Some(recorded_bid) = self.peek_next_bbid() else {
+                return Ok(OutliningKind::DidNotFindSuccessor);
             };
-            let cnd_bid = self.ta_to_bid(&ta).unwrap();
+            let inferred_bid = self.inferred_successor(prev_bid);
+            let cnd_bid = inferred_bid.unwrap_or(recorded_bid);
             self.check_correct_successor(prev_bid, cnd_bid)?;
 
             if recurse == 0 && cnd_bid == tgt_bid {
@@ -1478,7 +1494,9 @@ impl<'a, Reg: RegT + 'static> AotToHir<'a, Reg> {
             }
 
             prev_bid = cnd_bid;
-            self.ta_iter.next();
+            if inferred_bid.is_none() {
+                self.ta_iter.next();
+            }
         }
         Ok(OutliningKind::SuccessorFound)
     }
