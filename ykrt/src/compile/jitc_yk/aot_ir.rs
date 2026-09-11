@@ -590,7 +590,7 @@ impl BBlockId {
                 *self == BBlockId::new(other.funcidx(), *default_dest)
             }
             Inst::Ret { .. } => false,
-            _ => panic!("invalid block terminator: {term_inst:?}"),
+            _ => false,
         }
     }
 }
@@ -1513,6 +1513,7 @@ impl fmt::Display for DisplayableInst<'_> {
 #[deku_derive(DekuRead)]
 #[derive(Debug)]
 pub(crate) struct BBlock {
+    pub(crate) records: bool,
     #[deku(temp)]
     num_insts: usize,
     #[deku(count = "num_insts", map = "map_to_tivec")]
