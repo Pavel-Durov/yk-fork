@@ -90,11 +90,6 @@
 // 2. Only the overflow flag is used
 // 2. Both the result and the overflow flag are used.
 //
-// Note: this only checks behaviour and the HIR (which always keeps both
-// extractvals). The x64 codegen's dead-code elimination of the unused
-// half in cases 1 and 2 happens at asm emission time, which isn't dumped
-// or checked here, so it isn't directly verified by this test.
-//
 // -O0 is required: at higher opt levels LLVM will fold the three calls per op below back into one.
 
 #include <limits.h>
