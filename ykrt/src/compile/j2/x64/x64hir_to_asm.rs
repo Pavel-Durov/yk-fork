@@ -460,7 +460,7 @@ impl<'a> X64HirToAsm<'a> {
                     .push_inst(IcedInst::with2(op_code, lhsr.to_reg32(), rhsr.to_reg32()));
                 Ok(())
             }
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
