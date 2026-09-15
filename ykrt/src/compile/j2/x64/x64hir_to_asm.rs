@@ -337,12 +337,12 @@ impl<'a> X64HirToAsm<'a> {
         set_code: Code,
         name: &str,
     ) -> Result<(), CompilationError> {
-        // {s,u}{add,sub}_overflow returns a {i32 sum, i1 flag} struct, so `off` (the bit
-        // offset the extractval is reading) is always 0 for the result and 32 for overflow flag.
+        // {s,u}{add,sub}_overflow returns a struct, so `off` (the bit offset the extractval is
+        // reading) is always 0 for the result.
         let (res_iidx, flag_iidx) = match off {
             0 => (iidx, InstIdx::from_raw_index(iidx.to_raw_index() + 1)),
             32 => (InstIdx::from_raw_index(iidx.to_raw_index() - 1), iidx),
-            _ => panic!("{name} extractval offset {off} must be 0 or 32"),
+            _ => panic!(),
         };
         // Identify the liveness of both values of the overflow instruction and perform dead
         // code elimination here rather than at the {s,u}{add,sub}_overflow instruction: when
