@@ -324,6 +324,9 @@ impl<'a> X64HirToAsm<'a> {
         Ok((memop, reg.0, reg.1))
     }
 
+    /// Generate code for the extractval of a `{sadd, uadd, usub, ssub}_overflow` instruction's
+    /// result or overflow flag. `op_code` is the x64 add/sub instruction; `set_code` is the x64
+    /// `set*` instruction (e.g. `seto`, `setb`) that reads its flags into a register.
     #[allow(clippy::too_many_arguments)]
     fn i_overflow(
         &mut self,
@@ -459,7 +462,7 @@ impl<'a> X64HirToAsm<'a> {
                     .push_inst(IcedInst::with2(op_code, lhsr.to_reg32(), rhsr.to_reg32()));
                 Ok(())
             }
-            _ => panic!(),
+            _ => unreachable!("off already validated to be 0 or 32"),
         }
     }
 
