@@ -8147,7 +8147,7 @@ mod test {
               ; %2: i64 = sadd_overflow %0, %1
               ; %3: i32 = extractval %2 [0]
               ; %4: i1 = extractval %2 [32]
-              add r.32._, r.32._
+              add r.32.x, r.32.y
               seto r.8._
               ...
             "#],
@@ -8169,7 +8169,7 @@ mod test {
               ...
               ; %2: i64 = sadd_overflow %0, %1
               ; %3: i32 = extractval %2 [0]
-              add r.32._, r.32._
+              add r.32.x, r.32.y
               ...
             "#],
         );
@@ -8190,7 +8190,7 @@ mod test {
               ...
               ; %2: i64 = sadd_overflow %0, %1
               ; %3: i1 = extractval %2 [32]
-              add r.32._, r.32._
+              add r.32.x, r.32.y
               seto r.8._
               ...
             "#],
@@ -8231,7 +8231,7 @@ mod test {
               ; %2: i64 = uadd_overflow %0, %1
               ; %3: i32 = extractval %2 [0]
               ; %4: i1 = extractval %2 [32]
-              add r.32._, r.32._
+              add r.32.x, r.32.y
               setb r.8._
               ...
             "#],
@@ -8253,7 +8253,7 @@ mod test {
               ...
               ; %2: i64 = uadd_overflow %0, %1
               ; %3: i32 = extractval %2 [0]
-              add r.32._, r.32._
+              add r.32.x, r.32.y
               ...
             "#],
         );
@@ -8274,7 +8274,7 @@ mod test {
               ...
               ; %2: i64 = uadd_overflow %0, %1
               ; %3: i1 = extractval %2 [32]
-              add r.32._, r.32._
+              add r.32.x, r.32.y
               setb r.8._
               ...
             "#],
@@ -8315,7 +8315,7 @@ mod test {
               ; %2: i64 = usub_overflow %0, %1
               ; %3: i32 = extractval %2 [0]
               ; %4: i1 = extractval %2 [32]
-              sub r.32._, r.32._
+              sub r.32.x, r.32.y
               setb r.8._
               ...
             "#],
@@ -8337,7 +8337,7 @@ mod test {
               ...
               ; %2: i64 = usub_overflow %0, %1
               ; %3: i32 = extractval %2 [0]
-              sub r.32._, r.32._
+              sub r.32.x, r.32.y
               ...
             "#],
         );
@@ -8358,7 +8358,7 @@ mod test {
               ...
               ; %2: i64 = usub_overflow %0, %1
               ; %3: i1 = extractval %2 [32]
-              sub r.32._, r.32._
+              sub r.32.x, r.32.y
               setb r.8._
               ...
             "#],
@@ -8399,7 +8399,7 @@ mod test {
               ; %2: i64 = ssub_overflow %0, %1
               ; %3: i32 = extractval %2 [0]
               ; %4: i1 = extractval %2 [32]
-              sub r.32._, r.32._
+              sub r.32.x, r.32.y
               seto r.8._
               ...
             "#],
@@ -8421,7 +8421,7 @@ mod test {
               ...
               ; %2: i64 = ssub_overflow %0, %1
               ; %3: i32 = extractval %2 [0]
-              sub r.32._, r.32._
+              sub r.32.x, r.32.y
               ...
             "#],
         );
@@ -8442,7 +8442,7 @@ mod test {
               ...
               ; %2: i64 = ssub_overflow %0, %1
               ; %3: i1 = extractval %2 [32]
-              sub r.32._, r.32._
+              sub r.32.x, r.32.y
               seto r.8._
               ...
             "#],
