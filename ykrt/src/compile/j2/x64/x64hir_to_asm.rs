@@ -337,20 +337,25 @@ impl<'a> X64HirToAsm<'a> {
         set_code: Code,
         name: &str,
     ) -> Result<(), CompilationError> {
-        // The wrapped result and the overflow flag are two independent values. Codegen for
-        // both is emitted here rather than at the {sadd, uadd, usub, ssub}_overflow instruction, which
-        // has no single register that could hold both results. Codegen is emitted at the flag
-        // extractval, so the result extractval early-returns if it sees the flag is also used.
+        // {s,u}{add,sub}_overflow returns a {i32 sum, i1 flag} struct, so `off` (the bit
+        // offset the extractval is reading) is always 0 for the result and 32 for overflow flag.
         let (res_iidx, flag_iidx) = match off {
             0 => (iidx, InstIdx::from_raw_index(iidx.to_raw_index() + 1)),
             32 => (InstIdx::from_raw_index(iidx.to_raw_index() - 1), iidx),
             _ => panic!("{name} extractval offset {off} must be 0 or 32"),
         };
-        match off {
-            0 if ra.is_used(flag_iidx) => return Ok(()),
-            // Only the result is used - the overflow flag is dead.
-            0 => {
-                assert_eq!(bitw, 32);
+        // Identifying which of the values - result, overflow flag, or both - are used, and
+        // performing dead code elimination on whichever isn't, requires seeing both extractvals.
+        // So codegen is emitted here, rather than at the {s,u}{add,sub}_overflow instruction: when
+        // both are used, the sum's extractval defers to the flag's, so codegen isn't emitted
+        // twice.
+        let sum_used = ra.is_used(res_iidx);
+        let flag_used = ra.is_used(flag_iidx);
+        match (off, sum_used, flag_used) {
+            // Defer to the flag's extractval, which emits codegen for both.
+            (0, _, true) => Ok(()),
+            // Case 1: only the sum is used, the flag is dead. Just do the add/sub.
+            (0, _, false) => {
                 let [lhsr, rhsr] = ra.alloc(
                     self,
                     res_iidx,
@@ -371,11 +376,11 @@ impl<'a> X64HirToAsm<'a> {
                 )?;
                 self.asm
                     .push_inst(IcedInst::with2(op_code, lhsr.to_reg32(), rhsr.to_reg32()));
-                return Ok(());
+                Ok(())
             }
-            // Only the overflow is used - the wrapped result is dead.
-            32 if !ra.is_used(res_iidx) => {
-                assert_eq!(bitw, 1);
+            // Case 2: only the flag is used, the sum is dead. Do the add/sub purely to set the
+            // flag, discarding its result.
+            (32, false, _) => {
                 let [lhsr, rhsr, i1_outr] = ra.alloc(
                     self,
                     flag_iidx,
@@ -403,58 +408,60 @@ impl<'a> X64HirToAsm<'a> {
                     .push_inst(IcedInst::with1(set_code, i1_outr.to_reg8()));
                 self.asm
                     .push_inst(IcedInst::with2(op_code, lhsr.to_reg32(), rhsr.to_reg32()));
-                return Ok(());
+                Ok(())
             }
-            _ => (),
+            // Case 3: both the sum and the flag are used.
+            (32, true, _) => {
+                let [_lhsr, _rhsr, i1_outr] = ra.alloc(
+                    self,
+                    flag_iidx,
+                    [
+                        RegCnstr::Input {
+                            in_iidx: lhs,
+                            in_fill: RegCnstrFill::Undefined,
+                            regs: &NORMAL_GP_REGS,
+                            clobber: false,
+                        },
+                        RegCnstr::Input {
+                            in_iidx: rhs,
+                            in_fill: RegCnstrFill::Undefined,
+                            regs: &NORMAL_GP_REGS,
+                            clobber: false,
+                        },
+                        RegCnstr::Output {
+                            out_fill: RegCnstrFill::Undefined,
+                            regs: &NORMAL_GP_REGS,
+                            can_be_same_as_input: false,
+                        },
+                    ],
+                )?;
+                let [lhsr, rhsr, _] = ra.alloc(
+                    self,
+                    res_iidx,
+                    [
+                        RegCnstr::InputOutput {
+                            in_iidx: lhs,
+                            in_fill: RegCnstrFill::Undefined,
+                            out_fill: RegCnstrFill::Zeroed,
+                            regs: &NORMAL_GP_REGS,
+                        },
+                        RegCnstr::Input {
+                            in_iidx: rhs,
+                            in_fill: RegCnstrFill::Undefined,
+                            regs: &NORMAL_GP_REGS,
+                            clobber: false,
+                        },
+                        RegCnstr::Clobber { reg: i1_outr },
+                    ],
+                )?;
+                self.asm
+                    .push_inst(IcedInst::with1(set_code, i1_outr.to_reg8()));
+                self.asm
+                    .push_inst(IcedInst::with2(op_code, lhsr.to_reg32(), rhsr.to_reg32()));
+                Ok(())
+            }
+            _ => panic!()
         }
-        assert_eq!(bitw, if off == 0 { 32 } else { 1 });
-        let [_lhsr, _rhsr, i1_outr] = ra.alloc(
-            self,
-            flag_iidx,
-            [
-                RegCnstr::Input {
-                    in_iidx: lhs,
-                    in_fill: RegCnstrFill::Undefined,
-                    regs: &NORMAL_GP_REGS,
-                    clobber: false,
-                },
-                RegCnstr::Input {
-                    in_iidx: rhs,
-                    in_fill: RegCnstrFill::Undefined,
-                    regs: &NORMAL_GP_REGS,
-                    clobber: false,
-                },
-                RegCnstr::Output {
-                    out_fill: RegCnstrFill::Undefined,
-                    regs: &NORMAL_GP_REGS,
-                    can_be_same_as_input: false,
-                },
-            ],
-        )?;
-        let [lhsr, rhsr, _] = ra.alloc(
-            self,
-            res_iidx,
-            [
-                RegCnstr::InputOutput {
-                    in_iidx: lhs,
-                    in_fill: RegCnstrFill::Undefined,
-                    out_fill: RegCnstrFill::Zeroed,
-                    regs: &NORMAL_GP_REGS,
-                },
-                RegCnstr::Input {
-                    in_iidx: rhs,
-                    in_fill: RegCnstrFill::Undefined,
-                    regs: &NORMAL_GP_REGS,
-                    clobber: false,
-                },
-                RegCnstr::Clobber { reg: i1_outr },
-            ],
-        )?;
-        self.asm
-            .push_inst(IcedInst::with1(set_code, i1_outr.to_reg8()));
-        self.asm
-            .push_inst(IcedInst::with2(op_code, lhsr.to_reg32(), rhsr.to_reg32()));
-        Ok(())
     }
 
     /// Generate code for fadd/fdiv/fmul/fsub: `double_code` is the instruction to generate for
