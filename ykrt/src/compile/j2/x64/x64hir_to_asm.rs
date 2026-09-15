@@ -344,9 +344,8 @@ impl<'a> X64HirToAsm<'a> {
             32 => (InstIdx::from_raw_index(iidx.to_raw_index() - 1), iidx),
             _ => panic!("{name} extractval offset {off} must be 0 or 32"),
         };
-        // Identifying which of the values - result, overflow flag, or both - are used, and
-        // performing dead code elimination on whichever isn't, requires seeing both extractvals.
-        // So codegen is emitted here, rather than at the {s,u}{add,sub}_overflow instruction: when
+        // Identify the liveness of both values of the overflow instruction and perform dead
+        // code elimination here rather than at the {s,u}{add,sub}_overflow instruction: when
         // both are used, the sum's extractval defers to the flag's, so codegen isn't emitted
         // twice.
         let sum_used = ra.is_used(res_iidx);
